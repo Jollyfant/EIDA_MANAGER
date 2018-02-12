@@ -1,0 +1,10 @@
+{
+  "__DEBUG__": true,
+  "APPLICATION_VERSION": "1.0.0",
+  "PORT": 8000,
+  "HOST": "127.0.0.1",
+  "MONGO": {
+    "HOST": "127.0.0.1",
+    "PORT": 27017
+  }
+}
