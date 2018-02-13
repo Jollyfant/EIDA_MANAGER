@@ -11,9 +11,14 @@ var Database = function() {
   this.SESSION_COLLECTION = "sessions";
   this.MESSAGE_COLLECTION = "messages";
   this.USER_COLLECTION = "users";
+  this.FILE_COLLECTION = "files";
 
   this._database = null;
 
+}
+
+Database.prototype.files = function() {
+  return this.connection().collection(this.FILE_COLLECTION);
 }
 
 Database.prototype.users = function() {

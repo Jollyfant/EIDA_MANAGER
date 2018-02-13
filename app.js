@@ -22,10 +22,7 @@ function AddMap() {
   var start = Date.now();
 
   infowindow = new google.maps.InfoWindow();
-  map = new google.maps.Map(document.getElementById("map"), {
-    "zoom": 4,
-    "center": {"lat": 0, "lng": 0}
-  });
+  map = new google.maps.Map(document.getElementById("map"));
 
   // Listener on map to close the info window
   map.addListener("click", function() {
@@ -34,13 +31,22 @@ function AddMap() {
 
   // Add the EIDA nodes
   NODES.forEach(function(node) {
-    new google.maps.Marker({
+
+    var marker = new google.maps.Marker({
       "map": map,
       "position": node.position,
       "title": "ORFEUS Data Center",
       "icon": "/images/node.png",
       "zIndex": 100
     });
+
+    // Add listener to the EIDA nodes
+    marker.addListener("click", function() {
+      infowindow.close();
+      infowindow.setContent("EIDA Node <hr>" + marker.title)
+      infowindow.open(map, this);
+    });
+
   });
 
   console.debug("Map has been initialized in " + (Date.now() - start) + " ms.");
@@ -183,9 +189,8 @@ function initMap() {
 
         console.debug("Retrieved " + json.length +  " message(s) from server.");
 
-        const MESSAGE_TABLE_HEADER = [
+        var MESSAGE_TABLE_HEADER = [
           "Subject",
-          "Sender",
           "Recipient",
           "Message Received"
         ];
@@ -197,9 +202,15 @@ function initMap() {
         document.getElementById("message-content-sent").innerHTML = [
           "<table class='table table-sm table-striped'>",
           generateTableHead(MESSAGE_TABLE_HEADER),
-          generateTableBody(generateMessageTableContent(sent)),
+          generateTableBody(generateMessageTableContentSent(sent)),
           "</table>"
         ].join("\n");
+
+        var MESSAGE_TABLE_HEADER = [
+          "Subject",
+          "Sender",
+          "Message Received"
+        ];
 
         var inbox = json.filter(function(x) {
           return !x.author;
@@ -307,86 +318,14 @@ function initMap() {
 
   }
 
-  function readMultipleFiles(files, callback) {
-
-    /* function readMultipleFiles
-     * Uses the HTML5 FileReader API to read mutliple fires and fire
-     * a callback with its contents
-     */
-
-    var fileContents = new Array();
-    var files = Array.from(files);
- 
-    // IIFE to read multiple files
-    (read = function(file) {
-
-      console.debug("FileReader is reading file: " + file.name);
-
-      var reader = new FileReader();  
-
-      // XML should be readable as text
-      reader.readAsText(file);
-
-      // Callback when one file is read
-      reader.onload = function() {
-
-        // Append the result
-        fileContents.push({"data": reader.result, "size": file.size});
-
-        // Last file has been read
-        if(!files.length) {
-          return callback(fileContents);
-        }
-
-        // More files to read: continue
-        read(files.pop());
-
-      }
- 
-    })(files.pop());
-
-  }
-
   // Initialize map on the main profile page
   if(uri.pathname === "/profile") {
 
+    // Add map
     AddMap();
 
-  document.getElementById("file-stage").addEventListener("change", function(event) {
-  
-    var stagedFiles = new Array();
-
-    // Abstracted function to read multiple files
-    readMultipleFiles(event.target.files, function(files) {
-
-      const FDSN_STATION_XML_HEADER = "FDSNStationXML";
-
-      file = files.pop();
-
-      // Parse the XML
-      var XML = new DOMParser().parseFromString(file.data, "text/xml");
-
-      // Abort: not a FDSNStationXML
-      if(XML.documentElement.nodeName !== FDSN_STATION_XML_HEADER) {
-        return document.getElementById("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid FDSN StationXML.</b>";
-      }
-
-      console.debug("Succesfully parsed StationXML");
-
-      // Go over all networks
-      Array.from(XML.getElementsByTagName("Network")).forEach(function(network) {
-        var networkCode = network.getAttribute("code");
-        Array.from(network.getElementsByTagName("Station")).forEach(function(station) {
-          var stationCode = station.getAttribute("code");
-          stagedFiles.push(networkCode + "." + stationCode);
-        });
-      });
-
-      document.getElementById("file-help").innerHTML = "<b>" + IconSpan("checkmark") + "</span> Staged Metadata:</b> " + stagedFiles.join(", ");
-
-    });
-  
-  });
+    // Add upload button for metadata
+    AddMetadataUpload();
 
     var markers = new Array();
     var start = Date.now();
@@ -445,6 +384,10 @@ function initMap() {
 
 }
 
+function Element(id) {
+  return document.getElementById(id);
+}
+
 function fitMapBounds(markers) {
 
   /* function fitMapBounds
@@ -461,14 +404,24 @@ function fitMapBounds(markers) {
 
 }
 
-function generateMessageTableContent(json) {
+function generateMessageTableContentSent(json) {
 
-console.log(json)
   return json.map(function(x) {
     return [
       (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/profile/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
-      formatMessageSender(x),
-      x.recipient,
+      formatMessageSender(x.role, x.recipient),
+      x.created
+    ];
+  });
+
+}
+
+function generateMessageTableContent(json) {
+
+  return json.map(function(x) {
+    return [
+      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/profile/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
+      formatMessageSender(x.role, x.sender),
       x.created
     ];
   });
@@ -495,7 +448,7 @@ function generateMessageDetails(message) {
       message.content,
       "<hr>",
       message.author ? "" : "<button class='btn btn-danger btn-sm' style='float: right;' onClick='deleteMessage()'><span class='fa fa-trash'></span> Delete Message</button>",
-      "Sender: " + formatMessageSender(message),
+      "Sender: " + formatMessageSender(message.role, message.sender),
       "</div>",
     "</div>",
   ].join("\n");
@@ -550,17 +503,17 @@ function deleteMessage() {
 
 }
 
-function formatMessageSender(sender) {
+function formatMessageSender(role, sender) {
 
   /* function formatMessageSender
    * Returns specific formatting for particular senders (e.g. administrator)
    */
 
-  if(sender.role === "admin") {
-    return sender.sender + " (<span class='text-danger'><b>O</span>RFEUS Administrator</b>)";
+  if(role === "admin") {
+    return sender + " (<span class='text-danger'><b>O</span>RFEUS Administrator</b>)";
   }
  
-  return sender.sender;
+  return sender;
 
 }
 
@@ -1061,10 +1014,12 @@ function generateAccordionContentChannelString(channel) {
   var parsedEnd = Date.parse(channel.end);
   var header = ["Sensor", "Unit", "Sampling Rate", "Gain"];
 
-  var table = ["<table class='table table-sm table-striped'>",
+  var table = [
+    "<table class='table table-sm table-striped'>",
     generateTableHead(header),
     generateTableBody([[channel.description, channel.sensorUnits, channel.sampleRate, channel.gain]]),
-  "</table>"].join("\n");
+    "</table>"
+  ].join("\n");
 
   return [
     "Channel <b>" + (channel.location ? channel.location + "." : "") + channel.channel + "</b>",
@@ -1435,8 +1390,108 @@ SeedlinkChannel.prototype.Plot = function() {
 
 }
 
-$(window).on('unload', function () { });
+new App(window.location.href)
 
-$(document).ready(function() {
-  new App(window.location.href)
-});
+function AddMetadataUpload() {
+
+  /* function AddMetadataUpload
+   * Adds event to metadata uploading
+   */
+
+  const FDSN_STATION_XML_HEADER = "FDSNStationXML";
+
+  // Change event when a file is selected
+  Element("file-stage").addEventListener("change", function(event) {
+
+    // Always disable submission button initially
+    // It will be released after the StationXML has been verified
+    Element("file-submit").disabled = true;
+
+    // Abstracted function to read multiple files from even
+    readMultipleFiles(event.target.files, function(files) {
+
+      // Only handle first file
+      file = files.pop();
+
+      // Parse the XML using the native lib
+      var XML = new DOMParser().parseFromString(file.data, "text/xml");
+
+      // Confirm that XML has the FDSNStationXML namespace
+      if(XML.documentElement.nodeName !== FDSN_STATION_XML_HEADER) {
+        return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid FDSN StationXML.</b>";
+      }
+
+      // Check if the user manages the network
+      // Get a list of networks in the XML that are not in the sesion
+      var wrongNetworks = Array.from(XML.getElementsByTagName("Network")).filter(function(network) {
+        return USER_NETWORKS.indexOf(network.getAttribute("code")) === -1;
+      }).map(function(x) {
+        return x.getAttribute("code");
+      });
+
+      // Alert user their file contains metadata for a network they do not own
+      if(wrongNetworks.length !== 0) {
+        return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid Network: " + wrongNetworks.join(",") + "</b>";
+      }
+
+      var stagedFiles = new Array();
+
+      // Go over all networks and collect station names
+      Array.from(XML.getElementsByTagName("Network")).forEach(function(network) {
+        var networkCode = network.getAttribute("code");
+        Array.from(network.getElementsByTagName("Station")).forEach(function(station) {
+          var stationCode = station.getAttribute("code");
+          stagedFiles.push(networkCode + "." + stationCode);
+        });
+      });
+
+      // Allow metadata submission
+      Element("file-submit").disabled = false;
+      Element("file-help").innerHTML = "<b>" + IconSpan("checkmark") + "</span> Staged Metadata:</b> " + (stagedFiles.length ? stagedFiles.join(", ") : "None");
+
+    });
+
+  });
+
+}
+
+function readMultipleFiles(files, callback) {
+
+  /* function readMultipleFiles
+   * Uses the HTML5 FileReader API to read mutliple fires and fire
+   * a callback with its contents
+   */
+
+  var fileContents = new Array();
+  var files = Array.from(files);
+
+  // IIFE to read multiple files
+  (read = function(file) {
+
+    var reader = new FileReader();
+
+    // XML should be readable as text
+    reader.readAsText(file);
+
+    // Callback when one file is read
+    reader.onload = function() {
+
+      console.debug("FileReader read file " + file.name + " (" + file.size + " bytes)");
+
+      // Append the result
+      fileContents.push({"data": reader.result, "size": file.size});
+
+      // Last file has been read
+      if(!files.length) {
+        return callback(fileContents);
+      }
+
+      // More files to read: continue
+      read(files.pop());
+
+    }
+
+  })(files.pop());
+
+}
+

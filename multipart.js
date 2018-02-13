@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 /**
  	Multipart Parser (Finite State Machine)
 
@@ -40,6 +41,8 @@ exports.Parse = function(multipartBodyBuffer,boundary){
 			{ value: contentType, writable: true, enumerable: true, configurable: true })
 		Object.defineProperty( file , 'data' , 
 			{ value: new Buffer(part.part), writable: true, enumerable: true, configurable: true })
+		Object.defineProperty( file , 'sha256' , 
+			{ value: crypto.createHash("sha256").update(new Buffer(part.part)).digest("hex"), writable: true, enumerable: true, configurable: true })
 		return file;
 	}
 	var prev = null;

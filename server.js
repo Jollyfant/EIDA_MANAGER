@@ -377,15 +377,29 @@ var Webserver = function() {
         // Parse the POST body (binary file)
         parseRequestBody(request, "multiform", function(files) {
 
+          // Only accepted files with content 
+          var files = files.filter(function(x) {
+            return x.data.length !== 0;
+          });
+
+          if(files.length === 0) {
+            return Redirect(response, "/profile");
+          }
+
+          // Write a reminder to all administrators that a new file was uploaded
           messageAdministrators(files, session);
 
+          // Write file metadata to the database
+          saveFilesObjects(files, session);
+
+          // Asynchronously store file contents on disk
           files.forEach(function(file) {
-            fs.writeFile(path.join(session.filepath, file.filename), file.data, function(error) {
-
+            fs.writeFile(path.join(session.filepath, file.sha256), file.data, function(error) {
               if(error) {
-                Console.error("Could not write file " + file.filename);
+                Console.error("Could not write file " + file.sha256 + " (" + file.filename + ") to disk");
+              } else {
+                Console.info("Wrote file " + file.sha256 + " (" + file.filename + ") to disk");
               }
-
             });
           });
 
@@ -405,6 +419,7 @@ var Webserver = function() {
   
   });
 
+  // Listen to incoming connections
   webserver.listen(CONFIG.PORT, CONFIG.HOST, function() {
     Console.info("Webserver started at " + CONFIG.HOST + ":" + CONFIG.PORT);
   });
@@ -480,11 +495,40 @@ function getAdministrators(callback) {
 
 }
 
+function saveFilesObjects(files, session) {
+
+  // Store file information in the database
+  var dbFiles = files.map(function(x) {
+    return {
+      "filename": x.filename,
+      "type": x.type,
+      "size": x.data.length,
+      "userId": session._id,
+      "created": new Date(),
+      "sha256": x.sha256
+    }
+  });
+
+  // Asynchronously store
+  Database.files().insertMany(dbFiles, function(error) {
+    if(error) {
+      Console.error("Could not add file objects to the database");
+    }
+  });
+
+}
+
+
 function messageAdministrators(files, sender) {
 
   /* function messageAdministrators
    * Queries the database for all administrators
    */
+
+  // No files were uploaded
+  if(files.length === 0) {
+    return;
+  }
 
   getAdministrators(function(users) {
 
@@ -512,9 +556,10 @@ function messageAdministrators(files, sender) {
           "level": 0
         }
       }));
+
     });
 
-    Console.debug("Messages " + users.length + " adminstrators about " + files.length + " file(s) uploaded");
+    Console.debug("Messaged " + users.length + " adminstrators about " + files.length + " file(s) uploaded");
  
     // Store messages
     Database.messages().insertMany(messages, function(error, result) {
@@ -1227,6 +1272,7 @@ function generateStationDetails(session) {
 function generateWelcome(session) {
 
   return [
+    "    <script>const USER_NETWORKS = " + JSON.stringify(session.networks) + "</script>",
     "    <div class='container'>",
     "      <div style='float: right;'>",
     "        <a href='/profile/messages'><span class='badge badge-success'><span class='fa fa-envelope' aria-hidden='true'></span> <small><span id='number-messages'></span></small></span></a>",
@@ -1315,11 +1361,11 @@ function generateProfile(session) {
     "          <form class='form-signin' method='post' action='upload' enctype='multipart/form-data'>",
     "            <div class='form-group row'>",
     "              <label class='custom-file'>",
-    "                <input id='file-stage' name='file-data' type='file' class='form-control-file' aria-describedby='fileHelp'>",
+    "                <input id='file-stage' name='file-data' type='file' class='form-control-file' aria-describedby='fileHelp' required>",
     "                <span class='custom-file-control'></span>",
     "              </label>",
     "              &nbsp;",
-    "              <input class='btn btn-success' type='submit' value='Upload Metadata'>",
+    "              <input id='file-submit' class='btn btn-success' type='submit' value='Upload Metadata' disabled>",
     "            </div>",
     "            <div class='form-group row'>",
     "              <small id='file-help' class='form-text text-muted'></small>",
