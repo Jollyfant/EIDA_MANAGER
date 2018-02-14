@@ -1,5 +1,9 @@
 {
   "__DEBUG__": true,
+  "NODE": {
+    "ID": "ODC",
+    "NAME": "ORFEUS Data Center"
+  },
   "APPLICATION_VERSION": "1.0.0",
   "PORT": 8000,
   "HOST": "127.0.0.1",

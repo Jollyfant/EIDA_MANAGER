@@ -61,19 +61,25 @@ var User = function(user) {
   this.username = user.username;
   this.networks = user.networks;
   this.visited = user.visited;
+  this.role = user.role;
 
   // Path where the user stores uploaded files
   this.filepath = path.join("files", user.username); 
 
 }
 
+function NotFound(response) {
+  response.writeHead(404, {"Content-Type": "text/html"});
+  response.end(generate404());
+}
+
 function Unauthorized(response) {
-  response.writeHead(401);
+  response.writeHead(401, {"Content-Type": "text/html"});
   response.end(generate401());
 }
 
 function ServerError(response) {
-  response.writeHead(500);
+  response.writeHead(500, {"Content-Type": "text/html"});
   response.end(generate500());
 }
 
@@ -159,7 +165,7 @@ var Webserver = function() {
     const uri = url.parse(request.url).pathname;
     const clientIp = request.headers['x-forwarded-for'] || request.connection.remoteAddress || null;
 
-    Console.debug(clientIp + " requested resource: " + uri);
+    Console.debug(clientIp + " " + uri + " " + request.method);
 
     if(uri === "/images/node.png") {
       response.writeHead(200, {
@@ -221,6 +227,11 @@ var Webserver = function() {
 
         // Parse the POSTed request body as JSON
         parseRequestBody(request, "json", function(postBody) {
+
+          // Disallow message to be sent to self
+          if(postBody.recipient === session.username) {
+            return Redirect(response, "/profile/messages/new?self");
+          }
 
           // Admin may sign broadcasted message
           if(postBody.recipient === "BROADCAST" && session.role === "admin") {
@@ -383,7 +394,7 @@ var Webserver = function() {
           });
 
           if(files.length === 0) {
-            return Redirect(response, "/profile");
+            return Redirect(response, "/profile"); 
           }
 
           // Write a reminder to all administrators that a new file was uploaded
@@ -403,7 +414,7 @@ var Webserver = function() {
             });
           });
 
-          return Redirect(response, "/profile");
+          return Redirect(response, "/profile?success"); 
 
         });
   
@@ -432,9 +443,7 @@ function generate401() {
       generateHeader(),
       "  <body>",
       "    <div class='container'>",
-      "      <div class='form-signin'>",
-      "        <h2 class='form-signin-heading'>401 Unauthorized</h2>",
-      "      </div>",
+      "      <h2 class='text-muted'><span style='color: #C03;'>401</span> Unauthorized</h2>",
       "    </div>",
       "  </body>",
       generateFooter(),
@@ -453,9 +462,7 @@ function generate500() {
       generateHeader(),
       "  <body>",
       "    <div class='container'>",
-      "      <div class='form-signin'>",
-      "        <h2 class='form-signin-heading'>500 Internal Server Error</h2>",
-      "      </div>",
+      "      <h2 class='text-muted'><span style='color: #C03;'>500</span> Internal Server Error</h2>",
       "    </div>",
       "  </body>",
       generateFooter(),
@@ -470,9 +477,7 @@ function generate404() {
       generateHeader(),
       "  <body>",
       "    <div class='container'>",
-      "      <div class='form-signin'>",
-      "        <h2 class='form-signin-heading'>404 File Not Found</h2>",
-      "      </div>",
+      "      <h2 class='text-muted'><span style='color: #C03;'>404</span> File Not Found</h2>",
       "    </div>",
       "  </body>",
       generateFooter(),
@@ -548,8 +553,8 @@ function messageAdministrators(files, sender) {
         return {
           "recipient": user._id,
           "sender": sender._id,
-          "content": "A new file has been uploaded: " + file.filename,
-          "subject": "File Uploaded",
+          "content": "Metadata submitted to: " + path.join(sender.filepath, file.sha256) + " (" + file.filename + ")",
+          "subject": "Metadata added",
           "read": false,
           "recipientDeleted": false,
           "created": new Date(),
@@ -616,11 +621,11 @@ function APIRequest(request, response, session) {
     }
 
     if(uri.pathname.startsWith("/api/messages")) {
-      if(uri.search === "?new") {
+      if(uri.search && uri.search.startsWith("?new")) {
         GetNewMessages(session, function(json) {
           response.end(json);
         });
-      } else if(uri.search === "?deleteall") {
+      } else if(uri.search && uri.search.startsWith("?deleteall")) {
         RemoveAllMessages(session, function(json) {
           response.end(json);
         });
@@ -639,9 +644,7 @@ function APIRequest(request, response, session) {
       return;
     }
 
-    response.writeHead(404, {"Content-Type": "text/html"});
-    response.write(generate404());
-    response.end();
+    return NotFound(response);
 
 }
 
@@ -726,9 +729,9 @@ function GetSpecificMessage(session, request, callback) {
     Database.users().findOne({"_id": Database.ObjectId(message.sender)}, function(error, user) {
 
       var messageContent = {
-        "sender": user.username,
+        "sender": {"role": user.role, "username": user.username},
         "subject": message.subject,
-        "content": message.content,
+        "content": message.content.replace(/\n/g, "<br>"),
         "created": message.created,
         "role": user.role,
         "read": message.read,
@@ -812,12 +815,11 @@ function GetMessages(session, callback) {
 
         return {
           "subject": x.subject,
-          "sender": hashMap[x.sender].username,
-          "recipient": hashMap[x.recipient].username,
+          "sender": hashMap[x.sender],
+          "recipient": hashMap[x.recipient],
           "created": x.created,
           "_id": x._id,
           "read": x.read,
-          "role": hashMap[x.sender].role,
           "author": x.sender.toString() === session._id.toString()
         }
       });
@@ -1057,9 +1059,10 @@ function generateHeader() {
     "  <head>",
     "    <meta charset='utf-8'>",
     "    <meta name='viewport' content='width=device-width, initial-scale=1, shrink-to-fit=no'>",
-    "    <meta name='description' content='ORFEUS Monitoring Service'>",
+    "    <meta name='description' content='ORFEUS Manager'>",
     "    <meta name='author' content='ORFEUS Data Center'>",
-    "    <title>ORFEUS Monitoring Service</title>",
+    "    <title>ORFEUS Manager</title>",
+    "    <link rel='stylesheet' href='/css/style.css'>",
     "  </head>",
   ].join("\n");
 
@@ -1094,7 +1097,7 @@ function generateLogin(invalid) {
     "  <body>",
     "    <div class='container'>",
     "      <form class='form-signin' method='post' action='authenticate'>",
-    "        <h2 class='form-signin-heading'><span style='color: #C03;'>O</span>RFEUS Monitoring Service</h2>",
+    "        <h2 class='form-signin-heading'><span style='color: #C03;'>O</span>RFEUS Manager</h2>",
     "        <div class='input-group'>",
     "          <span class='input-group-addon'><span class='fa fa-user-circle-o' aria-hidden='true'></span></span>",
     "          <input name='username' class='form-control' placeholder='Username' required autofocus>",
@@ -1131,12 +1134,11 @@ function generateFooter() {
   return [
     "  <footer class='container text-muted'>",
     "  <hr>",
-    "  ORFEUS Monitoring Service &copy; ORFEUS Data Center " + new Date().getFullYear() + " - All Rights Reserved.",
+    "  ORFEUS Manager &copy; ODC " + new Date().getFullYear() + ". All Rights Reserved.",
     "  <div style='float: right;'><small>Version v" + CONFIG.APPLICATION_VERSION + "</small></div>",
     "  </footer>",
     "  <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css'>",
     "  <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css' integrity='sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ' crossorigin='anonymous'>",
-    "  <link rel='stylesheet' href='/css/style.css'>",
     "  <script src='https://code.jquery.com/jquery-3.1.1.min.js' integrity='sha384-A7FZj7v+d/sdmMqp/nOQwliLvUsJfDHW+k9Omg/a/EheAdgtzNs3hpfag6Ed950n' crossorigin='anonymous'></script>",
     "  <script src='https://cdnjs.cloudflare.com/ajax/libs/tether/1.4.0/js/tether.min.js' integrity='sha384-DztdAPBWPRXSA/3eYEEUWrWCy7G5KFbe8fFjk5JAIxUYHKkDx6Qin1DkWx51bBrb' crossorigin='anonymous'></script>",
     "  <script src='https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/js/bootstrap.min.js' integrity='sha384-vBWWzlZJ8ea9aCX4pEW3rVHjgjt7zpkNpZk+02D9phzyeVkE+jo0ieGizqPLForn' crossorigin='anonymous'></script>",
@@ -1279,7 +1281,7 @@ function generateWelcome(session) {
     "        &nbsp;",
     "        <a href='/logout'><span class='fa fa-sign-out' aria-hidden='true'></span><small>Logout</small></a>",
     "      </div>",
-    "      <h2 class='form-signin-heading'><span style='color: #C03;'>O</span>RFEUS Monitoring Service</h2>",
+    "      <h2 class='form-signin-heading'><span style='color: #C03;'>O</span>RFEUS Manager <small class='text-muted'>" + CONFIG.NODE.ID + "</small></h2>",
     generateWelcomeInformation(session),
     "      <div id='breadcrumb-container'></div>",
     "      <hr>",
@@ -1321,10 +1323,9 @@ function generateProfile(session) {
     "          <a class='nav-link' role='tab' data-toggle='tab' href='#table-container-tab'><span class='fa fa-table' aria-hidden='true'></span> &nbsp; Tabular Display</a>",
     "        </li>",
     "        <li class='nav-item'>",
-    "          <a class='nav-link' role='tab' data-toggle='tab' href='#settings-container-tab'><span class='fa fa-cog' aria-hidden='true'></span> &nbsp; Settings</a>",
+    "          <a class='nav-link' role='tab' data-toggle='tab' href='#settings-container-tab'><span class='fa fa-cog' aria-hidden='true'></span> &nbsp; Metadata</a>",
     "        </li>",
     "      </ul>",
-
     "      <div class='tab-content'>",
     "        <div class='tab-pane active' id='map-container-tab' role='tabpanel'>",
     "          <div class='map-container'>",
@@ -1358,18 +1359,15 @@ function generateProfile(session) {
     "        </div>",
     "        <div class='tab-pane' id='settings-container-tab' role='tabpanel'>",
     "          <h3> Metadata Management </h3>",
-    "          <form class='form-signin' method='post' action='upload' enctype='multipart/form-data'>",
-    "            <div class='form-group row'>",
+    "          <p> Use this form to submit new station metadata to your ORFEUS data center.",
+    "          <form class='form-group' method='post' action='upload' enctype='multipart/form-data'>",
     "              <label class='custom-file'>",
     "                <input id='file-stage' name='file-data' type='file' class='form-control-file' aria-describedby='fileHelp' required>",
     "                <span class='custom-file-control'></span>",
     "              </label>",
-    "              &nbsp;",
-    "              <input id='file-submit' class='btn btn-success' type='submit' value='Upload Metadata' disabled>",
-    "            </div>",
-    "            <div class='form-group row'>",
     "              <small id='file-help' class='form-text text-muted'></small>",
-    "            </div>",
+    "              <br>",
+    "              <input id='file-submit' class='btn btn-success' type='submit' value='Upload Metadata' disabled>",
     "          </form>",
     "        </div>",
     "      </div>",

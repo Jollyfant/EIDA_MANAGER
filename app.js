@@ -59,6 +59,7 @@ function newMessageNotification() {
 
   // Make a request to get the number of new messages
   $.ajax({
+    "cache": false,
     "url": "/api/messages?new",
     "type": "GET",
     "dataType": "JSON",
@@ -141,10 +142,20 @@ function initMap() {
   if(uri.pathname === "/profile/messages/new") {
 
     const RECIPIENT_NOT_FOUND = "Recipient could not be found.";
-    const MESSAGE_SUCCESS = "Message has been succesfully sent.";
-    const MESSAGE_FAILURE = "Message could not be sent. Please try again later.";
+    const MESSAGE_SUCCESS = "Private message has been succesfully sent.";
+    const MESSAGE_FAILURE = "Private message could not be sent. Please try again later.";
+    const MESSAGE_SELF = "Cannot send private message to yourself.";
 
     document.getElementById("final-crumb").innerHTML = "Create Message";
+
+    if(uri.search === "?self") {
+      document.getElementById("message-information").innerHTML = [
+        "<div class='alert alert-danger'>",
+        "  <span class='fa fa-remove aria-hidden='true'></span>",
+        MESSAGE_SELF,
+        "</div>"
+      ].join("\n");
+    }
 
     // Recipient unknown
     if(uri.search === "?unknown") {
@@ -321,6 +332,10 @@ function initMap() {
   // Initialize map on the main profile page
   if(uri.pathname === "/profile") {
 
+    if(uri.search.startsWith("?success")) {
+      alert("Metadata has been succesfully submitted.");
+    }
+
     // Add map
     AddMap();
 
@@ -409,7 +424,7 @@ function generateMessageTableContentSent(json) {
   return json.map(function(x) {
     return [
       (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/profile/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
-      formatMessageSender(x.role, x.recipient),
+      formatMessageSender(x.recipient),
       x.created
     ];
   });
@@ -421,7 +436,7 @@ function generateMessageTableContent(json) {
   return json.map(function(x) {
     return [
       (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/profile/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
-      formatMessageSender(x.role, x.sender),
+      formatMessageSender(x.sender),
       x.created
     ];
   });
@@ -448,7 +463,7 @@ function generateMessageDetails(message) {
       message.content,
       "<hr>",
       message.author ? "" : "<button class='btn btn-danger btn-sm' style='float: right;' onClick='deleteMessage()'><span class='fa fa-trash'></span> Delete Message</button>",
-      "Sender: " + formatMessageSender(message.role, message.sender),
+      "Sender: " + formatMessageSender(message.sender),
       "</div>",
     "</div>",
   ].join("\n");
@@ -457,6 +472,7 @@ function generateMessageDetails(message) {
 
 function deleteAllMessages() {
 
+  // Confirm deletion
   if(!confirm("Are you sure you want to delete all messages?")) {
     return;
   }
@@ -467,7 +483,7 @@ function deleteAllMessages() {
     "type": "GET",
     "dataType": "JSON",
     "success": function(json) {
-      console.log(json)
+      window.location.reload();
     }
 
   });
@@ -480,7 +496,7 @@ function deleteMessage() {
    * Deletes message with a given identifier
    */
 
-  // Ask for confirmation
+  // Confirm deletion
   if(!confirm("Are you sure you want to delete this message?")) {
     return;
   }
@@ -503,17 +519,17 @@ function deleteMessage() {
 
 }
 
-function formatMessageSender(role, sender) {
+function formatMessageSender(sender) {
 
   /* function formatMessageSender
    * Returns specific formatting for particular senders (e.g. administrator)
    */
 
-  if(role === "admin") {
-    return sender + " (<span class='text-danger'><b>O</span>RFEUS Administrator</b>)";
+  if(sender.role === "admin") {
+    return sender.username + " (<span class='text-danger'><b>O</span>RFEUS Administrator</b>)";
   }
  
-  return sender;
+  return sender.username;
 
 }
 
@@ -667,6 +683,11 @@ function generateBreadcrumbs(crumbs) {
      fullCrumb += "/" + x;
 
      x = x.capitalize();
+
+     // Add icon for home
+     if(x === "Profile") {
+       x = "<span class='fa fa-home'></span> " + x;
+     }
 
      if(i === (crumbs.length - 1)) {
        return "<li id='final-crumb' class='breadcrumb-item active'>" + x + "</li>";
@@ -881,6 +902,7 @@ function GenerateTableFull(list, latencies) {
     ];
   });
 
+  // Cache
   __TABLE_JSON__ = list;
 
   // Add information add footer
@@ -1436,12 +1458,20 @@ function AddMetadataUpload() {
 
       var stagedFiles = new Array();
 
+      var stations = _stationJson.map(function(x) {
+        return x.station;
+      });
+
       // Go over all networks and collect station names
       Array.from(XML.getElementsByTagName("Network")).forEach(function(network) {
         var networkCode = network.getAttribute("code");
         Array.from(network.getElementsByTagName("Station")).forEach(function(station) {
           var stationCode = station.getAttribute("code");
-          stagedFiles.push(networkCode + "." + stationCode);
+          if(stations.indexOf(stationCode) === -1) {
+            stagedFiles.push("<span class='fa fa-star text-warning' title='New Metadata'></span> " + networkCode + "." + stationCode);
+          } else {
+            stagedFiles.push(networkCode + "." + stationCode);
+          }
         });
       });
 
