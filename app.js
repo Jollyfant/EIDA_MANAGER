@@ -119,7 +119,7 @@ function initMap() {
   newMessageNotification();
 
   // Message details are requested
-  if(uri.pathname === "/profile/messages/details") {
+  if(uri.pathname === "/home/messages/details") {
 
     if(location.search === "") {
       return;
@@ -139,7 +139,7 @@ function initMap() {
   /* Page for writing a new message
    */
 
-  if(uri.pathname === "/profile/messages/new") {
+  if(uri.pathname === "/home/messages/new") {
 
     const RECIPIENT_NOT_FOUND = "Recipient could not be found.";
     const MESSAGE_SUCCESS = "Private message has been succesfully sent.";
@@ -190,7 +190,7 @@ function initMap() {
   }
 
   // Message overview is requested
-  if(uri.pathname === "/profile/messages") {
+  if(uri.pathname === "/home/messages") {
 
     $.ajax({
       "url": "/api/messages",
@@ -241,7 +241,7 @@ function initMap() {
 
   }
 
-  if(uri.pathname === "/profile/station") {
+  if(uri.pathname === "/home/station") {
 
     AddMap();
 
@@ -329,11 +329,16 @@ function initMap() {
 
   }
 
-  // Initialize map on the main profile page
-  if(uri.pathname === "/profile") {
+  // Initialize map on the main home page
+  if(uri.pathname === "/home") {
 
     if(uri.search.startsWith("?success")) {
-      alert("Metadata has been succesfully submitted.");
+      Element("modal-content").innerHTML = "<div class='text-success'><b>" + IconSpan("checkmark") + " The metadata has been succesfully received." + "</b></div>";
+      $("#modal-alert").modal();
+    }
+    if(uri.search.startsWith("?failure")) {
+      Element("modal-content").innerHTML = "<div class='text-danger'><b>" + IconSpan("unavailable") + " There was an error receiving the metadata." + "</b></div>";
+      $("#modal-alert").modal();
     }
 
     // Add map
@@ -423,7 +428,7 @@ function generateMessageTableContentSent(json) {
 
   return json.map(function(x) {
     return [
-      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/profile/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
+      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
       formatMessageSender(x.recipient),
       x.created
     ];
@@ -435,7 +440,7 @@ function generateMessageTableContent(json) {
 
   return json.map(function(x) {
     return [
-      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/profile/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
+      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
       formatMessageSender(x.sender),
       x.created
     ];
@@ -579,15 +584,43 @@ function IconSpan(type) {
 }
 
 function GoogleMapsInfoWindowContent(marker) {
-  return "<h5>" + IconSpan("cog") + " " + marker.title + "</h5><hr><p>" + marker.description + "<p><a href='/profile/station?network=" + marker.network + "&station=" + marker.station + "'>View instrument details</a>"; 
+  return "<h5>" + IconSpan("cog") + " " + marker.title + "</h5><hr><p>" + marker.description + "<p><a href='/home/station?network=" + marker.network + "&station=" + marker.station + "'>View instrument details</a>"; 
 }
 
 function MapInformationText(nStations) {
   return "Map showing <b>" + nStations + "</b> stations.";
 }
 
+function getNetworkDOI() {
+
+  const API_ADDRESS = "https://www.orfeus-eu.org/api/doi";
+  const QUERY = "?network=" + USER_NETWORKS.join(",");
+
+  // Query the ORFEUS API for the network DOI
+  $.ajax({
+    "url": API_ADDRESS + QUERY,
+    "method": "GET",
+    "dataType": "JSON",
+    "success": function(json) {
+
+      if(json === undefined || json && json["doi-link"] === null) {
+        return Element("doi-link").innerHTML = "<span class='fa fa-globe'> " + USER_NETWORKS.join(" ") + "</span>";
+      }
+
+      console.debug("DOI returned from FDSN: " + json["doi-link"]);
+
+      Element("doi-link").innerHTML = "<a title='" + json["doi-link"] + "' href='" + json["doi-link"] + "'><span class='fa fa-globe'> " + USER_NETWORKS.join(" ") + "</span></a>";
+
+    }
+  });
+
+}
+
 var App = function(location) {
 
+  getNetworkDOI();
+
+  // Initialize the map
   initMap();
 
 }
@@ -685,7 +718,7 @@ function generateBreadcrumbs(crumbs) {
      x = x.capitalize();
 
      // Add icon for home
-     if(x === "Profile") {
+     if(x === "Home") {
        x = "<span class='fa fa-home'></span> " + x;
      }
 
@@ -898,7 +931,7 @@ function GenerateTableFull(list, latencies) {
       x.position.lng,
       x.elevation,
       isActive(x),
-      "<a href='./profile/station?network=" + x.network + "&station=" + x.station + "'>View & Manage</a>"
+      "<a href='./home/station?network=" + x.network + "&station=" + x.station + "'>View & Manage</a>"
     ];
   });
 
@@ -1421,6 +1454,8 @@ function AddMetadataUpload() {
    */
 
   const FDSN_STATION_XML_HEADER = "FDSNStationXML";
+  const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
+  const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
 
   // Change event when a file is selected
   Element("file-stage").addEventListener("change", function(event) {
@@ -1432,56 +1467,201 @@ function AddMetadataUpload() {
     // Abstracted function to read multiple files from even
     readMultipleFiles(event.target.files, function(files) {
 
-      // Only handle first file
-      file = files.pop();
+      var stagedStations = new Array();
 
-      // Parse the XML using the native lib
-      var XML = new DOMParser().parseFromString(file.data, "text/xml");
-
-      // Confirm that XML has the FDSNStationXML namespace
-      if(XML.documentElement.nodeName !== FDSN_STATION_XML_HEADER) {
-        return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid FDSN StationXML.</b>";
-      }
-
-      // Check if the user manages the network
-      // Get a list of networks in the XML that are not in the sesion
-      var wrongNetworks = Array.from(XML.getElementsByTagName("Network")).filter(function(network) {
-        return USER_NETWORKS.indexOf(network.getAttribute("code")) === -1;
-      }).map(function(x) {
-        return x.getAttribute("code");
-      });
-
-      // Alert user their file contains metadata for a network they do not own
-      if(wrongNetworks.length !== 0) {
-        return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid Network: " + wrongNetworks.join(",") + "</b>";
-      }
-
-      var stagedFiles = new Array();
-
-      var stations = _stationJson.map(function(x) {
+      var stationsMap = _stationJson.map(function(x) {
         return x.station;
       });
 
-      // Go over all networks and collect station names
-      Array.from(XML.getElementsByTagName("Network")).forEach(function(network) {
-        var networkCode = network.getAttribute("code");
-        Array.from(network.getElementsByTagName("Station")).forEach(function(station) {
-          var stationCode = station.getAttribute("code");
-          if(stations.indexOf(stationCode) === -1) {
-            stagedFiles.push("<span class='fa fa-star text-warning' title='New Metadata'></span> " + networkCode + "." + stationCode);
-          } else {
-            stagedFiles.push(networkCode + "." + stationCode);
+      for(var i = 0; i < files.length; i++) {
+
+        var file = files[i];
+
+        // Parse the XML using the native lib
+        var XML = new DOMParser().parseFromString(file.data, "text/xml");
+
+        // Confirm that XML has the FDSNStationXML namespace
+        if(XML.documentElement.nodeName !== FDSN_STATION_XML_HEADER) {
+          return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid FDSN StationXML.</b>";
+        }
+
+        // Go over all networks and collect station names
+        var networks = Array.from(XML.getElementsByTagName("Network"));
+
+        for(var j = 0; j < networks.length; j++) {
+
+          var network = networks[j];
+          var networkCode = network.getAttribute("code");
+
+          if(!NETWORK_REGEXP.test(networkCode)) {
+            return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid Network Code: " + networkCode + "</b>";
           }
-        });
-      });
+
+          // Can only updated managed networks
+          if(USER_NETWORKS.indexOf(networkCode) === -1) {
+            return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid Network: " + networkCode + "</b>";
+          }
+
+          var stations = Array.from(network.getElementsByTagName("Station"));
+
+          for(var k = 0; k < stations.length; k++) {
+
+            var station = stations[k];
+            var stationCode = station.getAttribute("code");
+
+            if(!STATION_REGEXP.test(stationCode)) {
+              return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid Station Code: " + stationCode + "</b>";
+            }
+
+            // Attempt to do sanization check on metadata
+            try {
+              validateMetadata(station);
+            } catch(exception) {
+              return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + "</span> " + exception + " in " + networkCode + "." + stationCode + "</b>"; 
+            }
+
+            // Add star icon to new metadata
+            if(stationsMap.indexOf(stationCode) === -1) {
+              stagedStations.push("<span class='fa fa-star text-warning' title='New Metadata'></span> " + networkCode + "." + stationCode);
+            } else {
+              stagedStations.push(networkCode + "." + stationCode);
+            }
+
+          }
+
+        }
+
+      }
 
       // Allow metadata submission
       Element("file-submit").disabled = false;
-      Element("file-help").innerHTML = "<b>" + IconSpan("checkmark") + "</span> Staged Metadata:</b> " + (stagedFiles.length ? stagedFiles.join(", ") : "None");
+      Element("file-help").innerHTML = "<b>" + IconSpan("checkmark") + "</span> Staged Metadata:</b> " + (stagedStations.length ? stagedStations.join(", ") : "None");
 
     });
 
   });
+
+}
+
+function validateMetadata(station) {
+
+  /* function validateMetadata
+   * Validates common StationXML issues
+   */
+
+  const GAIN_TOLERNACE_PERCENT = 0.001;
+
+  // Confirm station spatial coordinates
+  var stationLatitude = Number(station.getElementsByTagName("Latitude").item(0).innerHTML);
+  var stationLongitude = Number(station.getElementsByTagName("Longitude").item(0).innerHTML);
+
+  if(stationLatitude < -90 || stationLatitude > 90) {
+    throw("Station latitude is incorrect");
+  }
+
+  if(stationLongitude < -180 || stationLongitude > 180) {
+    throw("Station longitude is incorrect");
+  }
+
+  // Go over each channel for the station
+  Array.from(station.getElementsByTagName("Channel")).forEach(function(channel) {
+
+    // Confirm channel spatial coordinates
+    var channelLatitude = Number(channel.getElementsByTagName("Latitude").item(0).innerHTML);
+    var channelLongitude = Number(channel.getElementsByTagName("Longitude").item(0).innerHTML);
+
+    if(channelLatitude !== stationLatitude) {
+      throw("Channel latitude is incorrect");
+    }
+
+    if(channelLongitude !== stationLongitude) {
+      throw("Channel longitude is incorrect");
+    }
+
+    var sampleRate = Number(channel.getElementsByTagName("SampleRate").item(0).innerHTML);
+
+    if(isNaN(sampleRate) || sampleRate === 0) {
+      throw("Invalid sample rate");
+    }
+
+    // Get the response element
+    var response = channel.getElementsByTagName("Response");
+
+    if(response.length === 0) {
+      throw("Response element is missing from inventory");
+    }
+
+    if(response.length > 1) {
+      throw("Multiple response elements included"); 
+    }
+
+    var stages = Array.from(response.item(0).getElementsByTagName("Stage"));
+
+    if(stages.length === 0) {
+      throw("Response information not included in inventory");
+    }
+
+    var perStageGain = 1;
+
+    // Go over all stages
+    stages.forEach(function(stage) {
+
+      // Get the stage gain
+      stageGain = Number(stage.getElementsByTagName("StageGain").item(0).getElementsByTagName("Value").item(0).innerHTML);
+
+      if(stageGain === 0) {
+        throw("Invalid stage gain of 0");
+      } 
+
+      perStageGain = perStageGain * stageGain;
+
+      // Confirm FIR stage properties
+      Array.from(stage.getElementsByTagName("FIR")).forEach(validateFIRStage);
+
+    });
+
+    // Total channel sensitivity
+    var instrumentSensitivity = Number(response.item(0).getElementsByTagName("InstrumentSensitivity").item(0).getElementsByTagName("Value").item(0).innerHTML);
+
+    if(1 - (Math.max(instrumentSensitivity, perStageGain) / Math.min(instrumentSensitivity, perStageGain)) > GAIN_TOLERNACE_PERCENT) {
+      throw("Computed and reported stage gain is different");
+    }
+
+  });
+
+}
+
+function validateFIRStage(FIRStage) {
+
+  /* function validateFIRStage
+   * Validates the properties of a FIR response stage
+   */
+
+  const FIR_TOLERANCE = 0.02;
+
+  // Confirm FIR Stage input units as COUNTS
+  if(FIRStage.getElementsByTagName("InputUnits").item(0).getElementsByTagName("Name").item(0).innerHTML !== "COUNTS") {
+    throw("FIR Stage input units invalid");
+  }
+
+  // Confirm FIR Stage output units as COUNTS
+  if(FIRStage.getElementsByTagName("OutputUnits").item(0).getElementsByTagName("Name").item(0).innerHTML !== "COUNTS") {
+    throw("FIR Stage output units invalid");
+  }
+
+  var FIRSum = Sum(Array.from(FIRStage.getElementsByTagName("NumeratorCoefficient")).map(function(FIRCoefficient) {
+    return Number(FIRCoefficient.innerHTML);
+  }));
+
+  // Symmetry specified: FIR coefficients are symmetrical (double the sum)
+  if(FIRStage.getElementsByTagName("Symmetry").item(0).innerHTML !== "NONE") {
+    FIRSum = 2 * FIRSum;
+  }
+
+  // Check if the FIR coefficient sum is within tolerance
+  if(Math.abs(1 - FIRSum) > FIR_TOLERANCE) {
+    throw("Invalid FIR Coefficient Sum (" + Math.abs(1 - FIRSum).toFixed(4) + ")");
+  }
 
 }
 

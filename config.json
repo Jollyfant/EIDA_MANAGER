@@ -1,5 +1,6 @@
 {
   "__DEBUG__": true,
+  "__VERSION__": "1.0.0",
   "NODE": {
     "ID": "ODC",
     "NAME": "ORFEUS Data Center"

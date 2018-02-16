@@ -2,3 +2,4 @@ NodeJS*
 node_modules
 files
 *.xml
+*.swp

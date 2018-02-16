@@ -1,5 +1,7 @@
 const http = require("http");
+const libxmljs = require("libxmljs");
 const crypto = require("crypto");
+const assert = require("assert");
 const path = require("path");
 const url = require("url");
 const fs = require("fs");
@@ -9,7 +11,7 @@ const Multipart = require("./multipart");
 const Session = require("./orfeus-session");
 const Console = require("./orfeus-logging");
 const CONFIG = require("./config");
-
+const XSDSchema = require("./orfeus-xml");
 const HTTP_REDIRECT_STATUS_CODE = 301
 
 function getSession(headers, callback) {
@@ -127,7 +129,8 @@ function createSession(user, callback) {
 
   var storeObject = {
     "SESSION_ID": session.id,
-    "userId": user._id
+    "userId": user._id,
+    "created": new Date()
   }
 
   // Update users last visited information
@@ -210,9 +213,9 @@ var Webserver = function() {
       // Log in
       if(uri.startsWith("/login")) {
   
-        // If the user is already logged in redirect to profile page
+        // If the user is already logged in redirect to home page
         if(session !== null) {
-          return Redirect(response, "/profile");
+          return Redirect(response, "/home");
         }
   
         // Get request is made on the login page
@@ -230,7 +233,7 @@ var Webserver = function() {
 
           // Disallow message to be sent to self
           if(postBody.recipient === session.username) {
-            return Redirect(response, "/profile/messages/new?self");
+            return Redirect(response, "/home/messages/new?self");
           }
 
           // Admin may sign broadcasted message
@@ -245,7 +248,7 @@ var Webserver = function() {
 
             // Unknown recipient
             if(users.length === 0) {
-              return Redirect(response, "/profile/messages/new?unknown");
+              return Redirect(response, "/home/messages/new?unknown");
             }
 
             // Create a new message
@@ -267,10 +270,10 @@ var Webserver = function() {
 
               // Error storing messages
               if(error) {
-                return Redirect(response, "/profile/messages/new?failure");
+                return Redirect(response, "/home/messages/new?failure");
               }
 
-              Redirect(response, "/profile/messages/new?success");
+              Redirect(response, "/home/messages/new?success");
 
             });
 
@@ -286,9 +289,9 @@ var Webserver = function() {
       // Method for authentication
       if(uri === "/authenticate") {
   
-        // If the user is already logged in redirect to profile page
+        // If the user is already logged in redirect to home page
         if(session !== null) {
-          return Redirect(response, "/profile");
+          return Redirect(response, "/home");
         }
 
         // Attempt to parse the POST body passed by the HTML form
@@ -310,10 +313,10 @@ var Webserver = function() {
                 return ServerError(response);
               }
 
-              // Redirect user to profile page and set a cookie for this session
+              // Redirect user to home page and set a cookie for this session
               response.writeHead(HTTP_REDIRECT_STATUS_CODE, {
                 "Set-Cookie": cookie,
-                "Location": "./profile"
+                "Location": "./home"
               });
   
               response.end();
@@ -348,9 +351,15 @@ var Webserver = function() {
       if(uri === "/logout") {
   
         // Destroy the session
-        Database.sessions().deleteOne({"userId": session._id}, function(error, result) {
+        Database.sessions().deleteMany({"userId": session._id}, function(error, result) {
+
+          if(error) {
+            Console.error(error);
+          }
+
           Redirect(response, "/login?logout");
           Console.debug("Session for " + session.username + " has been removed.");
+
         });
 
         return;
@@ -358,24 +367,24 @@ var Webserver = function() {
       }
   
       // Profile page
-      if(uri === "/profile") {
+      if(uri === "/home") {
         return response.end(generateProfile(session));
       }
 
-      if(uri === "/profile/messages") {
+      if(uri === "/home/messages") {
         return response.end(generateMessages(session));
       }
 
-      if(uri === "/profile/messages/new") {
+      if(uri === "/home/messages/new") {
         return response.end(sendNewMessage(request.url, session));
       }
 
-      if(uri.startsWith("/profile/messages/detail")) {
+      if(uri.startsWith("/home/messages/detail")) {
         return response.end(generateMessageDetails(session));
       }
    
       // Station details page
-      if(uri === "/profile/station") {
+      if(uri === "/home/station") {
         return response.end(generateStationDetails(session));
       }
 
@@ -388,34 +397,19 @@ var Webserver = function() {
         // Parse the POST body (binary file)
         parseRequestBody(request, "multiform", function(files) {
 
-          // Only accepted files with content 
+          // Only accept files with content 
           var files = files.filter(function(x) {
             return x.data.length !== 0;
           });
 
-          if(files.length === 0) {
-            return Redirect(response, "/profile"); 
-          }
-
+          // Only permit single file upload
           // Write a reminder to all administrators that a new file was uploaded
-          messageAdministrators(files, session);
 
-          // Write file metadata to the database
-          saveFilesObjects(files, session);
-
-          // Asynchronously store file contents on disk
-          files.forEach(function(file) {
-            fs.writeFile(path.join(session.filepath, file.sha256), file.data, function(error) {
-              if(error) {
-                Console.error("Could not write file " + file.sha256 + " (" + file.filename + ") to disk");
-              } else {
-                Console.info("Wrote file " + file.sha256 + " (" + file.filename + ") to disk");
-              }
-            });
+          // Write (multiple) files to disk
+          writeMultipleFiles(files, session, function(error) {
+            return Redirect(response, "/home?" + (error ? "failure" : "success")); 
           });
-
-          return Redirect(response, "/profile?success"); 
-
+          
         });
   
         return;
@@ -434,6 +428,220 @@ var Webserver = function() {
   webserver.listen(CONFIG.PORT, CONFIG.HOST, function() {
     Console.info("Webserver started at " + CONFIG.HOST + ":" + CONFIG.PORT);
   });
+
+}
+
+function splitStationXML(files) {
+
+  /* function splitStationXML
+   * Validated and splits stationXML per station
+   */
+
+  const FDSN_SENDER = "ORFEUS";
+  const FDSN_SOURCE = "ORFEUS Manager Upload";
+  const FDSN_MODULE = "ORFEUS Manager " + CONFIG.__VERSION__;
+  const FDSN_STATION_VERSION = "1.0";
+
+  // Collection of documents to be written
+  var XMLDocuments = new Array();
+
+  for(var i = 0; i < files.length; i++) {
+
+    // Convert to libxmljs object
+    var XMLDocument = libxmljs.parseXml(files[i].data);
+
+    // Validate the entire against the schema
+    if(!XMLDocument.validate(XSDSchema)) {
+      throw("Error validating FDSNStationXML");
+    }
+
+    // Get the namespace & schema version of document
+    var namespace = XMLDocument.root().namespace().href();
+    var schemaVersion = XMLDocument.root().attr("schemaVersion").value();
+
+    // Confirm version
+    if(schemaVersion !== FDSN_STATION_VERSION) {
+      throw("Invalid FDSNStationXML version");
+    }
+
+    // Split entries by Network / Station
+    XMLDocument.find("//xmlns:Network", namespace).forEach(function(network) {
+
+      var networkCode = network.attr("code").value();
+
+      XMLDocument.find("//xmlns:Station", namespace).forEach(function(station) {
+
+        var stationCode = station.attr("code").value();
+
+        Console.debug("Extracting station " + networkCode + "." + stationCode + " from document");
+
+        // Namespace must be removed this way (known bug in libxmljs)
+        // And then replaced out in the string representation
+        station.namespace("");
+
+        // Create a new XML document
+        var stationXMLDocument = new libxmljs.Document("1.0", "UTF-8");
+
+        // Add FDSNStationXML attributes
+        var stationXMLRoot = stationXMLDocument.node("FDSNStationXML").attr({
+          "xmlns": namespace,
+          "schemaVersion": schemaVersion
+        });
+
+        // Add new properties to the root
+        stationXMLRoot.node("Source", FDSN_SOURCE);
+        stationXMLRoot.node("Sender", FDSN_SENDER);
+        stationXMLRoot.node("Module", FDSN_MODULE);
+        stationXMLRoot.node("Created", new Date().toISOString());
+
+        stationXMLNetwork = stationXMLRoot.node("Network");
+
+        // Add child nodes that are not "Station" or "text" (e.g. description)
+        network.childNodes().forEach(function(x) {
+          if(x.name() !== "Station" && x.name() !== "text") {
+            stationXMLNetwork.node(x.name(), x.text());
+          }
+        });
+
+        // Collect the attributes
+        var attrs = new Object();
+        network.attrs().forEach(function(x) {
+          attrs[x.name()] = x.value();
+        });
+
+        // Set the attributes
+        stationXMLNetwork.attr(attrs);
+
+        // Add particular station
+        stationXMLNetwork.addChild(station);
+
+        // Validate the entire against the schema
+        var XMLString = stationXMLDocument.toString().replace(" xmlns=\"\"", "");
+
+        // Validate the extracted document against the schema (only during DEBUG)
+        if(CONFIG.__DEBUG__ && !libxmljs.parseXml(XMLString).validate(XSDSchema)) {
+          throw("Extracted document does not validate.");
+        }
+
+        XMLDocuments.push({
+          "data": XMLString,
+          "metadata": {
+            "network": networkCode,
+            "station": stationCode,
+            "filepath": path.join("files", networkCode, stationCode),
+            "id": networkCode + "." + stationCode,
+            "size": XMLString.length,
+            "sha256": SHA256Password(XMLString)
+          }
+        });
+
+      });
+
+    });
+  
+  }
+
+  return XMLDocuments;
+
+}
+
+function createDirectory(filepath) {
+
+  /* function createDirectory
+   * Creates a directory for filepath if it does not exist
+   */
+
+  if(fs.existsSync(filepath)) {
+    return;
+  }
+
+  var dirname = path.dirname(filepath);
+
+  if(!fs.existsSync(dirname)) {
+    createDirectory(dirname);
+  }
+
+  Console.debug("Creating directory " + filepath);
+
+  fs.mkdirSync(filepath);
+
+}
+
+function writeMultipleFiles(files, session, callback) {
+
+  /* function writeMultipleFiles
+   * Writes multiple (split) StationXML files to disk
+   */
+
+  // We split any submitted StationXML
+  try {
+    var XMLDocuments = splitStationXML(files);
+  } catch(exception) {
+    return callback(exception);
+  }
+
+  const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
+  const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
+
+  // Server side validation
+  for(var i = 0; i < XMLDocuments.length; i++) {
+
+    if(session.networks.indexOf(XMLDocuments[i].metadata.network) === -1) {
+      return callback(true); 
+    }
+
+    if(!NETWORK_REGEXP.test(XMLDocuments[i].metadata.network)) {
+      return callback(true); 
+    }
+
+    if(!STATION_REGEXP.test(XMLDocuments[i].metadata.station)) {
+      return callback(true); 
+    }
+
+  }
+
+  // Create a copy of all metadata
+  XMLMetadata = XMLDocuments.map(function(x) {
+    return x.metadata;
+  });
+
+  // Create directories
+  XMLMetadata.forEach(function(x) {
+    createDirectory(x.filepath);
+  });
+
+  messageAdministrators(XMLMetadata, session);
+
+  // Write file metadata to the database
+  saveFilesObjects(XMLMetadata, session);
+
+  // Asynchronous writing for multiple files to disk
+  (writeFile = function() {
+
+    var file = XMLDocuments.pop();
+
+    var STATUS_MESSAGE = "Writing file " + file.metadata.sha256 + " (" + file.metadata.id + ") to disk";
+
+    // NodeJS std lib for writing file
+    fs.writeFile(path.join(file.metadata.filepath, file.metadata.sha256), file.data, function(error) {
+
+      // Write to log
+      error ? Console.error(STATUS_MESSAGE) : Console.info(STATUS_MESSAGE);
+
+      if(error) {
+        return callback(error);
+      }
+
+      if(XMLDocuments.length === 0) {
+        return callback(null)
+      }
+
+      // More files to write
+      writeFile();
+      
+    });
+
+  })();
 
 }
 
@@ -488,33 +696,38 @@ function generate404() {
 
 function getAdministrators(callback) {
 
- Database.users().find({"role": "admin"}).toArray(function(error, users) {
+  /* function getAdministrators
+   * Returns documents for all administrators
+   */
+ 
+  Database.users().find({"role": "admin"}).toArray(function(error, users) {
 
-   if(error || users.length === 0) {
-     return callback(null);
-   }
+    if(error || users.length === 0) {
+      return callback(null);
+    }
 
-   callback(users)
+    callback(users)
 
- });
+  });
 
 }
 
-function saveFilesObjects(files, session) {
+function saveFilesObjects(metadata, session) {
 
   // Store file information in the database
-  var dbFiles = files.map(function(x) {
+  var dbFiles = metadata.map(function(x) {
     return {
-      "filename": x.filename,
-      "type": x.type,
-      "size": x.data.length,
+      "filename": x.id,
+      "filepath": x.filepath,
+      "type": "FDSNStationXML",
+      "size": x.size,
       "userId": session._id,
       "created": new Date(),
       "sha256": x.sha256
     }
   });
 
-  // Asynchronously store
+  // Asynchronously store all file objects
   Database.files().insertMany(dbFiles, function(error) {
     if(error) {
       Console.error("Could not add file objects to the database");
@@ -524,14 +737,14 @@ function saveFilesObjects(files, session) {
 }
 
 
-function messageAdministrators(files, sender) {
+function messageAdministrators(metadata, sender) {
 
   /* function messageAdministrators
    * Queries the database for all administrators
    */
 
   // No files were uploaded
-  if(files.length === 0) {
+  if(metadata.length === 0) {
     return;
   }
 
@@ -545,26 +758,28 @@ function messageAdministrators(files, sender) {
 
     users.forEach(function(user) {
 
+      // Skip self
       if(user._id.toString() === sender._id.toString()) {
         return;
       }
 
-      messages = messages.concat(files.map(function(file) {
+      messages = messages.concat(metadata.map(function(file) {
         return {
           "recipient": user._id,
           "sender": sender._id,
-          "content": "Metadata submitted to: " + path.join(sender.filepath, file.sha256) + " (" + file.filename + ")",
+          "content": "Metadata submitted for station: " + file.id,
           "subject": "Metadata added",
           "read": false,
           "recipientDeleted": false,
           "created": new Date(),
           "level": 0
         }
+
       }));
 
     });
 
-    Console.debug("Messaged " + users.length + " adminstrators about " + files.length + " file(s) uploaded");
+    Console.debug("Messaged " + users.length + " adminstrators about " + metadata.length + " file(s) uploaded");
  
     // Store messages
     Database.messages().insertMany(messages, function(error, result) {
@@ -1132,6 +1347,19 @@ function generateFooterApp() {
 function generateFooter() {
 
   return [
+    "  <div class='modal fade' id='modal-alert' tabindex='-1' role='dialog' aria-labelledby='exampleModalCenterTitle' aria-hidden='true'>",
+    "    <div class='modal-dialog' role='document'>",
+    "      <div class='modal-content'>",
+    "        <div class='modal-header'>",
+    "          <h4 class='modal-title' id='modal-title'><span class='text-danger'>O</span>RFEUS Manager</h4>",
+    "          <button type='button' class='close' data-dismiss='modal' aria-label='Close'>",
+    "            <span aria-hidden='true'>&times;</span>",
+    "          </button>",
+    "        </div>",
+    "        <div id='modal-content' class='modal-body' style='text-align: center;'></div>",
+    "      </div>",
+    "    </div>",
+    "  </div>",
     "  <footer class='container text-muted'>",
     "  <hr>",
     "  ORFEUS Manager &copy; ODC " + new Date().getFullYear() + ". All Rights Reserved.",
@@ -1171,7 +1399,7 @@ function generateMessages(session) {
     generateWelcome(session),
     "    <div class='container'>",
     "      <div style='text-align: right;'>",
-    "        <a class='btn btn-success btn-sm' href='/profile/messages/new'><span class='fa fa-plus-square'></span> New Message</a>",
+    "        <a class='btn btn-success btn-sm' href='/home/messages/new'><span class='fa fa-plus-square'></span> New Message</a>",
     "      </div>",
     "      <br>",
     "      <ul class='nav nav-tabs nav-justified' role='tablist'>",
@@ -1277,7 +1505,7 @@ function generateWelcome(session) {
     "    <script>const USER_NETWORKS = " + JSON.stringify(session.networks) + "</script>",
     "    <div class='container'>",
     "      <div style='float: right;'>",
-    "        <a href='/profile/messages'><span class='badge badge-success'><span class='fa fa-envelope' aria-hidden='true'></span> <small><span id='number-messages'></span></small></span></a>",
+    "        <a href='/home/messages'><span class='badge badge-success'><span class='fa fa-envelope' aria-hidden='true'></span> <small><span id='number-messages'></span></small></span></a>",
     "        &nbsp;",
     "        <a href='/logout'><span class='fa fa-sign-out' aria-hidden='true'></span><small>Logout</small></a>",
     "      </div>",
@@ -1299,11 +1527,11 @@ function generateWelcomeInformation(session) {
     "      <div class='alert alert-warning'>",
     "        <div style='float: right;'>",
     "          <small>",
-    "            Last visit at <span class='fa fa-clock-o'></span> <b>" + session.visited + "</b>",
+    "            Last visit at <span class='fa fa-clock-o'></span> <b>" + session.visited.toISOString() + "</b>",
     "          </small>",
     "        </div>",
     "        <h3>",
-    "          <span class='fa fa-user-circle-o' aria-hidden='true'></span> " + session.username + " <small class='text-muted'>" + session.networks.join(", ") + "</small>",
+    "          <span class='fa fa-user-" + (session.role === "admin" ? "secret" : "circle") + "' aria-hidden='true'></span> " + session.username + " <small class='text-muted'><span id='doi-link'></span></small>",
     "        </h3>",
     "      </div>",
   ].join("\n");
@@ -1360,15 +1588,14 @@ function generateProfile(session) {
     "        <div class='tab-pane' id='settings-container-tab' role='tabpanel'>",
     "          <h3> Metadata Management </h3>",
     "          <p> Use this form to submit new station metadata to your ORFEUS data center.",
-    "          <form class='form-group' method='post' action='upload' enctype='multipart/form-data'>",
-    "              <label class='custom-file'>",
-    "                <input id='file-stage' name='file-data' type='file' class='form-control-file' aria-describedby='fileHelp' required>",
-    "                <span class='custom-file-control'></span>",
-    "              </label>",
-    "              <small id='file-help' class='form-text text-muted'></small>",
-    "              <br>",
-    "              <input id='file-submit' class='btn btn-success' type='submit' value='Upload Metadata' disabled>",
+    "          <form class='form-inline' method='post' action='upload' enctype='multipart/form-data'>",
+    "            <label class='custom-file'>",
+    "              <input id='file-stage' name='file-data' type='file' class='form-control-file' aria-describedby='fileHelp' required multiple>",
+    "              <span class='custom-file-control'></span>",
+    "            </label>",
+    "            &nbsp; <input id='file-submit' class='btn btn-success' type='submit' value='Send' disabled>",
     "          </form>",
+    "          <small id='file-help' class='form-text text-muted'></small>",
     "        </div>",
     "      </div>",
     "    </div>",
