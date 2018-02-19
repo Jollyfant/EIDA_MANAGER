@@ -1,4 +1,5 @@
 NodeJS*
+*.out
 node_modules
 files
 *.xml

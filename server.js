@@ -185,6 +185,14 @@ var Webserver = function() {
     }
   
     // Application script is requested
+    if(uri === "/js/table.js") {
+      response.writeHead(200, {
+        'Content-Type': "application/javascript"
+      });
+      return fs.createReadStream("./orfeus-table.js").pipe(response);
+    }
+
+    // Application script is requested
     if(uri === "/js/app.js") {
       response.writeHead(200, {
         'Content-Type': "application/javascript"
@@ -431,6 +439,141 @@ var Webserver = function() {
 
 }
 
+function validateMetadata(XMLDocument) {
+
+  /* function validateMetadata
+   * Server side validation of StationXML metadata
+   */
+
+  const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
+  const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
+  const GAIN_TOLERNACE_PERCENT = 0.001;
+
+  var namespace = XMLDocument.root().namespace().href();
+
+  XMLDocument.find("xmlns:Network", namespace).forEach(function(network) {
+
+    var networkCode = network.attr("code").value();
+
+    // Confirm network & station identifiers
+    if(!NETWORK_REGEXP.test(networkCode)) {
+      throw("Invalid network code");
+    }
+
+    network.find("xmlns:Station", namespace).forEach(function(station) {
+
+      var stationCode = station.attr("code").value();
+
+      if(!STATION_REGEXP.test(stationCode)) {
+        throw("Invalid station code");
+      }
+
+      var channels = station.find("xmlns:Channel", namespace);
+
+      if(channels.length === 0) {
+        throw("Channel information missing");
+      }
+
+      channels.forEach(function(channel) {
+
+        var channelCode = channel.attr("code").value();
+
+        var sampleRate = Number(channel.get("xmlns:SampleRate", namespace).text())
+
+        if(isNaN(sampleRate) || sampleRate === 0) {
+          throw("Invalid sample rate");
+        }
+
+        var response = channel.find("xmlns:Response", namespace);
+
+        if(response.length === 0) {
+          throw("Response element is missing");
+        }
+
+        if(response.length !== 1) {
+          throw("Multiple response elements included");
+        }
+
+        var stages = response[0].find("xmlns:Stage", namespace);
+
+        if(stages.length === 0) {
+          throw("No response stages included in inventory");
+        }
+
+        var perStageGain = 1;
+
+        stages.forEach(function(stage) {
+
+          perStageGain = perStageGain * Number(stage.get("xmlns:StageGain", namespace).get("xmlns:Value", namespace).text());
+
+          stage.find("xmlns:FIR", namespace).forEach(function(FIRStage) {
+            validateFIRStage(FIRStage, namespace);
+          });
+
+        });
+
+        var instrumentSensitivity = Number(response[0].get("xmlns:InstrumentSensitivity", namespace).get("xmlns:Value", namespace).text());
+
+        // Validate stage calculated & reported gains
+        if(1 - (Math.max(instrumentSensitivity, perStageGain) / Math.min(instrumentSensitivity, perStageGain)) > GAIN_TOLERNACE_PERCENT) {
+          throw("Computed and reported stage gain is different");
+        }
+
+      });
+
+    });
+
+  });
+
+}
+
+function Sum(array) {
+
+  /* function Sum
+   * returns the average of an array
+   */
+
+  return array.reduce(function(a, b) {
+    return a + b;
+  }, 0);
+
+}
+
+function validateFIRStage(FIRStage, namespace) {
+
+  /* function validateFIRStage
+   * Validates StationXML FIR Stage
+   */
+
+  const FIR_TOLERANCE = 0.02;
+
+  // Confirm FIR Stage input units as COUNTS
+  if(FIRStage.get("xmlns:InputUnits", namespace).get("xmlns:Name", namespace).text() !== "COUNTS") {
+    throw("FIR Stage input units invalid");
+  }
+
+  // Confirm FIR Stage output units as COUNTS
+  if(FIRStage.get("xmlns:OutputUnits", namespace).get("xmlns:Name", namespace).text() !== "COUNTS") {
+    throw("FIR Stage output units invalid");
+  }
+
+  var FIRSum = Sum(FIRStage.find("xmlns:NumeratorCoefficient", namespace).map(function(FIRCoefficient) {
+    return Number(FIRCoefficient.text());
+  }));
+
+  // Symmetry specified: FIR coefficients are symmetrical (double the sum)
+  if(FIRStage.get("xmlns:Symmetry", namespace).text() !== "NONE") {
+    FIRSum = 2 * FIRSum;
+  }
+
+  // Check if the FIR coefficient sum is within tolerance
+  if(Math.abs(1 - FIRSum) > FIR_TOLERANCE) {
+    throw("Invalid FIR Coefficient Sum (" + Math.abs(1 - FIRSum).toFixed(4) + ")");
+  }
+
+}
+
+
 function splitStationXML(files) {
 
   /* function splitStationXML
@@ -455,6 +598,8 @@ function splitStationXML(files) {
       throw("Error validating FDSNStationXML");
     }
 
+    validateMetadata(XMLDocument);
+
     // Get the namespace & schema version of document
     var namespace = XMLDocument.root().namespace().href();
     var schemaVersion = XMLDocument.root().attr("schemaVersion").value();
@@ -465,11 +610,11 @@ function splitStationXML(files) {
     }
 
     // Split entries by Network / Station
-    XMLDocument.find("//xmlns:Network", namespace).forEach(function(network) {
+    XMLDocument.find("xmlns:Network", namespace).forEach(function(network) {
 
       var networkCode = network.attr("code").value();
 
-      XMLDocument.find("//xmlns:Station", namespace).forEach(function(station) {
+      network.find("xmlns:Station", namespace).forEach(function(station) {
 
         var stationCode = station.attr("code").value();
 
@@ -573,31 +718,18 @@ function writeMultipleFiles(files, session, callback) {
    * Writes multiple (split) StationXML files to disk
    */
 
-  // We split any submitted StationXML
+  // We split any submitted StationXML files
   try {
     var XMLDocuments = splitStationXML(files);
   } catch(exception) {
     return callback(exception);
   }
 
-  const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
-  const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
-
-  // Server side validation
+  // Confirm user is manager of the network
   for(var i = 0; i < XMLDocuments.length; i++) {
-
     if(session.networks.indexOf(XMLDocuments[i].metadata.network) === -1) {
       return callback(true); 
     }
-
-    if(!NETWORK_REGEXP.test(XMLDocuments[i].metadata.network)) {
-      return callback(true); 
-    }
-
-    if(!STATION_REGEXP.test(XMLDocuments[i].metadata.station)) {
-      return callback(true); 
-    }
-
   }
 
   // Create a copy of all metadata
@@ -610,6 +742,7 @@ function writeMultipleFiles(files, session, callback) {
     createDirectory(x.filepath);
   });
 
+  // Write a message to the administrators
   messageAdministrators(XMLMetadata, session);
 
   // Write file metadata to the database
@@ -718,6 +851,8 @@ function saveFilesObjects(metadata, session) {
   var dbFiles = metadata.map(function(x) {
     return {
       "filename": x.id,
+      "network": x.network,
+      "station": x.station,
       "filepath": x.filepath,
       "type": "FDSNStationXML",
       "size": x.size,
@@ -748,6 +883,7 @@ function messageAdministrators(metadata, sender) {
     return;
   }
 
+  // Get all ORFEUS administrators
   getAdministrators(function(users) {
 
     if(users === null) {
@@ -756,13 +892,15 @@ function messageAdministrators(metadata, sender) {
 
     var messages = new Array();
 
+    // Message each administrator
     users.forEach(function(user) {
 
-      // Skip self
+      // Skip message to self
       if(user._id.toString() === sender._id.toString()) {
         return;
       }
 
+      // Create one message per added station
       messages = messages.concat(metadata.map(function(file) {
         return {
           "recipient": user._id,
@@ -1339,6 +1477,7 @@ function generateFooterApp() {
     "  <script src='https://code.highcharts.com/highcharts.js'></script>",
     "  <script src='https://cdn.socket.io/socket.io-1.4.5.js'></script>",
     "  <script src='https://maps.googleapis.com/maps/api/js?key=AIzaSyAN3tYdvQ5tSS5NIKwZX-ZqhsM4NApVV_I'></script>",
+    "  <script src='/js/table.js'></script>",
     "  <script src='/js/app.js'></script>",
   ].join("\n");
 
@@ -1348,7 +1487,7 @@ function generateFooter() {
 
   return [
     "  <div class='modal fade' id='modal-alert' tabindex='-1' role='dialog' aria-labelledby='exampleModalCenterTitle' aria-hidden='true'>",
-    "    <div class='modal-dialog' role='document'>",
+    "    <div class='modal-dialog h-100 d-flex flex-column justify-content-center my-0' role='document'>",
     "      <div class='modal-content'>",
     "        <div class='modal-header'>",
     "          <h4 class='modal-title' id='modal-title'><span class='text-danger'>O</span>RFEUS Manager</h4>",
@@ -1569,12 +1708,7 @@ function generateProfile(session) {
     "          </div>",
     "        </div>",
     "        <div class='tab-pane' id='table-container-tab' role='tabpanel'>",
-    "          <div class='input-group'>",
-    "            <span class='input-group-addon'><span class='fa fa-search' aria-hidden='true'> Search</span></span>",
-    "            <input class='form-control' id='table-search'/>",
-    "          </div>",
     "          <div id='table-container'></div>",
-    "          <div id='table-pagination'></div>",  
     "          <hr>",
     "          <div class='card'>",
     "            <div class='card-header'>",

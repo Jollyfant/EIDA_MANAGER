@@ -94,7 +94,8 @@ function getStationLatencies(query) {
 
       console.debug("Retrieved " + json.latencies.length + " latencies from " + LATENCY_SERVER + query +  " in " + (Date.now() - start) + " ms.");
 
-      document.getElementById("channel-information-latency").innerHTML = generateLatencyInformation(json);
+      var header = ["Channel", "Last Record", "Latency (ms)"];
+      new Table("channel-information-latency", header, json.latencies);
 
     }
 
@@ -210,12 +211,7 @@ function initMap() {
           return x.author;
         });
 
-        document.getElementById("message-content-sent").innerHTML = [
-          "<table class='table table-sm table-striped'>",
-          generateTableHead(MESSAGE_TABLE_HEADER),
-          generateTableBody(generateMessageTableContentSent(sent)),
-          "</table>"
-        ].join("\n");
+        new Table("message-content-sent", MESSAGE_TABLE_HEADER, generateMessageTableContentSent(sent));
 
         var MESSAGE_TABLE_HEADER = [
           "Subject",
@@ -227,13 +223,7 @@ function initMap() {
           return !x.author;
         });
 
-        // Generate the table content
-        document.getElementById("message-content").innerHTML = [
-          "<table class='table table-sm table-striped'>",
-          generateTableHead(MESSAGE_TABLE_HEADER),
-          generateTableBody(generateMessageTableContent(inbox)),
-          "</table>"
-        ].join("\n");
+        new Table("message-content", MESSAGE_TABLE_HEADER, generateMessageTableContent(inbox));
 
       }
 
@@ -333,11 +323,11 @@ function initMap() {
   if(uri.pathname === "/home") {
 
     if(uri.search.startsWith("?success")) {
-      Element("modal-content").innerHTML = "<div class='text-success'><b>" + IconSpan("checkmark") + " The metadata has been succesfully received." + "</b></div>";
+      Element("modal-content").innerHTML = "<div class='text-success alert alert-success'><b>" + IconSpan("checkmark") + " The metadata has been succesfully received." + "</b></div>";
       $("#modal-alert").modal();
     }
     if(uri.search.startsWith("?failure")) {
-      Element("modal-content").innerHTML = "<div class='text-danger'><b>" + IconSpan("unavailable") + " There was an error receiving the metadata." + "</b></div>";
+      Element("modal-content").innerHTML = "<div class='text-danger alert alert-danger'><b>" + IconSpan("unavailable") + " There was an error receiving the metadata." + "</b></div>";
       $("#modal-alert").modal();
     }
 
@@ -821,7 +811,7 @@ function Sum(array) {
 
   return array.reduce(function(a, b) {
     return a + b;
-  });
+  }, 0);
 
 }
 
@@ -938,12 +928,6 @@ function GenerateTableFull(list, latencies) {
   // Cache
   __TABLE_JSON__ = list;
 
-  // Add information add footer
-  document.getElementById("table-information").innerHTML = "Table showing <b>" + list.length + "</b> stations.";
-
-  // Attach an event listener for table searching
-  document.getElementById("table-search").addEventListener("input", MakeTable);
-
   MakeTable();
 
 }
@@ -963,70 +947,7 @@ function MakeTable() {
   ];
 
   // Get the list (filtered)
-  var filteredList = filterBodyContent(__TABLE_JSON__);
-
-  // Generate pagination
-  document.getElementById("table-pagination").innerHTML = generatePagination(filteredList);
-
-  document.getElementById("table-container").innerHTML = [
-    "<table class='table table-sm table-striped'>",
-    generateTableHead(TABLE_HEADER),
-    generateTableBody(filteredList),
-    "</table>"
-  ].join("\n");
-
-  Array.from(document.getElementsByClassName("page-item")).forEach(function(x) {
-    x.addEventListener("click", updateTable.bind(x, filteredList.length));
-  });
-
-}
-
-function updateTable(l) {
-
-  if(this.children[0].innerHTML === "Next") {
-    ACTIVE_PAGE_INDEX++;
-  } else if(this.children[0].innerHTML === "Previous") {
-    ACTIVE_PAGE_INDEX--;
-  } else {
-    ACTIVE_PAGE_INDEX = Number(this.children[0].innerHTML) - 1;
-  }
-
-  // 
-  ACTIVE_PAGE_INDEX = Math.max(Math.min(Math.ceil(l / ITEMS_PER_PAGE) - 1, ACTIVE_PAGE_INDEX), 0);
-
-  // Add class 
-  Array.from(document.getElementsByClassName("page-item")).forEach(function(x) {
-    x.className = "page-item";
-    if((Number(x.children[0].innerHTML) - 1) === ACTIVE_PAGE_INDEX) {
-      x.className += " active";
-    }
-  });
-
-  // Update the table
-  MakeTable();
-
-}
-
-function generatePaginationList(list) {
-
-  // No results
-  if(list.length === 0) { 
-    return "<li class='page-item active'><span class='page-link'>1</span></li>";
-  }
-
-  if(ACTIVE_PAGE_INDEX * ITEMS_PER_PAGE > list.length) {
-    ACTIVE_PAGE_INDEX = Math.floor(list.length / ITEMS_PER_PAGE);
-  }
-
-  return list.filter(function(_, i) {
-    return (i % ITEMS_PER_PAGE === 0);
-  }).map(function(_, i) {
-    if(i === ACTIVE_PAGE_INDEX) {
-      return "<li class='page-item active'><span class='page-link'>" + (i + 1) + "</span></li>";
-    } else {
-      return "<li class='page-item'><span class='page-link'>" + (i + 1) + "</span></li>";
-    }
-  }).join("\n");
+  new Table("table-container", TABLE_HEADER, __TABLE_JSON__);
 
 }
 
@@ -1066,6 +987,7 @@ function accFilter(channel) {
 
 function generateAccordionContentChannelString(channel) {
 
+  return;
   var parsedEnd = Date.parse(channel.end);
   var header = ["Sensor", "Unit", "Sampling Rate", "Gain"];
 
@@ -1099,58 +1021,6 @@ function generateAccordion(list) {
     generateAccordionContent(list),
     "</div>"
   ].join("\n");
-
-}
-
-function generatePagination(list) {
-
-  /* function generatePagination
-   * Generates the pagination for the active table
-   */
-
-  return [
-   "<nav aria-label='Page navigation example'>",
-     "<ul class='pagination'>",
-       "<li class='page-item'><span class='page-link'>Previous</span></li>",
-       generatePaginationList(list),
-       "<li class='page-item'><span class='page-link'>Next</span></li>",
-     "</ul>",
-   "</nav>"
-  ].join("\n");
-
-}
-
-function generateTableBody(body) {
-
-  return [
-    "  <tbody>",
-    generateTableBodyContent(body),
-    "  </tbody>"
-  ].join("\n");
-
-}
-
-function generateTableHead(header) {
-
-  return [
-    "  <thead>",
-    "    <tr>",
-    generateTableHeadContent(header),
-    "    </tr>",
-    "  </thead>"
-  ].join("\n");
-
-}
-
-function generateTableRowContent(row) {
-
-  /* function generateTableRowContent
-   * Generates single row content for a table
-   */
-
-  return row.map(function(x) {
-    return "<td>" + x + "</td>"}
-  ).join("\n");
 
 }
 
@@ -1563,8 +1433,14 @@ function validateMetadata(station) {
     throw("Station longitude is incorrect");
   }
 
+  var channels = Array.from(station.getElementsByTagName("Channel"));
+
+  if(channels.length === 0) {
+    throw("Channel information is missing");
+  }
+
   // Go over each channel for the station
-  Array.from(station.getElementsByTagName("Channel")).forEach(function(channel) {
+  channels.forEach(function(channel) {
 
     // Confirm channel spatial coordinates
     var channelLatitude = Number(channel.getElementsByTagName("Latitude").item(0).innerHTML);
