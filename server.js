@@ -45,7 +45,7 @@ function getSession(headers, callback) {
       }
 
       // Callback with a new authenticated user
-      callback(new User(user));
+      callback(new User(user, cookie.SESSION_ID));
 
     });
 
@@ -53,13 +53,14 @@ function getSession(headers, callback) {
 
 }
 
-var User = function(user) {
+var User = function(user, id) {
 
   /* Class User
    * Holds user information
    */
 
   this._id = user._id;
+  this.sessionId = id;
   this.username = user.username;
   this.networks = user.networks;
   this.version = user.version;
@@ -165,9 +166,32 @@ var Webserver = function() {
     // Parse the resource identifier
     const uri = url.parse(request.url).pathname;
     const search = url.parse(request.url).search;
-    const clientIp = request.headers['x-forwarded-for'] || request.connection.remoteAddress || null;
+    var nBytes = 0;
 
-    Console.debug(clientIp + " " + uri + " " + request.method);
+    // Monkey patch the response write function
+    // To keep track of number of bytes shipped
+    response.write = (function(closure) {
+
+      return function(chunk) {
+
+        // Update bytes written
+        nBytes = nBytes + chunk.length;
+
+        return closure.apply(this, arguments);
+
+      }
+
+    })(response.write);
+
+    // Response finish write to log
+    response.on("finish", function() {
+
+      const clientIp = request.headers['x-forwarded-for'] || request.connection.remoteAddress || null;
+      const userAgent = request.headers['user-agent'] || null
+
+      Console.debug(clientIp + " " + uri + " " + request.method + " " + response.statusCode + " " + nBytes + " " + userAgent);
+
+    });
 
     if(uri === "/images/node.png") {
       response.writeHead(200, {
@@ -359,14 +383,13 @@ var Webserver = function() {
       if(uri === "/logout") {
   
         // Destroy the session
-        Database.sessions().deleteMany({"userId": session._id}, function(error, result) {
+        Database.sessions().deleteOne({"SESSION_ID": session.sessionId}, function(error, result) {
 
-          if(error) {
-            Console.error(error);
-          }
+          const STATUS_MESSAGE = "Removing session for " + session.sessionId;
+
+          !error ? Console.error(STATUS_MESSAGE) : Console.info(STATUS_MESSAGE);
 
           Redirect(response, "/login?logout");
-          Console.debug("Session for " + session.username + " has been removed.");
 
         });
 
@@ -447,12 +470,12 @@ var Webserver = function() {
   // Gracful shutdown of server
   process.on("SIGINT", function () {
     Console.info("SIGINT received: closing webserver");
-    webserver.close(function() {
+    //webserver.close(function() {
       Console.info("Webserver has been closed");
       Database.sessions().remove({}, function(error, documents) {
         process.exit(0);
       });
-    });
+    //});
   });
 
 }
