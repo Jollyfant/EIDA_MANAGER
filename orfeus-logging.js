@@ -3,7 +3,11 @@ const fs = require("fs");
 
 var Console = function() {
 
- this.log = fs.createWriteStream(__dirname + "/orfeus-manager.log", {"flags": "w"});
+  if(CONFIG.__STDOUT__) {
+    this.log = process.stdout;
+  } else {
+    this.log = fs.createWriteStream(__dirname + "/orfeus-manager.log", {"flags": "w"});
+  }
 
 }
 
@@ -15,8 +19,10 @@ Console.prototype.write = function(array) {
 
 Console.prototype.error = function(msg) {
 
-  const ERROR_COLOR_EPI = "\x1b[0m";
-  const ERROR_COLOR_PRO = "\x1b[31m";
+  if(CONFIG.__STDOUT__) {
+    const ERROR_COLOR_EPI = "\x1b[0m";
+    const ERROR_COLOR_PRO = "\x1b[31m";
+  }
 
   this.write(
     new Date().toISOString(),
@@ -30,8 +36,10 @@ Console.prototype.error = function(msg) {
 
 Console.prototype.info = function(msg) {
 
-  const INFO_COLOR_EPI = "\x1b[0m";
-  const INFO_COLOR_PRO = "\x1b[34m";
+  if(CONFIG.__STDOUT__) {
+    const INFO_COLOR_EPI = "\x1b[0m";
+    const INFO_COLOR_PRO = "\x1b[34m";
+  }
 
   this.write(
     new Date().toISOString(),
@@ -45,8 +53,10 @@ Console.prototype.info = function(msg) {
 
 Console.prototype.debug = function(msg) {
 
-  const DEBUG_COLOR_EPI = "\x1b[0m";
-  const DEBUG_COLOR_PRO = "\x1b[33m";
+  if(CONFIG.__STDOUT__) {
+    const DEBUG_COLOR_EPI = "\x1b[0m";
+    const DEBUG_COLOR_PRO = "\x1b[33m";
+  }
 
   if(CONFIG.__DEBUG__) {
     this.write(

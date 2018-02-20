@@ -212,7 +212,7 @@ var Webserver = function() {
       response.writeHead(200, {
         'Content-Type': "application/javascript"
       });
-      return fs.createReadStream("./orfeus-table.js").pipe(response);
+      return fs.createReadStream("./js/orfeus-table.js").pipe(response);
     }
 
     // Application script is requested
@@ -220,7 +220,7 @@ var Webserver = function() {
       response.writeHead(200, {
         'Content-Type': "application/javascript"
       });
-      return fs.createReadStream("./app.js").pipe(response);
+      return fs.createReadStream("./js/app.js").pipe(response);
     }
   
     // Application style sheet is requested
@@ -228,7 +228,7 @@ var Webserver = function() {
       response.writeHead(200, {
         'Content-Type': "text/css"    
       });
-      return fs.createReadStream("./style.css").pipe(response);
+      return fs.createReadStream("./css/style.css").pipe(response);
     }
   
     // Redirect webserver root to login page
