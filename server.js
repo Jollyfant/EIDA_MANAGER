@@ -62,6 +62,7 @@ var User = function(user) {
   this._id = user._id;
   this.username = user.username;
   this.networks = user.networks;
+  this.version = user.version;
   this.visited = user.visited;
   this.role = user.role;
 
@@ -133,9 +134,6 @@ function createSession(user, callback) {
     "created": new Date()
   }
 
-  // Update users last visited information
-  Database.users().updateOne({"_id": user._id}, {"$set": {"visited": new Date()}});
-
   // Insert a new session
   Database.sessions().insertOne(storeObject, function(error, result) {
 
@@ -166,6 +164,7 @@ var Webserver = function() {
 
     // Parse the resource identifier
     const uri = url.parse(request.url).pathname;
+    const search = url.parse(request.url).search;
     const clientIp = request.headers['x-forwarded-for'] || request.connection.remoteAddress || null;
 
     Console.debug(clientIp + " " + uri + " " + request.method);
@@ -268,6 +267,7 @@ var Webserver = function() {
                 "subject": escapeHTML(postBody.subject),
                 "read": false,
                 "recipientDeleted": false,
+                "senderDeleted": false,
                 "created": new Date(),
                 "level": 0
               }
@@ -324,7 +324,7 @@ var Webserver = function() {
               // Redirect user to home page and set a cookie for this session
               response.writeHead(HTTP_REDIRECT_STATUS_CODE, {
                 "Set-Cookie": cookie,
-                "Location": "./home"
+                "Location": "./home?welcome"
               });
   
               response.end();
@@ -376,7 +376,14 @@ var Webserver = function() {
   
       // Profile page
       if(uri === "/home") {
+
+        // Update the last visit & app. version
+        if(search === "?welcome") {
+          Database.users().updateOne({"_id": session._id}, {"$set": {"version": CONFIG.__VERSION__, "visited": new Date()}});
+        }
+
         return response.end(generateProfile(session));
+
       }
 
       if(uri === "/home/messages") {
@@ -435,6 +442,17 @@ var Webserver = function() {
   // Listen to incoming connections
   webserver.listen(CONFIG.PORT, CONFIG.HOST, function() {
     Console.info("Webserver started at " + CONFIG.HOST + ":" + CONFIG.PORT);
+  });
+
+  // Gracful shutdown of server
+  process.on("SIGINT", function () {
+    Console.info("SIGINT received: closing webserver");
+    webserver.close(function() {
+      Console.info("Webserver has been closed");
+      Database.sessions().remove({}, function(error, documents) {
+        process.exit(0);
+      });
+    });
   });
 
 }
@@ -909,6 +927,7 @@ function messageAdministrators(metadata, sender) {
           "subject": "Metadata added",
           "read": false,
           "recipientDeleted": false,
+          "senderDeleted": false,
           "created": new Date(),
           "level": 0
         }
@@ -982,6 +1001,10 @@ function APIRequest(request, response, session) {
         RemoveAllMessages(session, function(json) {
           response.end(json);
         });
+      } else if(uri.search && uri.search.startsWith("?deletesent")) {
+        RemoveAllMessagesSent(session, function(json) {
+          response.end(json);
+        });
       } else {
         GetMessages(session, function(json) {
           response.end(json);
@@ -998,6 +1021,23 @@ function APIRequest(request, response, session) {
     }
 
     return NotFound(response);
+
+}
+
+function RemoveAllMessagesSent(session, callback) {
+
+  /* function RemoveAllMessages
+   * Sets all messages for user to deleted
+   */
+  var query = {
+    "sender": Database.ObjectId(session._id),
+    "senderDeleted": false
+  }
+
+  // Get specific message from the database
+  Database.messages().updateMany(query, {"$set": {"senderDeleted": true}}, function(error, messages) {
+    callback(JSON.stringify(messages));
+  });
 
 }
 
@@ -1027,17 +1067,33 @@ function RemoveSpecificMessage(session, request, callback) {
   // Get the message identifier from the query string
   var qs = querystring.parse(request.query);
 
-  var query = {
+  var senderQuery = {
+    "sender": Database.ObjectId(session._id),
+    "senderDeleted": false,
+    "_id": Database.ObjectId(qs.delete)
+  }
+
+  var recipientQuery = {
     "recipient": Database.ObjectId(session._id),
     "recipientDeleted": false,
     "_id": Database.ObjectId(qs.delete)
   }
 
   // Get specific message from the database
-  Database.messages().updateOne(query, {"$set": {"recipientDeleted": true}}, function(error, message) {
+  Database.messages().updateOne(recipientQuery, {"$set": {"recipientDeleted": true}}, function(error, message) {
 
     if(error || message.result.nModified === 0) {
-      return callback(JSON.stringify(null));
+
+      return Database.messages().updateOne(senderQuery, {"$set": {"senderDeleted": true}}, function(error, message) {
+
+        if(error || message.result.nModified === 0) {
+          return callback(JSON.stringify(null));
+        }
+
+        callback(JSON.stringify({"status": "deleted"}));
+
+      });
+
     }
 
     callback(JSON.stringify({"status": "deleted"}));
@@ -1060,7 +1116,8 @@ function GetSpecificMessage(session, request, callback) {
       "recipient": Database.ObjectId(session._id),
       "recipientDeleted": false
     }, {
-      "sender": Database.ObjectId(session._id)
+      "sender": Database.ObjectId(session._id),
+      "senderDeleted": false
     }],
     "_id": Database.ObjectId(qs.read)
   }
@@ -1128,7 +1185,8 @@ function GetMessages(session, callback) {
       "recipient": Database.ObjectId(session._id),
       "recipientDeleted": false
     }, {
-      "sender": Database.ObjectId(session._id)
+      "sender": Database.ObjectId(session._id),
+      "senderDeleted": false
     }]
   }
 
@@ -1386,10 +1444,11 @@ function SHA256Password(password) {
 
 function Authenticate(postBody, callback) {
 
-  Database.users().findOne({"username": postBody.username}, function(err, result) {
+  Database.users().findOne({"username": postBody.username}, function(error, result) {
 
-    if(result === null) { return callback(false) }
-    if(err) { return callback(false) }
+    if(error || result === null) {
+      return callback(false);
+     }
 
     if(result.password === SHA256Password(postBody.password)){
       return callback(true, result);
@@ -1502,7 +1561,7 @@ function generateFooter() {
     "  <footer class='container text-muted'>",
     "  <hr>",
     "  ORFEUS Manager &copy; ODC " + new Date().getFullYear() + ". All Rights Reserved.",
-    "  <div style='float: right;'><small>Version v" + CONFIG.APPLICATION_VERSION + "</small></div>",
+    "  <div style='float: right;'><small>Version v" + CONFIG.__VERSION__ + "</small></div>",
     "  </footer>",
     "  <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css'>",
     "  <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css' integrity='sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ' crossorigin='anonymous'>",
@@ -1553,11 +1612,14 @@ function generateMessages(session) {
     "        <div class='tab-pane active' id='messages-inbox-tab' role='tabpanel'>",
     "          <div id='message-content'></div>",
     "          <div style='text-align: right;'>",
-    "            <button onClick='deleteAllMessages()' class='btn btn-danger btn-sm' id='delete-all-messages'><span class='fa fa-minus-square'></span> &nbsp; Delete All</button>",
+    "            <button onClick='deleteAllMessages(\"inbox\")' class='btn btn-danger btn-sm' id='delete-all-messages'><span class='fa fa-minus-square'></span> &nbsp; Delete All</button>",
     "          </div>",
     "        </div>",
     "        <div class='tab-pane' id='messages-sent-tab' role='tabpanel'>",
     "          <div id='message-content-sent'></div>",
+    "          <div style='text-align: right;'>",
+    "            <button onClick='deleteAllMessages(\"sent\")' class='btn btn-danger btn-sm' id='delete-all-messages'><span class='fa fa-minus-square'></span> &nbsp; Delete All</button>",
+    "          </div>",
     "        </div>",
     "      </div>",
     "    </div>",
@@ -1608,6 +1670,7 @@ function generateStationDetails(session) {
     "                <div id='map-information'></div>",
     "              </div>",
     "              <div class='card-block'>",
+    "<h4><span class='fa fa-heart-o text-danger' aria-hidden='true'></span> Seedlink Health</h4>",
     "                <div id='channel-information-latency'></div>",
     "              </div>",
     "            </div>",
@@ -1641,7 +1704,7 @@ function generateStationDetails(session) {
 function generateWelcome(session) {
 
   return [
-    "    <script>const USER_NETWORKS = " + JSON.stringify(session.networks) + "</script>",
+    "    <script>const USER_NETWORKS = " + JSON.stringify(session.networks) + "; USER_VERSION = " + JSON.stringify(session.version) + "</script>",
     "    <div class='container'>",
     "      <div style='float: right;'>",
     "        <a href='/home/messages'><span class='badge badge-success'><span class='fa fa-envelope' aria-hidden='true'></span> <small><span id='number-messages'></span></small></span></a>",
@@ -1802,3 +1865,4 @@ function escapeHTML(string) {
 }
 
 Init();
+

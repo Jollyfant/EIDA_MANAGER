@@ -1,4 +1,5 @@
 const __DEBUG__ = true;
+const STATION_MARKER_IMAGE = "./images/station.png";
 const SOCKET_URL = "ws://127.0.0.1:8080";
 const LATENCY_SERVER = "http://127.0.0.1:3001";
 const ITEMS_PER_PAGE = 75;
@@ -76,6 +77,14 @@ function newMessageNotification() {
         document.getElementById("number-messages").innerHTML = json.count + " new messages!";
       }
 
+      // Alert user on login of new messages
+      if(json.count !== 0) {
+        if(window.location.search.startsWith("?welcome")) {
+          Element("modal-content").innerHTML = "<div class='alert alert-info'>" + Icon("check", "info") + " You have new unread messages!" + "</div>";
+          $("#modal-alert").modal();
+        }
+      }
+
     }
 
   });
@@ -95,7 +104,14 @@ function getStationLatencies(query) {
       console.debug("Retrieved " + json.latencies.length + " latencies from " + LATENCY_SERVER + query +  " in " + (Date.now() - start) + " ms.");
 
       var header = ["Channel", "Last Record", "Latency (ms)"];
-      new Table("channel-information-latency", header, json.latencies);
+      var latencies = generateLatencyInformationContent(json.latencies);
+
+      new Table({
+        "id": "channel-information-latency",
+        "search": false,
+        "header": header,
+        "body": latencies
+      });
 
     }
 
@@ -211,7 +227,12 @@ function initMap() {
           return x.author;
         });
 
-        new Table("message-content-sent", MESSAGE_TABLE_HEADER, generateMessageTableContentSent(sent));
+        new Table({
+          "id": "message-content-sent",
+          "search": true,
+          "header": MESSAGE_TABLE_HEADER,
+          "body": generateMessageTableContentSent(sent)
+        });
 
         var MESSAGE_TABLE_HEADER = [
           "Subject",
@@ -223,7 +244,12 @@ function initMap() {
           return !x.author;
         });
 
-        new Table("message-content", MESSAGE_TABLE_HEADER, generateMessageTableContent(inbox));
+        new Table({
+          "id": "message-content",
+          "search": true,
+          "header": MESSAGE_TABLE_HEADER,
+          "body": generateMessageTableContent(inbox)
+        });
 
       }
 
@@ -301,7 +327,7 @@ function initMap() {
           "position": station.position
         }); 
 
-        document.getElementById("channel-information-header").innerHTML = IconSpan("signal") + " " + marker.title;
+        document.getElementById("channel-information-header").innerHTML = Icon("signal") + " " + marker.title;
         document.getElementById("map-information").innerHTML = "Map showing station <b>" + marker.title + "</b> with <b>" + nOpen + "</b> open channels.";
 
         // Event listener for clicks
@@ -323,11 +349,10 @@ function initMap() {
   if(uri.pathname === "/home") {
 
     if(uri.search.startsWith("?success")) {
-      Element("modal-content").innerHTML = "<div class='text-success alert alert-success'><b>" + IconSpan("checkmark") + " The metadata has been succesfully received." + "</b></div>";
+      Element("modal-content").innerHTML = "<div class='alert alert-success'>" + Icon("check", "success") + " The metadata has been succesfully received." + "</div>";
       $("#modal-alert").modal();
-    }
-    if(uri.search.startsWith("?failure")) {
-      Element("modal-content").innerHTML = "<div class='text-danger alert alert-danger'><b>" + IconSpan("unavailable") + " There was an error receiving the metadata." + "</b></div>";
+    } else if (uri.search.startsWith("?failure")) {
+      Element("modal-content").innerHTML = "<div class='alert alert-danger'>" + Icon("remove", "danger") + " There was an error receiving the metadata." + "</div>";
       $("#modal-alert").modal();
     }
 
@@ -356,7 +381,7 @@ function initMap() {
         json.forEach(function(station) {
           var marker = new google.maps.Marker({
             "map": map,
-            "icon": "./images/station.png",
+            "icon": STATION_MARKER_IMAGE, 
             "title": [station.network, station.station].join("."), 
             "description": station.description,
             "station": station.station,
@@ -395,7 +420,13 @@ function initMap() {
 }
 
 function Element(id) {
+
+  /* function Element
+   * Returns the DOM element with particular ID
+   */
+
   return document.getElementById(id);
+
 }
 
 function fitMapBounds(markers) {
@@ -441,7 +472,7 @@ function generateMessageTableContent(json) {
 function generateMessageDetails(message) {
 
   if(message === null) {
-    return "<div class='alert alert-danger'> " + IconSpan("unavailable") + " Message not found. </div>";
+    return "<div class='alert alert-danger'> " + Icon("remove", "danger") + " Message not found. </div>";
   }
 
   console.debug("Retrieved message with id " + message._id + " from server.");
@@ -451,13 +482,13 @@ function generateMessageDetails(message) {
   return [
     "<div class='card'>",
       "<div class='card-header'>",
-        "<small style='float: right;'>Sent at " + IconSpan("clock") + " " + message.created + "</small>",
+        "<small style='float: right;'>Sent at " + Icon("clock-o") + " " + message.created + "</small>",
         "<h5><b><span class='fa fa-envelope-o'></span> " + message.subject + "</b></h5>",
       "</div>",
       "<div class='card-block'>",
       message.content,
       "<hr>",
-      message.author ? "" : "<button class='btn btn-danger btn-sm' style='float: right;' onClick='deleteMessage()'><span class='fa fa-trash'></span> Delete Message</button>",
+      "<button class='btn btn-danger btn-sm' style='float: right;' onClick='deleteMessage()'><span class='fa fa-trash'></span> Delete Message</button>",
       "Sender: " + formatMessageSender(message.sender),
       "</div>",
     "</div>",
@@ -465,19 +496,29 @@ function generateMessageDetails(message) {
 
 }
 
-function deleteAllMessages() {
+function deleteAllMessages(type) {
 
   // Confirm deletion
   if(!confirm("Are you sure you want to delete all messages?")) {
     return;
   }
 
+  var search;
+
+  if(type === "inbox") {
+    search = "deleteall";
+  } else if(type === "sent") {
+    search = "deletesent";
+  } else {
+    throw("Could not delete all messages");
+  }
+
   // Instead of "read" we pass "delete" to the API with the same message identifier
   $.ajax({
-    "url": "/api/messages?deleteall",
+    "url": "/api/messages?" + search,
     "type": "GET",
     "dataType": "JSON",
-    "success": function(json) {
+    "success": function() {
       window.location.reload();
     }
 
@@ -491,7 +532,7 @@ function deleteMessage() {
    * Deletes message with a given identifier
    */
 
-  // Confirm deletion
+  // Confirm message deletion
   if(!confirm("Are you sure you want to delete this message?")) {
     return;
   }
@@ -504,10 +545,10 @@ function deleteMessage() {
     "success": function(json) {
 
       if(json === null) {
-        return document.getElementById("message-detail").innerHTML = "<div class='alert alert-danger'> " + IconSpan("unavailable") + " Could not delete message. </div>";
+        return document.getElementById("message-detail").innerHTML = "<div class='alert alert-danger'> " + Icon("remove", "danger") + " Could not delete message. </div>";
       }
 
-      document.getElementById("message-detail").innerHTML = "<div class='alert alert-success'>" + IconSpan("checkmark") + " Message has been deleted.</div>";
+      document.getElementById("message-detail").innerHTML = "<div class='alert alert-success'>" + Icon("check", "success") + " Message has been deleted.</div>";
     }
 
   });
@@ -520,6 +561,7 @@ function formatMessageSender(sender) {
    * Returns specific formatting for particular senders (e.g. administrator)
    */
 
+  // Indicate user is an administrator
   if(sender.role === "admin") {
     return sender.username + " (<span class='text-danger'><b>O</span>RFEUS Administrator</b>)";
   }
@@ -528,53 +570,18 @@ function formatMessageSender(sender) {
 
 }
 
-function IconSpan(type) {
+function Icon(icon, color) {
 
-  switch(type) {
-    case "grey-light":
-      return "<span class='fa fa-circle text-muted'></span>";
-    case "green-light":
-      return "<span class='fa fa-circle text-success'></span>";
-    case "orange-light":
-      return "<span class='fa fa-circle text-warning'></span>";
-    case "red-light":
-      return "<span class='fa fa-circle text-danger'></span>";
-    case "signal":
-      return "<span class='fa fa-signal' aria-hidden='true'></span>";
-    case "clock":
-      return "<span class='fa fa-clock-o' aria-hidden='true'></span>";
-    case "lock":
-      return "<span class='fa fa-lock' aria-hidden='true'></span>";
-    case "download":
-      return "<span class='fa fa-download' aria-hidden='true'></span>";
-    case "dropdown":
-      return "<span class='fa fa-caret-right' aria-hidden='true'></span>";
-    case "eye":
-      return "<span class='fa fa-eye' aria-hidden='true'></span>";
-    case "closed":
-      return "<span class='fa fa-times-circle text-danger' aria-hidden='true'></span>";
-    case "cog":
-      return "<span class='fa fa-cog text-danger' aria-hidden='true'></span>";
-    case "unavailable":
-      return "<span class='fa fa-remove text-danger' aria-hidden='true'></span>";
-    case "checkmark":
-      return "<span class='fa fa-check text-success' aria-hidden='true'></span>";
-    case "map":
-      return "<span class='fa fa-map' aria-hidden='true'></span> &nbsp;";
-    case "cloud":
-      return "<span class='fa fa-cloud' aria-hidden='true'></span> &nbsp;";
-    case "comment":
-      return "<span class='fa fa-comment-o' aria-hidden='true'></span> &nbsp;";
-    case "microchip":
-      return "<span class='fa fa-microchip' aria-hidden='true'></span> &nbsp;";
-    default:
-      return "???";
-  }
+  /* function Icon
+   * Returns font-awesome icon
+   */
+
+  return "<span class='fa fa-" + icon + " text-" + color + "'></span>";
 
 }
 
 function GoogleMapsInfoWindowContent(marker) {
-  return "<h5>" + IconSpan("cog") + " " + marker.title + "</h5><hr><p>" + marker.description + "<p><a href='/home/station?network=" + marker.network + "&station=" + marker.station + "'>View instrument details</a>"; 
+  return "<h5>" + Icon("cog", "danger") + " " + marker.title + "</h5><hr><p>" + marker.description + "<p><a href='/home/station?network=" + marker.network + "&station=" + marker.station + "'>View instrument details</a>"; 
 }
 
 function MapInformationText(nStations) {
@@ -584,11 +591,11 @@ function MapInformationText(nStations) {
 function getNetworkDOI() {
 
   const API_ADDRESS = "https://www.orfeus-eu.org/api/doi";
-  const QUERY = "?network=" + USER_NETWORKS.join(",");
+  const DOI_API_QUERY = "network=" + USER_NETWORKS.join(",");
 
   // Query the ORFEUS API for the network DOI
   $.ajax({
-    "url": API_ADDRESS + QUERY,
+    "url": API_ADDRESS + "?" + DOI_API_QUERY,
     "method": "GET",
     "dataType": "JSON",
     "success": function(json) {
@@ -606,34 +613,12 @@ function getNetworkDOI() {
 
 }
 
-var App = function(location) {
+var App = function() {
 
   getNetworkDOI();
 
   // Initialize the map
   initMap();
-
-}
-
-function generateLatencyInformation(json) {
-
-  var header = ["Channel", "Last Record", "Latency (ms)"];
-  var list = generateLatencyInformationContent(json.latencies);
-
-  // No latencies were returned
-  if(json.latencies.length === 0) {
-    return "<div class='alert alert-danger'> " + IconSpan("unavailable") + " Seedlink connection unavailable. </div>";
-  }
-
-  // Return formatted latency content
-  return [
-    "<h4><span class='fa fa-heart-o text-danger' aria-hidden='true'></span> Seedlink Health</h4>",
-    "<table class='table table-sm table-striped'>",
-    generateTableHead(header),
-    generateTableBody(list),
-    "</table>",
-    "<small> Latencies created at " + IconSpan("clock") + " <b>" + json.created + "</b>.</small>"
-  ].join("\n");
 
 }
 
@@ -884,22 +869,27 @@ function createLatencyTrafficLight(hashMap, x) {
   }
 
   // There is no information
-  return IconSpan("grey-light");
+  return Icon("circle", "muted");
+
+}
+
+function isStationActive(station) {
+
+  var parsedEnd = Date.parse(station.end);
+
+  return isNaN(parsedEnd) || parsedEnd > Date.now();
 
 }
 
 function isActive(station) {
 
-  // Parse the station end date
-  var parsedEnd = Date.parse(station.end);
-
   // Station is open
-  if(isNaN(parsedEnd) || parsedEnd > Date.now()) {
-    return IconSpan("checkmark"); 
+  if(isStationActive(station)) {
+    return Icon("check", "success"); 
   }
 
   // Station is closed
-  return IconSpan("unavailable");
+  return Icon("remove", "danger");
 
 }
 
@@ -947,7 +937,12 @@ function MakeTable() {
   ];
 
   // Get the list (filtered)
-  new Table("table-container", TABLE_HEADER, __TABLE_JSON__);
+  new Table({
+    "id": "table-container",
+    "search": true,
+    "header": TABLE_HEADER,
+    "body": __TABLE_JSON__
+  });
 
 }
 
@@ -960,10 +955,10 @@ function generateAccordionContent(list) {
       "<div class='card'>",
         "<div class='card-header small' role='tab' id='heading-" + i + "'>",
             "<button class='btn btn-link' data-toggle='collapse' data-target='#collapse-" + i + "' aria-expanded='true' aria-controls='collapse-" + i + "'>",
-              IconSpan("dropdown") + " " + (x.location ? x.location + "." : "") + x.channel,
+              Icon("caret-right") + " " + (x.location ? x.location + "." : "") + x.channel,
             "</button>",
             "<span id='heartbeat-" + x.location + "-" + x.channel + "'></span>",
-            "<span class='text-danger'>" + (isClosed(x.end) ? " " : " " + IconSpan("lock") + " Channel closed since " + x.end + "</span>"),
+            "<span class='text-danger'>" + (isClosed(x.end) ? " " : " " + Icon("lock") + " Channel closed since " + x.end + "</span>"),
         "</div>",
         "<div id='collapse-" + i + "' class='collapse' role='tabpanel' aria-labelledby='heading-" + i + "' data-parent='#accordion'>",
           "<div class='card-block'>",
@@ -987,29 +982,25 @@ function accFilter(channel) {
 
 function generateAccordionContentChannelString(channel) {
 
-  return;
-  var parsedEnd = Date.parse(channel.end);
-  var header = ["Sensor", "Unit", "Sampling Rate", "Gain"];
-
-  var table = [
+  var tableHTML = [
     "<table class='table table-sm table-striped'>",
-    generateTableHead(header),
-    generateTableBody([[channel.description, channel.sensorUnits, channel.sampleRate, channel.gain]]),
+    "<thead><tr><th>Sensor</th><th>Unit</th><th>Sampling Rate</th><th>Gain</th></tr></thead>",
+    "<tbody><tr><td>" + channel.description + "</td><td>" + channel.sensorUnits + "</td><td>" + channel.sampleRate + "</td><td>" + channel.gain + "<td></td></tr></tbody>",
     "</table>"
   ].join("\n");
 
   return [
     "Channel <b>" + (channel.location ? channel.location + "." : "") + channel.channel + "</b>",
-    "<small>(" + channel.start + " - " + ((isNaN(parsedEnd) || parsedEnd > Date.now()) ? "present" : channel.end) + ")</small>",
+    "<small>(" + channel.start + " - " + (isStationActive(channel) ? "present" : channel.end) + ")</small>",
     "<p>",
-    table, 
+    tableHTML, 
     "<div class='seedlink-container' id='seedlink-container-" + channel.location + "-" + channel.channel + "'>",
       "<div class='info'></div>",
       "<div class='chart'></div>",
     "</div>",
     "<hr>",
-    "<button class='btn btn-link'>" + IconSpan("eye") + "<small> View Instrument Response</small></button>",
-    "<button class='btn btn-link'>" + IconSpan("download") + "<small> Download Instrument Response</small></button>"
+    "<button class='btn btn-link'>" + Icon("eye") + "<small> View Instrument Response</small></button>",
+    "<button class='btn btn-link'>" + Icon("download") + "<small> Download Instrument Response</small></button>"
   ].join("\n");
 
 }
@@ -1315,7 +1306,72 @@ SeedlinkChannel.prototype.Plot = function() {
 
 }
 
-new App(window.location.href)
+function validateFiles(files) {
+
+  /* function validateFiles
+   * validates uploaded StationXML files
+   * throws an exception on formatting error
+   */
+
+  const FDSN_STATION_XML_HEADER = "FDSNStationXML";
+  const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
+  const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
+  const XML_MIME_TYPE = "text/xml";
+
+  var stagedStations = new Array();
+
+  // Map of stations included by FDSN webservice
+  var stationsMap = _stationJson.map(function(x) {
+    return x.station;
+  });
+
+  // Validate each file
+  files.forEach(function(file) {
+  
+    // Parse the XML using the native DOMParser
+    var XML = new DOMParser().parseFromString(file.data, XML_MIME_TYPE);
+
+    // Confirm that XML owns the FDSNStationXML namespace
+    if(XML.documentElement.nodeName !== FDSN_STATION_XML_HEADER) {
+      throw("Invalid FDSN Station XML");
+    }
+
+    // Go over all networks and collect station names
+    Array.from(XML.getElementsByTagName("Network")).forEach(function(network) {
+
+      var networkCode = network.getAttribute("code");
+
+      // Confirm network regex & user must own network
+      if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORKS.indexOf(networkCode) === -1) {
+        throw("Invalid network code: " + networkCode);
+      }
+
+      Array.from(network.getElementsByTagName("Station")).forEach(function(station) {
+
+        var stationCode = station.getAttribute("code");
+
+        if(!STATION_REGEXP.test(stationCode)) {
+          throw("Invalid station code: " + stationCode);
+        }
+
+        // Detailed sanization check on station metadata
+        validateStationMetadata(station);
+
+        stagedStations.push({
+          "network": networkCode,
+          "station": stationCode,
+          "new": (stationsMap.indexOf(stationCode) === -1)
+        });
+
+      });
+
+    });
+
+  });
+
+  return stagedStations;
+
+}
 
 function AddMetadataUpload() {
 
@@ -1323,89 +1379,32 @@ function AddMetadataUpload() {
    * Adds event to metadata uploading
    */
 
-  const FDSN_STATION_XML_HEADER = "FDSNStationXML";
-  const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
-  const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
-
-  // Change event when a file is selected
+  // Add event handler when files are selected 
   Element("file-stage").addEventListener("change", function(event) {
 
     // Always disable submission button initially
     // It will be released after the StationXML has been verified
     Element("file-submit").disabled = true;
 
-    // Abstracted function to read multiple files from even
+    // Abstracted function to read multiple files from event
     readMultipleFiles(event.target.files, function(files) {
 
-      var stagedStations = new Array();
-
-      var stationsMap = _stationJson.map(function(x) {
-        return x.station;
-      });
-
-      for(var i = 0; i < files.length; i++) {
-
-        var file = files[i];
-
-        // Parse the XML using the native lib
-        var XML = new DOMParser().parseFromString(file.data, "text/xml");
-
-        // Confirm that XML has the FDSNStationXML namespace
-        if(XML.documentElement.nodeName !== FDSN_STATION_XML_HEADER) {
-          return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid FDSN StationXML.</b>";
-        }
-
-        // Go over all networks and collect station names
-        var networks = Array.from(XML.getElementsByTagName("Network"));
-
-        for(var j = 0; j < networks.length; j++) {
-
-          var network = networks[j];
-          var networkCode = network.getAttribute("code");
-
-          if(!NETWORK_REGEXP.test(networkCode)) {
-            return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid Network Code: " + networkCode + "</b>";
-          }
-
-          // Can only updated managed networks
-          if(USER_NETWORKS.indexOf(networkCode) === -1) {
-            return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid Network: " + networkCode + "</b>";
-          }
-
-          var stations = Array.from(network.getElementsByTagName("Station"));
-
-          for(var k = 0; k < stations.length; k++) {
-
-            var station = stations[k];
-            var stationCode = station.getAttribute("code");
-
-            if(!STATION_REGEXP.test(stationCode)) {
-              return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + " Invalid Station Code: " + stationCode + "</b>";
-            }
-
-            // Attempt to do sanization check on metadata
-            try {
-              validateMetadata(station);
-            } catch(exception) {
-              return Element("file-help").innerHTML = "<b>" + IconSpan("unavailable") + "</span> " + exception + " in " + networkCode + "." + stationCode + "</b>"; 
-            }
-
-            // Add star icon to new metadata
-            if(stationsMap.indexOf(stationCode) === -1) {
-              stagedStations.push("<span class='fa fa-star text-warning' title='New Metadata'></span> " + networkCode + "." + stationCode);
-            } else {
-              stagedStations.push(networkCode + "." + stationCode);
-            }
-
-          }
-
-        }
-
+      // Attempt to validate the StationXML metadata in the files
+      try {
+        var stagedStations = validateFiles(files);
+      } catch(exception) {
+        return Element("file-help").innerHTML = "<b>" + Icon("remove", "danger") + "</span> " + exception;
       }
 
       // Allow metadata submission
       Element("file-submit").disabled = false;
-      Element("file-help").innerHTML = "<b>" + IconSpan("checkmark") + "</span> Staged Metadata:</b> " + (stagedStations.length ? stagedStations.join(", ") : "None");
+
+      // Generate the content
+      var stagedFileContent = stagedStations.map(function(x) {
+        return (x.new ? Icon("star", "warning") : "") + x.network + "." + x.station
+      }).join(", ");
+
+      Element("file-help").innerHTML = "<b>" + Icon("check", "success") + "</span> Staged Metadata:</b> " + (stagedStations.length ? stagedFileContent : "None"); 
 
     });
 
@@ -1413,10 +1412,10 @@ function AddMetadataUpload() {
 
 }
 
-function validateMetadata(station) {
+function validateStationMetadata(station) {
 
   /* function validateMetadata
-   * Validates common StationXML issues
+   * Validates common StationXML issues for a single station
    */
 
   const GAIN_TOLERNACE_PERCENT = 0.001;
@@ -1425,10 +1424,10 @@ function validateMetadata(station) {
   var stationLatitude = Number(station.getElementsByTagName("Latitude").item(0).innerHTML);
   var stationLongitude = Number(station.getElementsByTagName("Longitude").item(0).innerHTML);
 
+  // Make sure the station is on Earth
   if(stationLatitude < -90 || stationLatitude > 90) {
     throw("Station latitude is incorrect");
   }
-
   if(stationLongitude < -180 || stationLongitude > 180) {
     throw("Station longitude is incorrect");
   }
@@ -1474,7 +1473,7 @@ function validateMetadata(station) {
     var stages = Array.from(response.item(0).getElementsByTagName("Stage"));
 
     if(stages.length === 0) {
-      throw("Response information not included in inventory");
+      throw("Response stages missing from inventory");
     }
 
     var perStageGain = 1;
@@ -1581,3 +1580,4 @@ function readMultipleFiles(files, callback) {
 
 }
 
+new App();

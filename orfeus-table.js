@@ -1,36 +1,44 @@
-const MINIMUM_ITEMS_PER_PAGE = 20;
+const MINIMUM_ITEMS_PER_PAGE = 30;
 const MAXIMUM_NUMBER_PAGES = 10;
 
-var Table = function(id, header, body) {
+var Table = function(options) {
 
   /* class Table
    * Returns table with content including
    * search & pagination functionality
    */
 
-  this.header = header;
-  this.body = body;
+  this.header = options.header;
+  this.body = options.body;
+  this.search = options.search && this.body.length !== 0;
 
   // Generate the HTML for this table
-  document.getElementById(id).innerHTML = [
-    "<div class='input-group'>",
-    "  <span class='input-group-addon'><span class='fa fa-search' aria-hidden='true'> Search</span></span>",
-    "  <input class='form-control' id='" + id + "-search" + "'/>",
-    "</div>",
-    "<div id='" + id + "-content" + "'></div>",
-  ].join("\n");
+  var content = new Array();
+  if(this.search) {
+    content = content.concat([ 
+      "<div class='input-group'>",
+      "  <span class='input-group-addon'><span class='fa fa-search' aria-hidden='true'> Search</span></span>",
+      "  <input class='form-control' id='" + options.id + "-search" + "'/>",
+      "</div>",
+    ])
+  }
+
+  content.push("<div id='" + options.id + "-content" + "'></div>")
+
+  document.getElementById(options.id).innerHTML = content.join("\n");
 
   // Get the search & content elements for this table
-  this.search = document.getElementById(id + "-search");
-  this.id = document.getElementById(id + "-content");
+  if(this.search) {
+    this.search = document.getElementById(options.id + "-search");
+    this.search.addEventListener("input", this.draw.bind(this));
+  }
 
-  // Input handler for the search box
-  this.search.addEventListener("input", this.draw.bind(this));
+  this.id = document.getElementById(options.id + "-content");
 
   // Dynamically set the number of items per page
   this.itemsPerPage = Math.max(
     MINIMUM_ITEMS_PER_PAGE,
-    Math.ceil(body.length / MAXIMUM_NUMBER_PAGES)
+    Math.ceil(this.body.length / MAXIMUM_NUMBER_PAGES)
   );
 
   // Keep track of the active page through pagination
@@ -47,15 +55,21 @@ Table.prototype.draw = function() {
    * Redraws the table by creating the HTML
    */
 
-  var searchTerm = this.search.value;
-  var regex = new RegExp("^.*" + searchTerm + ".*$");
-  var filteredRows = this.body.filter(function(x) {
-    for(var i = 0; i < x.length; i++) {
-      if(String(x[i]).match(regex)) {
-        return true;
+  var filteredRows = this.body;
+
+  if(this.search) {
+
+    var searchTerm = this.search.value;
+    var regex = new RegExp("^.*" + searchTerm + ".*$");
+    var filteredRows = this.body.filter(function(x) {
+      for(var i = 0; i < x.length; i++) {
+        if(String(x[i]).match(regex)) {
+          return true;
+        }
       }
-    }
-  });
+    });
+
+  }
 
   var pagination = this.generatePagination(filteredRows);
 
@@ -91,7 +105,7 @@ Table.prototype.generatePaginationList = function(list) {
 
   // Create the number of pages
   return list.filter(function(_, i) {
-    return (i % this.itemsPerPage === 0);
+    return (i + 1) % this.itemsPerPage === 0
   }.bind(this)).map(function(_, i) {
     return this.paginationItem(i);
   }.bind(this)).join("\n");
@@ -115,12 +129,15 @@ Table.prototype.setActiveIndex = function(context) {
    */
 
   var children = context.children[0];
+  var maxIndex = Math.floor(this.body.length / this.itemsPerPage) - 1;
 
   switch(children.innerHTML) {
     case "Next":
+      if(this.activeIndex === maxIndex) return;
       this.activeIndex++;
       break;
     case "Previous":
+      if(this.activeIndex === 0) return;
       this.activeIndex--;
       break;
     default:
@@ -129,7 +146,7 @@ Table.prototype.setActiveIndex = function(context) {
   }
 
   // Clamp the active index between 0 and max pages
-  this.activeIndex = Math.max(Math.min(Math.floor(this.body.length / this.itemsPerPage) - 1, this.activeIndex), 0);
+  this.activeIndex = Math.max(Math.min(maxIndex, this.activeIndex), 0);
 
   // Redraw
   this.draw();
