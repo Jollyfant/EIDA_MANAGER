@@ -1243,38 +1243,7 @@ function GetStationLatency(session, callback) {
     "network": session.networks.join(",")
   });
 
-  var request = http.get(CONFIG.LATENCY_URL + "?" + queryString, function(response) {
-
-    // Response was 204 No Content
-    if(response.statusCode === S_HTTP_NO_CONTENT) {
-      return callback(null);
-    }
-
-    var chunks = new Array();
-
-    // Data chunk received
-    response.on("data", function(chunk) {
-      chunks.push(chunk);
-    });
-
-    // HTTP Get request ended
-    response.on("end", function() {
-
-      // HTTP Error code
-      if(response.statusCode !== S_HTTP_OK) {
-        return callback(null);
-      }
-
-      return callback(Buffer.concat(chunks).toString());
-
-    });
-
-  });
-
-  // There was an error with the request (e.g. ECONNREFUSED)
-  request.on("error", function(error) {
-    return callback(null);
-  });
+  HTTPRequest(CONFIG.LATENCY_URL + "?" + queryString, callback);
 
 }
 
