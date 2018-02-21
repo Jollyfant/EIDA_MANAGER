@@ -90,17 +90,7 @@ var User = function(user, id) {
 function HTTPError(response, status) {
 
   response.writeHead(status, {"Content-Type": "text/html"});
-
-  switch(status) {
-    case 401:
-      return response.end(generate401());
-    case 404:
-      return response.end(generate404());
-    case 500:
-      return response.end(generate500());
-    default:
-      return response.end();
-  }
+  response.end(generateHTTPError(status));
 
 }
 
@@ -815,52 +805,23 @@ function writeMultipleFiles(files, session, callback) {
 
 }
 
-function generate401() {
+function generateHTTPError(status) {
 
-    return [
-      generateHeader(),
-      "  <body>",
-      "    <div class='container'>",
-      "      <h2 class='text-muted'><span style='color: #C03;'>401</span> Unauthorized</h2>",
-      "    </div>",
-      "  </body>",
-      generateFooter(),
-      "</html>"
-    ].join("\n");
+  // Unknown status code
+  if(!http.STATUS_CODES.hasOwnProperty(status)) {
+    status = 418;
+  }
 
-}
-
-function generate500() {
-
-    /* function generate500
-     * Template for HTTP Error Code 500
-     */
-
-    return [
-      generateHeader(),
-      "  <body>",
-      "    <div class='container'>",
-      "      <h2 class='text-muted'><span style='color: #C03;'>500</span> Internal Server Error</h2>",
-      "    </div>",
-      "  </body>",
-      generateFooter(),
-      "</html>"
-    ].join("\n");
-
-}
-
-function generate404() {
-
-    return [
-      generateHeader(),
-      "  <body>",
-      "    <div class='container'>",
-      "      <h2 class='text-muted'><span style='color: #C03;'>404</span> File Not Found</h2>",
-      "    </div>",
-      "  </body>",
-      generateFooter(),
-      "</html>"
-    ].join("\n");
+  return [
+    generateHeader(),
+    "  <body>",
+    "    <div class='container'>",
+    "      <h2 class='text-muted'><span style='color: #C03;'>" + status +"</span> " + http.STATUS_CODES[status] + " </h2>",
+    "    </div>",
+    "  </body>",
+    generateFooter(),
+    "</html>"
+  ].join("\n");
 
 }
 

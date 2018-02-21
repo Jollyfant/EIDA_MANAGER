@@ -506,7 +506,6 @@ function generateMessageDetails(message) {
     return "<div class='alert alert-danger'> " + Icon("remove", "danger") + " Message not found. </div>";
   }
 
-console.log(message)
   console.debug("Retrieved message with id " + message._id + " from server.");
 
   document.getElementById("final-crumb").innerHTML = "Subject: " + message.subject;
