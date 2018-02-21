@@ -7,15 +7,13 @@ const url = require("url");
 const fs = require("fs");
 const querystring = require("querystring");
 
-// Libraries
-const libxmljs = require("libxmljs");
-
 // ORFEUS libs
 const Database = require("./orfeus-database");
 const Multipart = require("./multipart");
 const Session = require("./orfeus-session");
 const Console = require("./orfeus-logging");
-const XSDSchema = require("./orfeus-xml");
+const StationXMLParser = require("./orfeus-metadata.js");
+const SHA256 = require("./orfeus-crypto.js");
 
 const STATIC_FILES = require("./orfeus-static");
 const CONFIG = require("./config");
@@ -25,6 +23,7 @@ const S_HTTP_NO_CONTENT = 204;
 const S_HTTP_REDIRECT = 301;
 const E_HTTP_UNAUTHORIZED = 401;
 const E_HTTP_FILE_NOT_FOUND = 404;
+const E_HTTP_TEAPOT = 418;
 const E_HTTP_INTERNAL_SERVER_ERROR = 500;
 
 function getSession(headers, callback) {
@@ -440,9 +439,7 @@ var Webserver = function() {
   
       }
 
-      response.writeHead(404, {"Content-Type": "text/html"});
-      response.write(generate404());
-      response.end();
+      return HTTPError(response, E_HTTP_FILE_NOT_FOUND);
   
     });
   
@@ -461,257 +458,6 @@ var Webserver = function() {
       process.exit(0);
     //});
   });
-
-}
-
-function validateMetadata(XMLDocument) {
-
-  /* function validateMetadata
-   * Server side validation of StationXML metadata
-   */
-
-  const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
-  const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
-  const GAIN_TOLERNACE_PERCENT = 0.001;
-
-  var namespace = XMLDocument.root().namespace().href();
-
-  XMLDocument.find("xmlns:Network", namespace).forEach(function(network) {
-
-    var networkCode = network.attr("code").value();
-
-    // Confirm network & station identifiers
-    if(!NETWORK_REGEXP.test(networkCode)) {
-      throw("Invalid network code");
-    }
-
-    network.find("xmlns:Station", namespace).forEach(function(station) {
-
-      var stationCode = station.attr("code").value();
-
-      if(!STATION_REGEXP.test(stationCode)) {
-        throw("Invalid station code");
-      }
-
-      var channels = station.find("xmlns:Channel", namespace);
-
-      if(channels.length === 0) {
-        throw("Channel information missing");
-      }
-
-      channels.forEach(function(channel) {
-
-        var channelCode = channel.attr("code").value();
-
-        var sampleRate = Number(channel.get("xmlns:SampleRate", namespace).text())
-
-        if(isNaN(sampleRate) || sampleRate === 0) {
-          throw("Invalid sample rate");
-        }
-
-        var response = channel.find("xmlns:Response", namespace);
-
-        if(response.length === 0) {
-          throw("Response element is missing");
-        }
-
-        if(response.length !== 1) {
-          throw("Multiple response elements included");
-        }
-
-        var stages = response[0].find("xmlns:Stage", namespace);
-
-        if(stages.length === 0) {
-          throw("No response stages included in inventory");
-        }
-
-        var perStageGain = 1;
-
-        stages.forEach(function(stage) {
-
-          perStageGain = perStageGain * Number(stage.get("xmlns:StageGain", namespace).get("xmlns:Value", namespace).text());
-
-          stage.find("xmlns:FIR", namespace).forEach(function(FIRStage) {
-            validateFIRStage(FIRStage, namespace);
-          });
-
-        });
-
-        var instrumentSensitivity = Number(response[0].get("xmlns:InstrumentSensitivity", namespace).get("xmlns:Value", namespace).text());
-
-        // Validate stage calculated & reported gains
-        if(1 - (Math.max(instrumentSensitivity, perStageGain) / Math.min(instrumentSensitivity, perStageGain)) > GAIN_TOLERNACE_PERCENT) {
-          throw("Computed and reported stage gain is different");
-        }
-
-      });
-
-    });
-
-  });
-
-}
-
-function Sum(array) {
-
-  /* function Sum
-   * returns the average of an array
-   */
-
-  return array.reduce(function(a, b) {
-    return a + b;
-  }, 0);
-
-}
-
-function validateFIRStage(FIRStage, namespace) {
-
-  /* function validateFIRStage
-   * Validates StationXML FIR Stage
-   */
-
-  const FIR_TOLERANCE = 0.02;
-
-  // Confirm FIR Stage input units as COUNTS
-  if(FIRStage.get("xmlns:InputUnits", namespace).get("xmlns:Name", namespace).text() !== "COUNTS") {
-    throw("FIR Stage input units invalid");
-  }
-
-  // Confirm FIR Stage output units as COUNTS
-  if(FIRStage.get("xmlns:OutputUnits", namespace).get("xmlns:Name", namespace).text() !== "COUNTS") {
-    throw("FIR Stage output units invalid");
-  }
-
-  var FIRSum = Sum(FIRStage.find("xmlns:NumeratorCoefficient", namespace).map(function(FIRCoefficient) {
-    return Number(FIRCoefficient.text());
-  }));
-
-  // Symmetry specified: FIR coefficients are symmetrical (double the sum)
-  if(FIRStage.get("xmlns:Symmetry", namespace).text() !== "NONE") {
-    FIRSum = 2 * FIRSum;
-  }
-
-  // Check if the FIR coefficient sum is within tolerance
-  if(Math.abs(1 - FIRSum) > FIR_TOLERANCE) {
-    throw("Invalid FIR Coefficient Sum (" + Math.abs(1 - FIRSum).toFixed(4) + ")");
-  }
-
-}
-
-
-function splitStationXML(files) {
-
-  /* function splitStationXML
-   * Validated and splits stationXML per station
-   */
-
-  const FDSN_SENDER = "ORFEUS";
-  const FDSN_SOURCE = "ORFEUS Manager Upload";
-  const FDSN_MODULE = "ORFEUS Manager " + CONFIG.__VERSION__;
-  const FDSN_STATION_VERSION = "1.0";
-
-  // Collection of documents to be written
-  var XMLDocuments = new Array();
-
-  for(var i = 0; i < files.length; i++) {
-
-    // Convert to libxmljs object
-    var XMLDocument = libxmljs.parseXml(files[i].data);
-
-    // Validate the entire against the schema
-    if(!XMLDocument.validate(XSDSchema)) {
-      throw("Error validating FDSNStationXML");
-    }
-
-    validateMetadata(XMLDocument);
-
-    // Get the namespace & schema version of document
-    var namespace = XMLDocument.root().namespace().href();
-    var schemaVersion = XMLDocument.root().attr("schemaVersion").value();
-
-    // Confirm version
-    if(schemaVersion !== FDSN_STATION_VERSION) {
-      throw("Invalid FDSNStationXML version");
-    }
-
-    // Split entries by Network / Station
-    XMLDocument.find("xmlns:Network", namespace).forEach(function(network) {
-
-      var networkCode = network.attr("code").value();
-
-      network.find("xmlns:Station", namespace).forEach(function(station) {
-
-        var stationCode = station.attr("code").value();
-
-        Console.debug("Extracting station " + networkCode + "." + stationCode + " from document");
-
-        // Namespace must be removed this way (known bug in libxmljs)
-        // And then replaced out in the string representation
-        station.namespace("");
-
-        // Create a new XML document
-        var stationXMLDocument = new libxmljs.Document("1.0", "UTF-8");
-
-        // Add FDSNStationXML attributes
-        var stationXMLRoot = stationXMLDocument.node("FDSNStationXML").attr({
-          "xmlns": namespace,
-          "schemaVersion": schemaVersion
-        });
-
-        // Add new properties to the root
-        stationXMLRoot.node("Source", FDSN_SOURCE);
-        stationXMLRoot.node("Sender", FDSN_SENDER);
-        stationXMLRoot.node("Module", FDSN_MODULE);
-        stationXMLRoot.node("Created", new Date().toISOString());
-
-        stationXMLNetwork = stationXMLRoot.node("Network");
-
-        // Add child nodes that are not "Station" or "text" (e.g. description)
-        network.childNodes().forEach(function(x) {
-          if(x.name() !== "Station" && x.name() !== "text") {
-            stationXMLNetwork.node(x.name(), x.text());
-          }
-        });
-
-        // Collect the attributes
-        var attrs = new Object();
-        network.attrs().forEach(function(x) {
-          attrs[x.name()] = x.value();
-        });
-
-        // Set the attributes
-        stationXMLNetwork.attr(attrs);
-
-        // Add particular station
-        stationXMLNetwork.addChild(station);
-
-        // Validate the entire against the schema
-        var XMLString = stationXMLDocument.toString().replace(" xmlns=\"\"", "");
-
-        // Validate the extracted document against the schema (only during DEBUG)
-        if(CONFIG.__DEBUG__ && !libxmljs.parseXml(XMLString).validate(XSDSchema)) {
-          throw("Extracted document does not validate.");
-        }
-
-        XMLDocuments.push({
-          "data": XMLString,
-          "metadata": {
-            "network": networkCode,
-            "station": stationCode,
-            "filepath": path.join("files", networkCode, stationCode),
-            "id": networkCode + "." + stationCode,
-            "size": XMLString.length,
-            "sha256": SHA256(XMLString)
-          }
-        });
-
-      });
-
-    });
-  
-  }
-
-  return XMLDocuments;
 
 }
 
@@ -745,7 +491,7 @@ function writeMultipleFiles(files, session, callback) {
 
   // We split any submitted StationXML files
   try {
-    var XMLDocuments = splitStationXML(files);
+    var XMLDocuments = StationXMLParser(files);
   } catch(exception) {
     return callback(exception);
   }
@@ -790,6 +536,7 @@ function writeMultipleFiles(files, session, callback) {
         return callback(error);
       }
 
+      // Done writing
       if(XMLDocuments.length === 0) {
         return callback(null)
       }
@@ -807,7 +554,7 @@ function generateHTTPError(status) {
 
   // Unknown status code
   if(!http.STATUS_CODES.hasOwnProperty(status)) {
-    status = 418;
+    status = E_HTTP_TEAPOT;
   }
 
   return [
@@ -860,14 +607,16 @@ function saveFilesObjects(metadata, session) {
 
   // Asynchronously store all file objects
   Database.files().insertMany(dbFiles, function(error) {
+
     if(error) {
       Console.error("Could not add file objects to the database");
     }
+
   });
 
 }
 
-var Message = function(recipient, sender, subject, content) {
+function Message(recipient, sender, subject, content) {
 
   return {
     "recipient": recipient,
@@ -946,72 +695,72 @@ function messageAdministrators(metadata, sender) {
 
 function APIRequest(request, response, session) {
 
-    /* Fuction APIRequest
-     * All requests to the ORFEUS API go through here
-     */
+  /* Fuction APIRequest
+   * All requests to the ORFEUS API go through here
+   */
 
-    // Parse the resource identifier
-    var uri = url.parse(request.url);
+  // Parse the resource identifier
+  var uri = url.parse(request.url);
 
-    if(uri.pathname.startsWith("/api/latency")) {
-      GetStationLatency(session, function(data) {
-        response.end(data);
+  if(uri.pathname.startsWith("/api/latency")) {
+    GetStationLatency(session, function(data) {
+      response.end(data);
+    });
+    return;
+  }
+
+  // Stations managed by the session
+  if(uri.pathname === "/api/stations") {
+    GetFDSNWSStations(session, function(data) {
+      response.end(ParseFDSNWSResponse(data));
+    });
+    return;
+  }
+
+  if(uri.pathname.startsWith("/api/messages/details")) {
+    if(uri.search !== null && uri.search.startsWith("?read")) {
+      GetSpecificMessage(session, url.parse(request.url), function(json) {
+        response.end(JSON.stringify(json));
       });
-      return;
-    }
-
-    // Stations managed by the session
-    if(uri.pathname === "/api/stations") {
-      GetFDSNWSStations(session, function(data) {
-        response.end(ParseFDSNWSResponse(data));
+    } else if(uri.search !== null && uri.search.startsWith("?delete")) {
+      RemoveSpecificMessage(session, url.parse(request.url), function(json) {
+        response.end(json);
       });
-      return;
+    } else {
+      response.end(JSON.stringify(null));
     }
+    return;
+  }
 
-    if(uri.pathname.startsWith("/api/messages/details")) {
-      if(uri.search !== null && uri.search.startsWith("?read")) {
-        GetSpecificMessage(session, url.parse(request.url), function(json) {
-          response.end(JSON.stringify(json));
-        });
-      } else if(uri.search !== null && uri.search.startsWith("?delete")) {
-        RemoveSpecificMessage(session, url.parse(request.url), function(json) {
-          response.end(json);
-        });
-      } else {
-        response.end(JSON.stringify(null));
-      }
-      return;
-    }
-
-    if(uri.pathname.startsWith("/api/messages")) {
-      if(uri.search && uri.search.startsWith("?new")) {
-        GetNewMessages(session, function(json) {
-          response.end(json);
-        });
-      } else if(uri.search && uri.search.startsWith("?deleteall")) {
-        RemoveAllMessages(session, function(json) {
-          response.end(json);
-        });
-      } else if(uri.search && uri.search.startsWith("?deletesent")) {
-        RemoveAllMessagesSent(session, function(json) {
-          response.end(json);
-        });
-      } else {
-        GetMessages(session, function(json) {
-          response.end(json);
-        });
-      }
-      return;
-    }
-
-    if(uri.pathname.startsWith("/api/channels")) {
-      GetFDSNWSChannels(session, url.parse(request.url), function(data) {
-        response.end(ParseFDSNWSResponseChannel(data));
+  if(uri.pathname.startsWith("/api/messages")) {
+    if(uri.search && uri.search.startsWith("?new")) {
+      GetNewMessages(session, function(json) {
+        response.end(json);
       });
-      return;
+    } else if(uri.search && uri.search.startsWith("?deleteall")) {
+      RemoveAllMessages(session, function(json) {
+        response.end(json);
+      });
+    } else if(uri.search && uri.search.startsWith("?deletesent")) {
+      RemoveAllMessagesSent(session, function(json) {
+        response.end(json);
+      });
+    } else {
+      GetMessages(session, function(json) {
+        response.end(json);
+      });
     }
+    return;
+  }
 
-    return HTTPError(E_HTTP_FILE_NOT_FOUND, response);
+  if(uri.pathname.startsWith("/api/channels")) {
+    GetFDSNWSChannels(session, url.parse(request.url), function(data) {
+      response.end(ParseFDSNWSResponseChannel(data));
+    });
+    return;
+  }
+
+  return HTTPError(E_HTTP_FILE_NOT_FOUND, response);
 
 }
 
@@ -1376,10 +1125,6 @@ function GetFDSNWSStations(session, callback) {
 
   HTTPRequest(FDSNWS_STATION_URL + "?" + queryString, callback);
 
-}
-
-function SHA256(password) {
-  return crypto.createHash("sha256").update(password).digest("hex");
 }
 
 function Authenticate(postBody, callback) {
