@@ -60,7 +60,7 @@ Table.prototype.draw = function() {
   if(this.search) {
 
     var searchTerm = this.search.value;
-    var regex = new RegExp("^.*" + searchTerm + ".*$");
+    var regex = new RegExp("^.*" + searchTerm + ".*$", "i");
     var filteredRows = this.body.filter(function(x) {
       for(var i = 0; i < x.length; i++) {
         if(String(x[i]).match(regex)) {
