@@ -1195,6 +1195,9 @@ function generateLogin(invalid) {
   return [
     generateHeader(),
     "  <body>",
+    "    <div style='text-align: center;'>",
+    "      <img src='/images/knmi.png'>",
+    "    </div>",
     "    <div class='container'>",
     "      <form class='form-signin' method='post' action='authenticate'>",
     "        <h2 class='form-signin-heading'><span style='color: #C03;'>O</span>RFEUS Manager</h2>",
@@ -1248,7 +1251,7 @@ function generateFooter() {
     "  </div>",
     "  <footer class='container text-muted'>",
     "  <hr>",
-    "  ORFEUS Manager &copy; ODC " + new Date().getFullYear() + ". All Rights Reserved.",
+    "  ORFEUS Manager &copy; <a href='https://orfeus-eu.org'>ODC</a> " + new Date().getFullYear() + ". All Rights Reserved.",
     "  <div style='float: right;'><small>Version v" + CONFIG.__VERSION__ + "</small></div>",
     "  </footer>",
     "  <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css'>",
@@ -1394,6 +1397,9 @@ function generateWelcome(session) {
   return [
     "    <script>const USER_NETWORKS = " + JSON.stringify(session.networks) + "; USER_VERSION = " + JSON.stringify(session.version) + "</script>",
     "    <div class='container'>",
+    "      <div style='text-align: center;'>",
+    "        <img src='/images/knmi.png'>",
+    "      </div>",
     "      <div style='float: right;'>",
     "        <a href='/home/messages'><span class='badge badge-success'><span class='fa fa-envelope' aria-hidden='true'></span> <small><span id='number-messages'></span></small></span></a>",
     "        &nbsp;",
