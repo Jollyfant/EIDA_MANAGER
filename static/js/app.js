@@ -6,6 +6,7 @@ const ITEMS_PER_PAGE = 75;
 
 const NODES = [{
   "name": "ORFEUS Data Center",
+  "id": "ODC",
   "position": {
     "lat": 52.10165,
     "lng": 5.1783
@@ -17,6 +18,28 @@ var _stationJson;
 var _channelJson;
 var ACTIVE_PAGE_INDEX = 0;
 var map, infowindow;
+
+function getCountryFlag(archive) {
+
+  if(archive === "ODC") {
+    return "&#x1F1F3;&#x1F1F1;";
+  } else if(archive === "GFZ" || archive === "LMU" || archive === "BGR") {
+    return "&#x1F1E9;&#x1F1EA;";
+  } else if(archive === "SED") {
+    return "&#x1F1E8;&#x1F1ED";
+  } else if(archive === "INGV") {
+    return "&#x1F1EE;&#x1F1F9;";
+  } else if(archive === "NIEP") {
+    return "&#x1F1F7;&#x1F1F4;";
+  } else if(archive === "RESIF" || archive === "IPGP") {
+    return "&#x1F1EB;&#x1F1F7;";
+  } else if(archive === "NOA") {
+    return "&#x1F1EC;&#x1F1F7;";
+  } else if(archive === "KOERI") {
+    return "&#x1F1F9;&#x1F1F7;";
+  }
+
+}
 
 function AddMap() {
 
@@ -36,6 +59,7 @@ function AddMap() {
     var marker = new google.maps.Marker({
       "map": map,
       "position": node.position,
+      "id": node.id,
       "title": "ORFEUS Data Center",
       "icon": "/images/node.png",
       "zIndex": 100
@@ -44,7 +68,7 @@ function AddMap() {
     // Add listener to the EIDA nodes
     marker.addListener("click", function() {
       infowindow.close();
-      infowindow.setContent("EIDA Node <hr>" + marker.title)
+      infowindow.setContent(generateNodeInfoWindow(marker));
       infowindow.open(map, this);
     });
 
@@ -54,7 +78,19 @@ function AddMap() {
 
 }
 
+function generateNodeInfoWindow(node) {
+
+  return [
+    "<h5>" + getCountryFlag(node.id) + " EIDA Node " + node.id + "</h5>",
+    "<hr>",
+    node.title
+  ].join("");
+
+}
+
 function newMessageNotification() {
+
+  const NOTIFICATION_POLL_MS = 60 * 1000;
 
   var start = Date.now();
 
@@ -77,13 +113,8 @@ function newMessageNotification() {
         document.getElementById("number-messages").innerHTML = json.count + " new messages!";
       }
 
-      // Alert user on login of new messages
-      if(json.count !== 0) {
-        if(window.location.search.startsWith("?welcome")) {
-          Element("modal-content").innerHTML = "<div class='alert alert-info'>" + Icon("check", "info") + " You have new unread messages!" + "</div>";
-          $("#modal-alert").modal();
-        }
-      }
+      // Set next refresh for notifications
+      setTimeout(newMessageNotification, NOTIFICATION_POLL_MS);
 
     }
 
@@ -101,10 +132,10 @@ function getStationLatencies(query) {
     "dataType": "JSON",
     "success": function(json) {
 
-      console.debug("Retrieved " + json.latencies.length + " latencies from " + LATENCY_SERVER + query +  " in " + (Date.now() - start) + " ms.");
+      console.debug("Retrieved " + json.length + " latencies from " + LATENCY_SERVER + query +  " in " + (Date.now() - start) + " ms.");
 
       var header = ["Channel", "Last Record", "Latency (ms)"];
-      var latencies = generateLatencyInformationContent(json.latencies);
+      var latencies = generateLatencyInformationContent(json);
 
       new Table({
         "id": "channel-information-latency",
@@ -475,6 +506,7 @@ function generateMessageDetails(message) {
     return "<div class='alert alert-danger'> " + Icon("remove", "danger") + " Message not found. </div>";
   }
 
+console.log(message)
   console.debug("Retrieved message with id " + message._id + " from server.");
 
   document.getElementById("final-crumb").innerHTML = "Subject: " + message.subject;
@@ -489,7 +521,7 @@ function generateMessageDetails(message) {
       message.content,
       "<hr>",
       "<button class='btn btn-danger btn-sm' style='float: right;' onClick='deleteMessage()'><span class='fa fa-trash'></span> Delete Message</button>",
-      "Sender: " + formatMessageSender(message.sender),
+      (message.author ? "Recipient: " +  formatMessageSender(message.contact) : "Sender: " + formatMessageSender(message.contact)),
       "</div>",
     "</div>",
   ].join("\n");
@@ -780,7 +812,7 @@ function GenerateTable(list) {
       GenerateTableFull(list, new Array());
     },
     "success": function(json) {
-      GenerateTableFull(list, json.latencies);
+      GenerateTableFull(list, json);
     }
 
   });
@@ -958,7 +990,7 @@ function generateAccordionContent(list) {
               Icon("caret-right") + " " + (x.location ? x.location + "." : "") + x.channel,
             "</button>",
             "<span id='heartbeat-" + x.location + "-" + x.channel + "'></span>",
-            "<span class='text-danger'>" + (isClosed(x.end) ? " " : " " + Icon("lock") + " Channel closed since " + x.end + "</span>"),
+            "<span class='text-danger'>" + (isOpen(x.end) ? " " : " " + Icon("lock") + " Channel closed since " + x.end + "</span>"),
         "</div>",
         "<div id='collapse-" + i + "' class='collapse' role='tabpanel' aria-labelledby='heading-" + i + "' data-parent='#accordion'>",
           "<div class='card-block'>",
@@ -971,12 +1003,18 @@ function generateAccordionContent(list) {
 
 }
 
-function isClosed(date) {
+function isOpen(date) {
+
+  /* function isOpen
+   * Returns whether a date is open
+   */
+
   return (isNaN(Date.parse(date)) || Date.parse(date) > Date.now());
+
 }
 
 function accFilter(channel) {
-  return !(!document.getElementById("hide-channels").checked && !isClosed(channel.end))
+  return !(!document.getElementById("hide-channels").checked && !isOpen(channel.end))
 
 }
 
@@ -1024,31 +1062,39 @@ function downloadKML() {
     "</kml>"
   ].join("\n");
 
+  var dataStr = "data:text/xml;charset=utf-8," + encodeURIComponent(XMLString);
+  download("stations.kml", dataStr);
+
 }
 
 function generateKML() {
 
   /* function generateKML
-   * Generates KML string for exporting
+   * Generates KML string from station JSON for exporting
    */
 
   return _stationJson.map(function(x) {
     return [
       "<Placemark>",
       "<Point>",
-      "<coordinates>" + x.position.lat + "," + x.position.lng + "</coordinates>",
+      "<coordinates>" + x.position.lng + "," + x.position.lat + "</coordinates>",
       "</Point>",
-      "</Placemark>",
       "<Network>" + x.network + "</Network>",
       "<description>" + x.description + "</description>",
-      "<Station>" + x.station + "</Station>"
-    ];
+      "<Station>" + x.station + "</Station>",
+      "</Placemark>"
+    ].join("\n");
   }).join("\n");
 
 }
 
 
 function download(name, string) {
+
+  /* function download
+   * Creates a temporary link component used for downloading
+   * encoded data
+   */
 
   var downloadAnchorNode = document.createElement("a");
   downloadAnchorNode.setAttribute("href", string);

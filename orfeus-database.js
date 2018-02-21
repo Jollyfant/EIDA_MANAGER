@@ -42,15 +42,33 @@ Database.prototype.connect = function(callback) {
   const __PROTOCOL__ = "mongodb://"
   const connectionString = __PROTOCOL__ + CONFIG.MONGO.HOST + ":" + CONFIG.MONGO.PORT + "/";
 
+  const DATABASE_CLOSED = "Database connection closed";
+  const DATABASE_RECONNECTED = "Database has been reconnected";
+
   MongoClient.connect(connectionString, function(error, database) {
 
+    // Database is not running 
     if(error) {
       return callback(error);
     }
 
     Console.info("Database connected at " + connectionString);  
-    this._database = database.db("orfeus-manager");
 
+    // When reconnecting
+    database.on("reconnect", function() {
+      Console.info(DATABASE_RECONNECTED);
+      this._database = database.db(CONFIG.MONGO.NAME);
+    }.bind(this));
+
+    // Database closed unexpectedly
+    database.on("close", function() {
+      Console.fatal(DATABASE_CLOSED);
+      this._database = null;
+    }.bind(this));
+
+    this._database = database.db(CONFIG.MONGO.NAME);
+
+    // Callback without error
     callback(null);
 
   }.bind(this));
@@ -58,7 +76,13 @@ Database.prototype.connect = function(callback) {
 }
 
 Database.prototype.connection = function() {
+
+  /* Database.connection
+   * Returns the database connection
+   */
+
   return this._database;
+
 }
 
 Database.prototype.ObjectId = function(id) {

@@ -1,5 +1,5 @@
 {
-  "__STDOUT__": false,
+  "__STDOUT__": true,
   "__DEBUG__": true,
   "__VERSION__": "1.0.0",
   "NODE": {
@@ -9,6 +9,7 @@
   "PORT": 8000,
   "HOST": "127.0.0.1",
   "MONGO": {
+    "NAME": "orfeus-manager",
     "HOST": "127.0.0.1",
     "PORT": 27017
   }

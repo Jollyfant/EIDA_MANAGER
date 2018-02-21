@@ -17,6 +17,23 @@ Console.prototype.write = function(array) {
 
 }
 
+Console.prototype.fatal = function(msg) {
+
+  if(CONFIG.__STDOUT__) {
+    const FATAL_COLOR_EPI = "\x1b[0m";
+    const FATAL_COLOR_PRO = "\x1b[31m";
+  }
+
+  this.write(
+    new Date().toISOString(),
+    FATAL_COLOR_PRO,
+    "FATAL",
+    FATAL_COLOR_EPI,
+    msg
+  );
+
+}
+
 Console.prototype.error = function(msg) {
 
   if(CONFIG.__STDOUT__) {

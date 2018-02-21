@@ -1,18 +1,29 @@
+// Native includes
 const http = require("http");
-const libxmljs = require("libxmljs");
 const crypto = require("crypto");
 const assert = require("assert");
 const path = require("path");
 const url = require("url");
 const fs = require("fs");
 const querystring = require("querystring");
+
+// Libraries
+const libxmljs = require("libxmljs");
+
+// ORFEUS libs
 const Database = require("./orfeus-database");
 const Multipart = require("./multipart");
 const Session = require("./orfeus-session");
 const Console = require("./orfeus-logging");
-const CONFIG = require("./config");
 const XSDSchema = require("./orfeus-xml");
-const HTTP_REDIRECT_STATUS_CODE = 301
+
+const STATIC_FILES = require("./orfeus-static");
+const CONFIG = require("./config");
+
+const S_HTTP_REDIRECT = 301;
+const E_HTTP_UNAUTHORIZED = 401;
+const E_HTTP_FILE_NOT_FOUND = 404;
+const E_HTTP_INTERNAL_SERVER_ERROR = 500;
 
 function getSession(headers, callback) {
 
@@ -21,9 +32,13 @@ function getSession(headers, callback) {
    * from the sessions database
    */
 
+  if(Database.connection() === null) {
+    return callback(true, null);
+  }
+
   // Cookie not set in HTTP request headers
   if(headers.cookie === undefined) {
-    return callback(null);
+    return callback(null, null);
   }
 
   // Parse the cookie header and get the SESSION_ID
@@ -34,18 +49,18 @@ function getSession(headers, callback) {
 
     // Error or session could not be found
     if(error || session === null) {
-      return callback(null);
+      return callback(null, null);
     }
 
     Database.users().findOne({"_id": session.userId}, function(error, user) {
 
       // Error or no user could be found
       if(error || user === null) {
-        return callback(null);
+        return callback(null, null);
       }
 
       // Callback with a new authenticated user
-      callback(new User(user, cookie.SESSION_ID));
+      callback(null, new User(user, cookie.SESSION_ID));
 
     });
 
@@ -72,24 +87,26 @@ var User = function(user, id) {
 
 }
 
-function NotFound(response) {
-  response.writeHead(404, {"Content-Type": "text/html"});
-  response.end(generate404());
-}
+function HTTPError(response, status) {
 
-function Unauthorized(response) {
-  response.writeHead(401, {"Content-Type": "text/html"});
-  response.end(generate401());
-}
+  response.writeHead(status, {"Content-Type": "text/html"});
 
-function ServerError(response) {
-  response.writeHead(500, {"Content-Type": "text/html"});
-  response.end(generate500());
+  switch(status) {
+    case 401:
+      return response.end(generate401());
+    case 404:
+      return response.end(generate404());
+    case 500:
+      return response.end(generate500());
+    default:
+      return response.end();
+  }
+
 }
 
 function Redirect(response, path) {
   var headers = {"Location": path};
-  response.writeHead(HTTP_REDIRECT_STATUS_CODE, headers);
+  response.writeHead(S_HTTP_REDIRECT, headers);
   response.end();
 }
 
@@ -99,14 +116,14 @@ function Init() {
    * Initializes the application
    */
 
-  const DATABASE_CONNECTION_ERROR = "FATAL: Could not open connection to the database.";
+  const DATABASE_CONNECTION_ERROR = "Could not open connection to the database.";
 
   // Attempt to connect to the database
   Database.connect(function(error) {
   
     // Could not connect to Mongo
     if(error) {
-      throw(DATABASE_CONNECTION_ERROR);
+      return Console.fatal(DATABASE_CONNECTION_ERROR);
     }
   
     // Create a new webserver
@@ -138,12 +155,14 @@ function createSession(user, callback) {
   // Insert a new session
   Database.sessions().insertOne(storeObject, function(error, result) {
 
+    const STATUS_MESSAGE = "Created session for " + user.username + " (" + session.id + ").";
+
+    error ? Console.error(STATUS_MESSAGE) : Console.info(STATUS_MESSAGE);
+
     // Error creating a session
     if(error) {
       return callback(null);
     }
-
-    Console.debug("New session with ID " + session.id + " created.");
 
     callback(Cookie(session));
 
@@ -155,6 +174,7 @@ var Webserver = function() {
 
   /* Class Webserver
    * Opens NodeJS webservice on given PORT
+   * Handles all incoming connections
    */
 
   // Create the HTTP server and listen to incoming requests
@@ -193,55 +213,34 @@ var Webserver = function() {
 
     });
 
-    if(uri === "/images/node.png") {
-      response.writeHead(200, {
-        "Content-Type": "image/png"
-      });
-      return fs.createReadStream("./images/node.png").pipe(response);
+    // Serve static file
+    if(STATIC_FILES.indexOf(uri) !== -1) {
+      switch(path.extname(uri)) {
+        case ".css":
+          response.writeHead(200, {"Content-Type": "text/css"});
+          break
+        case ".png":
+          response.writeHead(200, {"Content-Type": "image/png"});
+          break
+        case ".js":
+          response.writeHead(200, {"Content-Type": "application/javascript"});
+          break;
+      }
+      return fs.createReadStream(path.join("static", uri)).pipe(response);
     }
 
-    if(uri === "/images/station.png") {
-      response.writeHead(200, {
-        'Content-Type': "image/png"
-      });
-      return fs.createReadStream("./images/station.png").pipe(response);
-    }
-  
-    // Application script is requested
-    if(uri === "/js/table.js") {
-      response.writeHead(200, {
-        'Content-Type': "application/javascript"
-      });
-      return fs.createReadStream("./js/orfeus-table.js").pipe(response);
-    }
-
-    // Application script is requested
-    if(uri === "/js/app.js") {
-      response.writeHead(200, {
-        'Content-Type': "application/javascript"
-      });
-      return fs.createReadStream("./js/app.js").pipe(response);
-    }
-  
-    // Application style sheet is requested
-    if(uri === "/css/style.css") {
-      response.writeHead(200, {
-        'Content-Type': "text/css"    
-      });
-      return fs.createReadStream("./css/style.css").pipe(response);
-    }
-  
-    // Redirect webserver root to login page
+    // Redirect webserver root to the login page
     if(uri === "/") {
       return Redirect(response, "/login");
     }
 
-     /* An authenticated session may be required
+     /* 
+      * An authenticated session may be required
       */
 
-    getSession(request.headers, function(session) {
+    getSession(request.headers, function(error, session) {
   
-      // Log in
+      // ORFEUS Manager log in page
       if(uri.startsWith("/login")) {
   
         // If the user is already logged in redirect to home page
@@ -251,9 +250,13 @@ var Webserver = function() {
   
         // Get request is made on the login page
         response.writeHead(200, {"Content-Type": "text/html"});
-        response.write(generateLogin(request.url));
-        return response.end();
+        return response.end(generateLogin(request.url));
   
+      }
+
+      // When the database connection fails
+      if(error) {
+        return HTTPError(response, E_HTTP_INTERNAL_SERVER_ERROR);
       }
   
       // URL for posting messages
@@ -284,17 +287,12 @@ var Webserver = function() {
 
             // Create a new message
             const messageBody = users.map(function(user) {
-              return {
-                "recipient": user._id,
-                "sender": session._id,
-                "content": escapeHTML(postBody.content),
-                "subject": escapeHTML(postBody.subject),
-                "read": false,
-                "recipientDeleted": false,
-                "senderDeleted": false,
-                "created": new Date(),
-                "level": 0
-              }
+              return Message(
+                user._id,
+                session._id,
+                escapeHTML(postBody.subject),
+                escapeHTML(postBody.content)
+              )
             });
 
             // Store all messages
@@ -342,11 +340,11 @@ var Webserver = function() {
             createSession(user, function(cookie) {
   
               if(cookie === null) {
-                return ServerError(response);
+                return HTTPError(response, E_HTTP_INTERNAL_SERVER_ERROR);
               }
 
               // Redirect user to home page and set a cookie for this session
-              response.writeHead(HTTP_REDIRECT_STATUS_CODE, {
+              response.writeHead(S_HTTP_REDIRECT, {
                 "Set-Cookie": cookie,
                 "Location": "./home?welcome"
               });
@@ -365,7 +363,7 @@ var Webserver = function() {
   
       // Roadblock for non-authenticated sessions
       if(session === null) {
-        return Unauthorized(response);
+        return HTTPError(response, E_HTTP_UNAUTHORIZED);
       }
 
       /* +-----------------------------------+
@@ -385,9 +383,9 @@ var Webserver = function() {
         // Destroy the session
         Database.sessions().deleteOne({"SESSION_ID": session.sessionId}, function(error, result) {
 
-          const STATUS_MESSAGE = "Removing session for " + session.sessionId;
+          const STATUS_MESSAGE = "Removed session for " + session.username + " (" + session.sessionId + ")";
 
-          !error ? Console.error(STATUS_MESSAGE) : Console.info(STATUS_MESSAGE);
+          error ? Console.error(STATUS_MESSAGE) : Console.info(STATUS_MESSAGE);
 
           Redirect(response, "/login?logout");
 
@@ -472,9 +470,7 @@ var Webserver = function() {
     Console.info("SIGINT received: closing webserver");
     //webserver.close(function() {
       Console.info("Webserver has been closed");
-      Database.sessions().remove({}, function(error, documents) {
-        process.exit(0);
-      });
+      process.exit(0);
     //});
   });
 
@@ -912,6 +908,21 @@ function saveFilesObjects(metadata, session) {
 
 }
 
+var Message = function(recipient, sender, subject, content) {
+
+  return {
+    "recipient": recipient,
+    "sender": sender,
+    "subject": subject,
+    "content": content,
+    "read": false,
+    "recipientDeleted": false,
+    "senderDeleted": false,
+    "created": new Date(),
+    "level": 0
+  }
+
+}
 
 function messageAdministrators(metadata, sender) {
 
@@ -942,20 +953,18 @@ function messageAdministrators(metadata, sender) {
       }
 
       // Create one message per added station
-      messages = messages.concat(metadata.map(function(file) {
-        return {
-          "recipient": user._id,
-          "sender": sender._id,
-          "content": "Metadata submitted for station: " + file.id,
-          "subject": "Metadata added",
-          "read": false,
-          "recipientDeleted": false,
-          "senderDeleted": false,
-          "created": new Date(),
-          "level": 0
-        }
+      var filenames = metadata.map(function(file) {
+        return file.id;
+      }).join(", ");
 
-      }));
+      messages.push(
+        Message(
+          user._id,
+          sender._id,
+          "Metadata added",
+          "Metadata submitted for station(s): " + filenames
+        )
+      );
 
     });
 
@@ -1043,7 +1052,7 @@ function APIRequest(request, response, session) {
       return;
     }
 
-    return NotFound(response);
+    return HTTPError(E_HTTP_FILE_NOT_FOUND, response);
 
 }
 
@@ -1153,22 +1162,25 @@ function GetSpecificMessage(session, request, callback) {
       return callback(null);
     }
 
+    var author = message.sender.toString() === session._id.toString();
+
     // Set message to read
-    if(message.sender.toString() !== session._id.toString()) {
+    if(!author) {
       Database.messages().updateOne(query, {"$set": {"read": true}});
     }
 
+    var id = !author ? message.sender : message.recipient;
+
     // Find the username for the message sender 
-    Database.users().findOne({"_id": Database.ObjectId(message.sender)}, function(error, user) {
+    Database.users().findOne({"_id": Database.ObjectId(id)}, function(error, user) {
 
       var messageContent = {
-        "sender": {"role": user.role, "username": user.username},
+        "contact": {"role": user.role, "username": user.username},
         "subject": message.subject,
         "content": message.content.replace(/\n/g, "<br>"),
         "created": message.created,
-        "role": user.role,
         "read": message.read,
-        "author": message.sender.toString() === session._id.toString()
+        "author": author
       }
 
       callback(messageContent);
@@ -1756,7 +1768,7 @@ function generateWelcomeInformation(session) {
     "          </small>",
     "        </div>",
     "        <h3>",
-    "          <span class='fa fa-user-" + (session.role === "admin" ? "secret" : "circle") + "' aria-hidden='true'></span> " + session.username + " <small class='text-muted'><span id='doi-link'></span></small>",
+    "          <span class='fa fa-user-" + (session.role === "admin" ? "circle text-danger" : "circle") + "' aria-hidden='true'></span> " + session.username + " <small class='text-muted'><span id='doi-link'></span></small>",
     "        </h3>",
     "      </div>",
   ].join("\n");
@@ -1888,4 +1900,3 @@ function escapeHTML(string) {
 }
 
 Init();
-
