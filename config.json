@@ -8,6 +8,7 @@
   },
   "PORT": 8000,
   "HOST": "127.0.0.1",
+  "LATENCY_URL": "http://127.0.0.1:3001",
   "MONGO": {
     "NAME": "orfeus-manager",
     "HOST": "127.0.0.1",

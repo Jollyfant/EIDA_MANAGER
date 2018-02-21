@@ -20,6 +20,8 @@ const XSDSchema = require("./orfeus-xml");
 const STATIC_FILES = require("./orfeus-static");
 const CONFIG = require("./config");
 
+const S_HTTP_OK = 200;
+const S_HTTP_NO_CONTENT = 204;
 const S_HTTP_REDIRECT = 301;
 const E_HTTP_UNAUTHORIZED = 401;
 const E_HTTP_FILE_NOT_FOUND = 404;
@@ -196,10 +198,10 @@ var Webserver = function() {
     // Response finish write to log
     response.on("finish", function() {
 
-      const clientIp = request.headers['x-forwarded-for'] || request.connection.remoteAddress || null;
-      const userAgent = request.headers['user-agent'] || null
+      const clientIp = request.headers["x-forwarded-for"] || request.connection.remoteAddress || null;
+      const userAgent = request.headers["user-agent"] || null
 
-      Console.debug(clientIp + " " + uri + " " + request.method + " " + response.statusCode + " " + nBytes + " " + userAgent);
+      Console.debug([clientIp, uri, request.method, response.statusCode, nBytes, userAgent].join(" "));
 
     });
 
@@ -207,13 +209,13 @@ var Webserver = function() {
     if(STATIC_FILES.indexOf(uri) !== -1) {
       switch(path.extname(uri)) {
         case ".css":
-          response.writeHead(200, {"Content-Type": "text/css"});
+          response.writeHead(S_HTTP_OK, {"Content-Type": "text/css"});
           break
         case ".png":
-          response.writeHead(200, {"Content-Type": "image/png"});
+          response.writeHead(S_HTTP_OK, {"Content-Type": "image/png"});
           break
         case ".js":
-          response.writeHead(200, {"Content-Type": "application/javascript"});
+          response.writeHead(S_HTTP_OK, {"Content-Type": "application/javascript"});
           break;
       }
       return fs.createReadStream(path.join("static", uri)).pipe(response);
@@ -239,7 +241,7 @@ var Webserver = function() {
         }
   
         // Get request is made on the login page
-        response.writeHead(200, {"Content-Type": "text/html"});
+        response.writeHead(S_HTTP_OK, {"Content-Type": "text/html"});
         return response.end(generateLogin(request.url));
   
       }
@@ -304,7 +306,6 @@ var Webserver = function() {
         return;
 
       }
-
 
       // Method for authentication
       if(uri === "/authenticate") {
@@ -427,9 +428,6 @@ var Webserver = function() {
           var files = files.filter(function(x) {
             return x.data.length !== 0;
           });
-
-          // Only permit single file upload
-          // Write a reminder to all administrators that a new file was uploaded
 
           // Write (multiple) files to disk
           writeMultipleFiles(files, session, function(error) {
@@ -1241,16 +1239,14 @@ function GetMessages(session, callback) {
 
 function GetStationLatency(session, callback) {
 
-  const LATENCY_URL = "http://127.0.0.1:3001";
-
   var queryString = querystring.stringify({
     "network": session.networks.join(",")
   });
 
-  var request = http.get(LATENCY_URL + "?" + queryString, function(response) {
+  var request = http.get(CONFIG.LATENCY_URL + "?" + queryString, function(response) {
 
     // Response was 204 No Content
-    if(response.statusCode === 204) {
+    if(response.statusCode === S_HTTP_NO_CONTENT) {
       return callback(null);
     }
 
@@ -1265,7 +1261,7 @@ function GetStationLatency(session, callback) {
     response.on("end", function() {
 
       // HTTP Error code
-      if(response.statusCode !== 200) {
+      if(response.statusCode !== S_HTTP_OK) {
         return callback(null);
       }
 
@@ -1295,38 +1291,7 @@ function GetFDSNWSChannels(session, uri, callback) {
 
   queryString += "&" + uri.query;
 
-  // Open HTTP GET request
-  var request = http.get(FDSNWS_STATION_URL + "?" + queryString, function(response) {
-
-    // Response was 204 No Content
-    if(response.statusCode === 204) {
-      return callback(null);
-    }
-
-    var chunks = new Array();
-
-    // Data chunk received
-    response.on("data", function(chunk) {
-      chunks.push(chunk);
-    });
-
-    // HTTP Get request ended
-    response.on("end", function() {
-
-      if(response.statusCode !== 200) {
-        return callback(null);
-      }
-
-      return callback(Buffer.concat(chunks).toString());
-
-    });
-
-  });
-
-  // There was an error with the request (e.g. ECONNREFUSED)
-  request.on("error", function(error) {
-    return callback(null);
-  });
+  HTTPRequest(FDSNWS_STATION_URL + "?" + queryString, callback);
 
 }
 
@@ -1384,6 +1349,47 @@ function ParseFDSNWSResponse(data) {
 
 }
 
+function HTTPRequest(url, callback) {
+
+  /* function HTTPRequest
+   * Makes HTTP Get request to url and fires callback on completion
+   */
+
+  // Open HTTP GET request
+  var request = http.get(url, function(response) {
+
+    // Response was 204 No Content
+    if(response.statusCode === S_HTTP_NO_CONTENT) {
+      return callback(null);
+    }
+
+    var chunks = new Array();
+
+    // Data chunk received
+    response.on("data", function(chunk) {
+      chunks.push(chunk);
+    });
+
+    // HTTP Get request ended
+    response.on("end", function() {
+
+      if(response.statusCode !== S_HTTP_OK) {
+        return callback(null);
+      }
+
+      return callback(Buffer.concat(chunks).toString());
+
+    });
+
+  });
+
+  // There was an error with the request (e.g. ECONNREFUSED)
+  request.on("error", function(error) {
+    return callback(null);
+  });
+
+}
+
 function GetFDSNWSStations(session, callback) {
 
   /* Function GetFDSNWSStations
@@ -1399,38 +1405,7 @@ function GetFDSNWSStations(session, callback) {
     "network": session.networks.join(",")
   });
 
-  // Open HTTP GET request
-  var request = http.get(FDSNWS_STATION_URL + "?" + queryString, function(response) {
-
-    // Response was 204 No Content
-    if(response.statusCode === 204) {
-      return callback(null);
-    }
-
-    var chunks = new Array();
-
-    // Data chunk received
-    response.on("data", function(chunk) {
-      chunks.push(chunk);
-    });
-
-    // HTTP Get request ended
-    response.on("end", function() {
-
-      if(response.statusCode !== 200) {
-        return callback(null);
-      }
-
-      return callback(Buffer.concat(chunks).toString());
-
-    });
-
-  }); 
-
-  // There was an error with the request (e.g. ECONNREFUSED)
-  request.on("error", function(error) {
-    return callback(null);
-  });
+  HTTPRequest(FDSNWS_STATION_URL + "?" + queryString, callback);
 
 }
 
