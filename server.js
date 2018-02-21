@@ -7,15 +7,16 @@ const url = require("url");
 const fs = require("fs");
 const querystring = require("querystring");
 
-// ORFEUS libs
-const Database = require("./orfeus-database");
 const Multipart = require("./multipart");
-const Session = require("./orfeus-session");
-const Console = require("./orfeus-logging");
-const StationXMLParser = require("./orfeus-metadata.js");
-const SHA256 = require("./orfeus-crypto.js");
 
-const STATIC_FILES = require("./orfeus-static");
+// ORFEUS libs
+const Database = require("./lib/orfeus-database");
+const Session = require("./lib/orfeus-session");
+const Console = require("./lib/orfeus-logging");
+const StationXMLParser = require("./lib/orfeus-metadata.js");
+const SHA256 = require("./lib/orfeus-crypto.js");
+const STATIC_FILES = require("./lib/orfeus-static");
+
 const CONFIG = require("./config");
 
 const S_HTTP_OK = 200;

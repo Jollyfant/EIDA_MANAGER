@@ -1,4 +1,5 @@
 NodeJS*
+config.json
 *.log
 *.out
 node_modules
