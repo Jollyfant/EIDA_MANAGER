@@ -703,7 +703,7 @@ function splitStationXML(files) {
             "filepath": path.join("files", networkCode, stationCode),
             "id": networkCode + "." + stationCode,
             "size": XMLString.length,
-            "sha256": SHA256Password(XMLString)
+            "sha256": SHA256(XMLString)
           }
         });
 
@@ -1434,7 +1434,7 @@ function GetFDSNWSStations(session, callback) {
 
 }
 
-function SHA256Password(password) {
+function SHA256(password) {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
@@ -1442,11 +1442,13 @@ function Authenticate(postBody, callback) {
 
   Database.users().findOne({"username": postBody.username}, function(error, result) {
 
+    // Username or password is invalid
     if(error || result === null) {
       return callback(false);
-     }
+    }
 
-    if(result.password === SHA256Password(postBody.password)){
+    // Confirm the user password
+    if(result.password === SHA256(postBody.password + result.salt)) {
       return callback(true, result);
     } else {
       return callback(false);
