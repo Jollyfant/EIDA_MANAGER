@@ -1,5 +1,6 @@
 const __DEBUG__ = true;
-const STATION_MARKER_IMAGE = "./images/station.png";
+const STATION_MARKER_IMAGE = "/images/station.png";
+const STATION_CLOSED_MARKER_IMAGE = "/images/station-closed.png";
 const SOCKET_URL = "ws://127.0.0.1:8080";
 const LATENCY_SERVER = "http://127.0.0.1:3001";
 const ITEMS_PER_PAGE = 75;
@@ -353,7 +354,7 @@ function initMap() {
 
         var marker = new google.maps.Marker({
           "map": map,
-          "icon": "/images/station.png",
+          "icon": isStationActive(station) ? STATION_MARKER_IMAGE : STATION_CLOSED_MARKER_IMAGE,
           "title": [station.network, station.station].join("."),
           "position": station.position
         }); 
@@ -412,7 +413,7 @@ function initMap() {
         json.forEach(function(station) {
           var marker = new google.maps.Marker({
             "map": map,
-            "icon": STATION_MARKER_IMAGE, 
+            "icon": isStationActive(station) ? STATION_MARKER_IMAGE : STATION_CLOSED_MARKER_IMAGE, 
             "title": [station.network, station.station].join("."), 
             "description": station.description,
             "station": station.station,
