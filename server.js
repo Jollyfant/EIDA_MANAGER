@@ -1420,7 +1420,7 @@ function generateWelcomeInformation(session) {
    */
 
   return [
-    "      <div class='alert alert-warning'>",
+    "      <div class='alert alert-info'>",
     "        <div style='float: right;'>",
     "          <small>",
     "            Last visit at <span class='fa fa-clock-o'></span> <b>" + session.visited.toISOString() + "</b>",
@@ -1453,9 +1453,18 @@ function generateProfile(session) {
     "      <div class='tab-content'>",
     "        <div class='tab-pane active' id='map-container-tab' role='tabpanel'>",
     "          <div class='map-container'>",
-    "            <div id='map'></div>",
+    "            <div style='position: relative;'>",
+    "              <div id='map'></div>",
+    "              <div class='alert alert-info' id='map-legend'></div>",
+    "            </div>",
     "            <div class='card'>",
     "              <div class='card-header'>",
+    "                <select class='form-control' id='map-display'>",
+    "                  <option value='operational'>Operational Status</option>",
+    "                  <option value='latency'>Latency Status</option>",
+    "                  <option value='deployment'>Deployment Status</option>",
+    "                </select>",
+    "                <hr>",
     "                <div style='float: right;'>",
     "                  <button class='btn btn-link' onClick='downloadKML()'><span class='fa fa-sign-out' aria-hidden='true'></span> <small>Download KML</small></button>",
     "                </div>",

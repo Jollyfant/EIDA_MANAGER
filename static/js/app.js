@@ -1,58 +1,94 @@
 const __DEBUG__ = true;
-const STATION_MARKER_IMAGE = "/images/station.png";
-const STATION_CLOSED_MARKER_IMAGE = "/images/station-closed.png";
+const STATION_MARKER_GREEN = "/images/station-green.png";
+const STATION_MARKER_ORANGE = "/images/station-orange.png";
+const STATION_MARKER_GREY = "/images/station-grey.png";
+const STATION_MARKER_RED = "/images/station-red.png";
+const NODE_MARKER = "/images/node.png";
 const SOCKET_URL = "ws://127.0.0.1:8080";
 const LATENCY_SERVER = "http://127.0.0.1:3001";
 const ITEMS_PER_PAGE = 75;
 
-const NODES = [{
-  "name": "ORFEUS Data Center",
-  "id": "ODC",
-  "position": {
-    "lat": 52.10165,
-    "lng": 5.1783
-  }
-}]
-
 var __TABLE_JSON__;
 var _stationJson;
+var _hashMap;
 var _channelJson;
 var ACTIVE_PAGE_INDEX = 0;
 var map, infowindow;
 
 function getCountryFlag(archive) {
 
+  /* function getCountryFlag
+   * Returns the country flag for an EIDA node
+   */
+
+  // Unicode descriptions
+  const FLAG_NETHERLANDS = "&#x1F1F3;&#x1F1F1;";
+  const FLAG_GERMANY = "&#x1F1E9;&#x1F1EA;";
+  const FLAG_SWITZERLAND = "&#x1F1E8;&#x1F1ED";
+  const FLAG_ITALY = "&#x1F1EE;&#x1F1F9;";
+  const FLAG_ROMANIA = "&#x1F1F7;&#x1F1F4;";
+  const FLAG_FRANCE = "&#x1F1EB;&#x1F1F7;";
+  const FLAG_GREECE = "&#x1F1EC;&#x1F1F7;";
+  const FLAG_TURKEY = "&#x1F1F9;&#x1F1F7;";
+
   if(archive === "ODC") {
-    return "&#x1F1F3;&#x1F1F1;";
+    return FLAG_NETHERLANDS;
   } else if(archive === "GFZ" || archive === "LMU" || archive === "BGR") {
-    return "&#x1F1E9;&#x1F1EA;";
+    return FLAG_GERMANY;
   } else if(archive === "SED") {
-    return "&#x1F1E8;&#x1F1ED";
+    return FLAG_SWITZERLAND;
   } else if(archive === "INGV") {
-    return "&#x1F1EE;&#x1F1F9;";
+    return FLAG_ITALY;
   } else if(archive === "NIEP") {
-    return "&#x1F1F7;&#x1F1F4;";
+    return FLAG_ROMANIA;
   } else if(archive === "RESIF" || archive === "IPGP") {
-    return "&#x1F1EB;&#x1F1F7;";
+    return FLAG_FRANCE;
   } else if(archive === "NOA") {
-    return "&#x1F1EC;&#x1F1F7;";
+    return FLAG_GREECE;
   } else if(archive === "KOERI") {
-    return "&#x1F1F9;&#x1F1F7;";
+    return FLAG_TURKEY;
   }
 
 }
 
 function AddMap() {
 
+  /* function AddMap
+   * Initializes code for Google Maps application
+   */
+
+  function generateNodeInfoWindow(node) {
+  
+    /* AddMap::generateNodeInfoWindow
+     * Generates HTML for the EIDA node info window
+     */
+
+    return [
+      "<h5>" + getCountryFlag(node.id) + " EIDA Node " + node.id + "</h5>",
+      "<hr>",
+      node.title
+    ].join("");
+  
+  }
+
   var start = Date.now();
 
   infowindow = new google.maps.InfoWindow();
-  map = new google.maps.Map(document.getElementById("map"));
+  map = new google.maps.Map(Element("map"));
 
   // Listener on map to close the info window
   map.addListener("click", function() {
     infowindow.close();
   });
+
+  const NODES = [{
+    "name": "ORFEUS Data Center",
+    "id": "ODC",
+    "position": {
+      "lat": 52.10165,
+      "lng": 5.1783
+    }
+  }];
 
   // Add the EIDA nodes
   NODES.forEach(function(node) {
@@ -62,7 +98,7 @@ function AddMap() {
       "position": node.position,
       "id": node.id,
       "title": "ORFEUS Data Center",
-      "icon": "/images/node.png",
+      "icon": NODE_MARKER,
       "zIndex": 100
     });
 
@@ -79,19 +115,30 @@ function AddMap() {
 
 }
 
-function generateNodeInfoWindow(node) {
-
-  return [
-    "<h5>" + getCountryFlag(node.id) + " EIDA Node " + node.id + "</h5>",
-    "<hr>",
-    node.title
-  ].join("");
-
-}
-
 function newMessageNotification() {
 
-  const NOTIFICATION_POLL_MS = 60 * 1000;
+  /* function newMessageNotification
+   * Polls the api for new notifications
+   */
+
+  function generateNotificationMessage(count) {
+
+    /* function newMessageNotification::generateNotificationMessage
+     * Generates HTML string for new messages
+     */
+
+    switch(count) {
+      case 0:
+        return "No new messages";
+      case 1:
+        return "1 new messages";
+      default:
+        return count + " new messages";
+    }
+
+  }
+
+  const NOTIFICATION_POLL_MS = 60000;
 
   var start = Date.now();
 
@@ -105,25 +152,20 @@ function newMessageNotification() {
 
       console.debug("Retrieved " + json.count + " new message(s) from server in " + (Date.now() - start) + " ms.");
 
-      // Update HTML notification for number of messages
-      if(json.count === 0) {
-        document.getElementById("number-messages").innerHTML = "No new messages!";
-      } else if(json.count === 1) {
-        document.getElementById("number-messages").innerHTML = "1 new message!";
-      } else {
-        document.getElementById("number-messages").innerHTML = json.count + " new messages!";
-      }
-
-      // Set next refresh for notifications
-      setTimeout(newMessageNotification, NOTIFICATION_POLL_MS);
+      Element("number-messages").innerHTML = generateNotificationMessage(json.count);
 
     }
 
   });
 
+  // Set next refresh for notifications
+  setTimeout(newMessageNotification, NOTIFICATION_POLL_MS);
+
 }
 
 function getStationLatencies(query) {
+
+  const LATENCY_POLL_MS = 60000;
 
   var start = Date.now();
 
@@ -135,13 +177,18 @@ function getStationLatencies(query) {
 
       console.debug("Retrieved " + json.length + " latencies from " + LATENCY_SERVER + query +  " in " + (Date.now() - start) + " ms.");
 
-      var header = ["Channel", "Last Record", "Latency (ms)"];
+      const LATENCY_TABLE_HEADER = [
+        "Channel",
+        "Last Record",
+        "Latency (ms)"
+      ];
+
       var latencies = generateLatencyInformationContent(json);
 
       new Table({
         "id": "channel-information-latency",
         "search": false,
-        "header": header,
+        "header": LATENCY_TABLE_HEADER,
         "body": latencies
       });
 
@@ -149,11 +196,68 @@ function getStationLatencies(query) {
 
   });
 
+  setTimeout(getStationLatencies.bind(this, query), LATENCY_POLL_MS);
+
 }
 
-function initMap() {
+function getMessageDetails() {
 
-  /* function initMap
+  /* function getMessageDetails
+   * Collects specific message from API
+   */
+
+  // No query
+  if(window.location.search === "") {
+    return;
+  }
+
+  $.ajax({
+    "url": "/api/messages/details" + window.location.search,
+    "type": "GET",
+    "dataType": "JSON",
+    "success": function(json) {
+      document.getElementById("message-detail").innerHTML = generateMessageDetails(json);
+    }
+
+  });
+
+}
+
+function generateMessageAlert(type, message) {
+
+  /* function generateMessageAlert
+   * Generates HTML for an alert message with icon
+   */
+
+  function getAlertIcon(type) {
+  
+    /* function generateMessageAlert::getAlertIcon
+     * Returns an icon related to the alert type
+     */
+
+    switch(type) {
+      case "danger":
+        return Icon("remove", "danger");
+      case "warning":
+        return Icon("question", "warning");
+      case "success":
+        return Icon("check", "success");
+    }
+  
+  }
+
+  return [
+    "<div class='alert alert-" + type + "'>",
+    getAlertIcon(type),
+    message,
+    "</div>"
+  ].join("\n");
+
+}
+
+function initApplication() {
+
+  /* function initApplication
    * Initializes the application
    */
 
@@ -161,79 +265,41 @@ function initMap() {
 
   console.debug("Initializing application at " + uri.href + ".");
 
-  // Generate the breadcrumbs as a function of pathname
+  // Generate the breadcrumbs from the URI
   document.getElementById("breadcrumb-container").innerHTML = generateBreadcrumb(uri.pathname); 
 
   // Get new notifications
   newMessageNotification();
 
-  // Message details are requested
+  // Message details
   if(uri.pathname === "/home/messages/details") {
-
-    if(location.search === "") {
-      return;
-    }
-
-    $.ajax({
-      "url": "/api/messages/details" + location.search,
-      "type": "GET",
-      "dataType": "JSON",
-      "success": function(json) {
-        document.getElementById("message-detail").innerHTML = generateMessageDetails(json); 
-      }
-    });
-
+    return getMessageDetails();
   }
-
-  /* Page for writing a new message
-   */
 
   if(uri.pathname === "/home/messages/new") {
 
-    const RECIPIENT_NOT_FOUND = "Recipient could not be found.";
-    const MESSAGE_SUCCESS = "Private message has been succesfully sent.";
-    const MESSAGE_FAILURE = "Private message could not be sent. Please try again later.";
-    const MESSAGE_SELF = "Cannot send private message to yourself.";
+    const S_MESSAGE_SENT = "Private message has been succesfully sent.";
+    const E_MESSAGE_RECIPIENT_NOT_FOUND = "Recipient could not be found.";
+    const E_MESSAGE_SERVER_ERROR = "Private message could not be sent. Please try again later.";
+    const E_MESSAGE_SELF = "Cannot send private message to yourself.";
 
     document.getElementById("final-crumb").innerHTML = "Create Message";
 
-    if(uri.search === "?self") {
-      document.getElementById("message-information").innerHTML = [
-        "<div class='alert alert-danger'>",
-        "  <span class='fa fa-remove aria-hidden='true'></span>",
-        MESSAGE_SELF,
-        "</div>"
-      ].join("\n");
-    }
+    var alertBox = Element("message-information");
 
-    // Recipient unknown
-    if(uri.search === "?unknown") {
-      document.getElementById("message-information").innerHTML = [
-        "<div class='alert alert-danger'>",
-        "  <span class='fa fa-remove aria-hidden='true'></span>",
-        RECIPIENT_NOT_FOUND,
-        "</div>"
-      ].join("\n");
-    }
-
-    // Success
-    if(uri.search === "?success") {
-      document.getElementById("message-information").innerHTML = [
-        "<div class='alert alert-success'>",
-        "  <span class='fa fa-check aria-hidden='true'></span>",
-        MESSAGE_SUCCESS,
-        "</div>"
-      ].join("\n");
-    }
-
-    // Failure
-    if(uri.search === "?failure") {
-      document.getElementById("message-information").innerHTML = [
-        "<div class='alert alert-danger'>",
-        "  <span class='fa fa-remove aria-hidden='true'></span>",
-        MESSAGE_FAILURE,
-        "</div>"
-      ].join("\n");
+    switch(uri.search) {
+      case "?self":
+        alertBox.innerHTML = generateMessageAlert("warning", E_MESSAGE_SELF);
+        break;
+      case "?unknown":
+        alertBox.innerHTML = generateMessageAlert("warning", E_MESSAGE_RECIPIENT_NOT_FOUND);
+        break;
+      case "?success":
+        alertBox.innerHTML = generateMessageAlert("success", S_MESSAGE_SENT);
+        break
+      case "?failure":
+        alertBox.innerHTML = generateMessageAlert("danger", E_MESSAGE_SERVER_ERROR);
+        break;
     }
  
   }
@@ -297,10 +363,10 @@ function initMap() {
     __SOCKET__ = null
 
     // Change event to toggle WS connection
-    document.getElementById("connect-seedlink").addEventListener("change", function() {
+    Element("connect-seedlink").addEventListener("change", function() {
 
       // Not connected and socket is empty
-      if(!document.getElementById("connect-seedlink").checked && __SOCKET__) {
+      if(!Element("connect-seedlink").checked && __SOCKET__) {
         __SOCKET__.disconnect();
         return;
       } else {
@@ -354,7 +420,7 @@ function initMap() {
 
         var marker = new google.maps.Marker({
           "map": map,
-          "icon": isStationActive(station) ? STATION_MARKER_IMAGE : STATION_CLOSED_MARKER_IMAGE,
+          "icon": isStationActive(station) ? STATION_MARKER_GREEN : STATION_MARKER_ORANGE,
           "title": [station.network, station.station].join("."),
           "position": station.position
         }); 
@@ -380,12 +446,19 @@ function initMap() {
   // Initialize map on the main home page
   if(uri.pathname === "/home") {
 
-    if(uri.search.startsWith("?success")) {
-      Element("modal-content").innerHTML = "<div class='alert alert-success'>" + Icon("check", "success") + " The metadata has been succesfully received." + "</div>";
-      $("#modal-alert").modal();
-    } else if (uri.search.startsWith("?failure")) {
-      Element("modal-content").innerHTML = "<div class='alert alert-danger'>" + Icon("remove", "danger") + " There was an error receiving the metadata." + "</div>";
-      $("#modal-alert").modal();
+    // Send notification
+    const E_METADATA_SERVER_ERROR = "There was an error receiving the metadata.";
+    const S_METADATA_OK = "The metadata has been succesfully received.";
+
+    switch(uri.search) {
+      case "?success":
+        Element("modal-content").innerHTML = generateMessageAlert("success", S_METADATA_OK);
+        $("#modal-alert").modal();
+        break;
+      case "?failure":
+        Element("modal-content").innerHTML = generateMessageAlert("danger", E_METADATA_SERVER_ERROR);
+        $("#modal-alert").modal();
+        break;
     }
 
     // Add map
@@ -413,7 +486,7 @@ function initMap() {
         json.forEach(function(station) {
           var marker = new google.maps.Marker({
             "map": map,
-            "icon": isStationActive(station) ? STATION_MARKER_IMAGE : STATION_CLOSED_MARKER_IMAGE, 
+            "icon": getOperationalStationMarker(station),
             "title": [station.network, station.station].join("."), 
             "description": station.description,
             "station": station.station,
@@ -437,8 +510,10 @@ function initMap() {
 
         // Fit map bounds around all markers
         fitMapBounds(markers);
+        changeMapLegend(markers);
 
-        document.getElementById("map-information").innerHTML = MapInformationText(json.length);
+        Element("map-information").innerHTML = MapInformationText(json.length);
+        Element("map-display").addEventListener("change", changeMapLegend.bind(this, markers));
 
         // Proceed with the table
         GenerateTable(json);
@@ -450,6 +525,108 @@ function initMap() {
   }
 
 }
+
+function changeMapLegend(markers) {
+
+  /* function changeMapLegend
+   * Changes the HTML of the map legend
+   */
+
+  function formatMapLegend(type, legendObject) {
+  
+    /* function changeMapLegend::formatMapLegend
+     * Formats the submitted map legend object
+     */
+
+    function formatMapLegendType(type) {
+
+      /* function changeMapLegend::formatMapLegend::formatMapLegendType
+       * Returns a title for the legend type
+       */
+
+      switch(type) {
+        case "latency":
+          return "Status of Station Data Latencies";
+        case "deployment":
+          return "Deployment Type of Stations";
+        case "operational":
+          return "Operational Status of Stations";
+      }
+
+    }
+
+    return "<h6>" + formatMapLegendType(type) + "</h6>" + legendObject.map(function(x) {
+      return "<img style='vertical-align: top;' src='" + x.icon + "'><b> " + x.description + "</b>";
+    }).join("&nbsp; &nbsp;");
+  
+  }
+
+  // Legend labels
+  const MAP_LEGEND_LATENCY = [
+    {"icon": STATION_MARKER_GREEN, "description": "Low"},
+    {"icon": STATION_MARKER_ORANGE, "description": "Medium"},
+    {"icon": STATION_MARKER_RED, "description": "High"},
+    {"icon": STATION_MARKER_GREY, "description": "Unknown"},
+  ];
+
+  const MAP_LEGEND_OPERATIONAL = [
+    {"icon": STATION_MARKER_GREEN, "description": "Operational"},
+    {"icon": STATION_MARKER_RED, "description": "Closed"},
+  ];
+
+  const MAP_LEGEND_DEPLOYMENT = [
+    {"icon": STATION_MARKER_GREEN, "description": "Permanent"},
+    {"icon": STATION_MARKER_RED, "description": "Temporary"},
+  ];
+
+  const mapLegend = Element("map-legend");
+
+  switch(Element("map-display").value) {
+
+    case "latency":
+      markers.forEach(function(marker) {
+        marker.setIcon(getLatencyStatusMarker(marker));
+      });
+      mapLegend.innerHTML = formatMapLegend("latency", MAP_LEGEND_LATENCY);
+      break;
+
+    case "operational":
+      markers.forEach(function(marker) {
+        marker.setIcon(getOperationalStationMarker(marker));
+      });
+      mapLegend.innerHTML = formatMapLegend("operational", MAP_LEGEND_OPERATIONAL);
+      break;
+
+    case "deployment":
+      markers.forEach(function(marker) {
+        marker.setIcon(getDeploymentStationMarker(marker));
+      });
+      mapLegend.innerHTML = formatMapLegend("deployment", MAP_LEGEND_DEPLOYMENT);
+      break;
+  }
+
+}
+
+function getDeploymentStationMarker(marker) {
+
+  /* function getDeploymentStationMarker
+   * Returns marker for permanent (GREEN) & temporary (RED) station
+   */
+
+  return isStationPermanent(marker) ? STATION_MARKER_GREEN : STATION_MARKER_RED; 
+
+}
+
+function getOperationalStationMarker(marker) {
+
+  /* function getOperationalStationMarker
+   * Returns marker for open (GREEN) & closed (RED) station
+   */
+
+  return isStationActive(marker) ? STATION_MARKER_GREEN : STATION_MARKER_RED;
+
+}
+
 
 function Element(id) {
 
@@ -479,6 +656,9 @@ function fitMapBounds(markers) {
 
 function generateMessageTableContentSent(json) {
 
+  /* generateMessageTableContentSent
+   */
+
   return json.map(function(x) {
     return [
       (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
@@ -501,15 +681,21 @@ function generateMessageTableContent(json) {
 
 }
 
+function updateCrumbTitle(text) {
+  Element("final-crumb").innerHTML= text;
+}
+
 function generateMessageDetails(message) {
 
+  const E_MESSAGE_NOT_FOUND = "Message not found";
+
+  // No message was returned
   if(message === null) {
-    return "<div class='alert alert-danger'> " + Icon("remove", "danger") + " Message not found. </div>";
+    return generateMessageAlert("danger", E_MESSAGE_NOT_FOUND);
   }
 
   console.debug("Retrieved message with id " + message._id + " from server.");
-
-  document.getElementById("final-crumb").innerHTML = "Subject: " + message.subject;
+  updateCrumbTitle("Subject: " + message.subject);
 
   return [
     "<div class='card'>",
@@ -553,7 +739,6 @@ function deleteAllMessages(type) {
     "success": function() {
       window.location.reload();
     }
-
   });
 
 }
@@ -563,6 +748,9 @@ function deleteMessage() {
   /* function deleteMessage
    * Deletes message with a given identifier
    */
+
+  const E_SERVER_ERROR_MESSAGE_DELETED = "Could not delete message";
+  const S_MESSAGE_DELETED = "Message has been deleted";
 
   // Confirm message deletion
   if(!confirm("Are you sure you want to delete this message?")) {
@@ -577,10 +765,11 @@ function deleteMessage() {
     "success": function(json) {
 
       if(json === null) {
-        return document.getElementById("message-detail").innerHTML = "<div class='alert alert-danger'> " + Icon("remove", "danger") + " Could not delete message. </div>";
+        Element("message-detail").innerHTML = generateMessageAlert("danger", E_SERVER_ERROR_MESSAGE_DELETED);
+      } else {
+        Element("message-detail").innerHTML = generateMessageAlert("success", S_MESSAGE_DELETED);
       }
 
-      document.getElementById("message-detail").innerHTML = "<div class='alert alert-success'>" + Icon("check", "success") + " Message has been deleted.</div>";
     }
 
   });
@@ -650,43 +839,110 @@ var App = function() {
   getNetworkDOI();
 
   // Initialize the map
-  initMap();
+  initApplication();
 
 }
 
 function generateLatencyInformationContentColor(channel, latency) {
 
+  /* generateLatencyInformationContentColor
+   * 
+   */
+
+  const COLOR_CODES = [
+    "muted",
+    "success",
+    "info",
+    "warning",
+    "danger"
+  ];
+
   // Number of seconds for a record to fill
+  var index = getLatencyStatus(channel, latency);
+
+  return COLOR_CODES[index];
+
+}
+
+function getLatencyStatusMarker(marker) {
+
+  // Markers
+  const STATION_MARKERS = [
+    STATION_MARKER_GREY,
+    STATION_MARKER_GREEN,
+    STATION_MARKER_ORANGE,
+    STATION_MARKER_RED
+  ];
+
+  var stationIdentifier = marker.title;
+
+  // When the station is in the latency hashmap
+  if(_hashMap.hasOwnProperty(stationIdentifier)) {
+
+    // Get the average of all channel statuses
+    a = Average(Object.keys(_hashMap[stationIdentifier]).map(function(channel) {
+
+      return Average(_hashMap[stationIdentifier][channel].map(function(x) {
+        return getLatencyStatus(channel, x.msLatency);
+      }));
+
+    }));
+
+    return STATION_MARKERS[Math.round(a)];
+
+  }
+
+  // No information
+  return STATION_MARKER_GREY;
+
+}
+
+function getLatencyStatus(channel, latency) {
+
+  /* getLatencyStatus
+   * returns the grade of latency status
+   * dependent on channel type:
+   *   0 UNKNOWN
+   *   1 GREEN
+   *   2 ORANGE
+   *   3 RED
+   */
+
+  const S_UNKNOWN = 0;
+  const S_GREEN = 1;
+  const S_ORANGE  = 2;
+  const S_RED = 3;
+
+  // Limits
   const VLOW_RATE = 1E3;
   const LOW_RATE = 1E6;
   const BROAD_RATE = 1E5;
   const HIGH_RATE = 1E4;
 
   if(channel.startsWith("V")) {
-    return (latency / VLOW_RATE) < 1 ? "success" : "danger";
+    return (latency / VLOW_RATE) < 1 ? S_GREEN : S_RED;
   } else if(channel.startsWith("L")) {
-    return (latency / LOW_RATE) < 1 ? "success" : "danger";
+    return (latency / LOW_RATE) < 1 ? S_GREEN : S_RED;
   } else if(channel.startsWith("B")) {
-    return (latency / BROAD_RATE) < 1 ? "success" : "danger";
+    return (latency / BROAD_RATE) < 1 ? S_GREEN : S_RED;
   } else if(channel.startsWith("H")) {
-    return (latency / HIGH_RATE) < 1 ? "success" : "danger";
+    return (latency / HIGH_RATE) < 1 ? S_GREEN : S_RED;
   }
 
-  // Unknown channel
-  return "muted";
+  return S_UNKNOWN;
 
 }
 
 function generateLatencyInformationContent(latencies) {
 
+  /* fuction generateLatencyInformationContent
+   */
+
   return latencies.map(function(x) {
-
-    var color = generateLatencyInformationContentColor(x.channel, x.msLatency);
-
     return [
       x.location + "." + x.channel,
       x.end,
-      "<span class='text-" + color + "'>" + x.msLatency + "</span>"
+      "<span class='text-" + generateLatencyInformationContentColor(x.channel, x.msLatency) + "'>" + x.msLatency + "</span>"
     ];
   });
 
@@ -715,6 +971,10 @@ function generateBreadcrumb(pathname) {
 
 function generateBreadcrumbs(crumbs) {
 
+  /* function generateBreadcrumbs
+   * Generates a HTML string for all breadcrumbs
+   */
+
   // Keep full crumbling path
   var fullCrumb = "";
 
@@ -724,11 +984,12 @@ function generateBreadcrumbs(crumbs) {
 
      x = x.capitalize();
 
-     // Add icon for home
-     if(x === "Home") {
-       x = "<span class='fa fa-home'></span> " + x;
+     // Add an icon for home
+     if(i === 0) {
+       x = Icon("home") + " " + x;
      }
 
+     // Add active class to the final crumb
      if(i === (crumbs.length - 1)) {
        return "<li id='final-crumb' class='breadcrumb-item active'>" + x + "</li>";
      } else {
@@ -905,7 +1166,23 @@ function createLatencyTrafficLight(hashMap, x) {
 
 }
 
+function isStationPermanent(station) {
+
+  /* function isStationPermanent
+   * Returns true if a station is permanently deployed
+   */
+
+  var parsedEnd = Date.parse(station.end);
+
+  return isNaN(parsedEnd);
+
+}
+
 function isStationActive(station) {
+
+  /* function isStationActive
+   * Returns true if a station is operational
+   */
 
   var parsedEnd = Date.parse(station.end);
 
@@ -928,14 +1205,14 @@ function isActive(station) {
 function GenerateTableFull(list, latencies) {
 
   // Create a hash map of the latencies for quick look-up
-  var hashMap = createLatencyHashmap(latencies);
+  _hashMap = createLatencyHashmap(latencies);
 
   var list = list.map(function(x) {
 
     var parsedEnd = Date.parse(x.end);
 
     return [
-      "&nbsp; " + createLatencyTrafficLight(hashMap, x),
+      "&nbsp; " + createLatencyTrafficLight(_hashMap, x),
       x.network,
       x.station,
       x.description,
@@ -980,6 +1257,10 @@ function MakeTable() {
 
 function generateAccordionContent(list) {
 
+  /* generateAccordionContent
+   * 
+   */
+
   chartPointers = new Object();
 
   return list.filter(accFilter).map(function(x, i) {
@@ -990,7 +1271,7 @@ function generateAccordionContent(list) {
               Icon("caret-right") + " " + (x.location ? x.location + "." : "") + x.channel,
             "</button>",
             "<span id='heartbeat-" + x.location + "-" + x.channel + "'></span>",
-            "<span class='text-danger'>" + (isOpen(x.end) ? " " : " " + Icon("lock") + " Channel closed since " + x.end + "</span>"),
+            "<span class='text-danger'>" + (isStationActive(x) ? " " : " " + Icon("lock") + " Channel closed since " + x.end + "</span>"),
         "</div>",
         "<div id='collapse-" + i + "' class='collapse' role='tabpanel' aria-labelledby='heading-" + i + "' data-parent='#accordion'>",
           "<div class='card-block'>",
@@ -1003,23 +1284,14 @@ function generateAccordionContent(list) {
 
 }
 
-function isOpen(date) {
-
-  /* function isOpen
-   * Returns whether a date is open
-   */
-
-  return (isNaN(Date.parse(date)) || Date.parse(date) > Date.now());
-
-}
-
 function accFilter(channel) {
-  return !(!document.getElementById("hide-channels").checked && !isOpen(channel.end))
+  return !(!document.getElementById("hide-channels").checked && !isStationActive(channel));
 
 }
 
 function generateAccordionContentChannelString(channel) {
 
+  // Static table do not use Table class
   var tableHTML = [
     "<table class='table table-sm table-striped'>",
     "<thead><tr><th>Sensor</th><th>Unit</th><th>Sampling Rate</th><th>Gain</th></tr></thead>",
@@ -1055,9 +1327,17 @@ function generateAccordion(list) {
 
 function downloadKML() {
 
+  /* function downloadKML
+   * Opens download for station metata in KML format
+   */
+
+  const XML_VERSION = "1.0";
+  const XML_ENCODING = "UTF-8";
+  const KML_VERSION = "2.2";
+
   XMLString = [
-    "<?xml version='1.0' encoding='UTF-8'?>",
-    "<kml xmlns='http://earth.google.com/kml/2.2'>",
+    "<?xml version='" + XML_VERSION + "' encoding='" + XML_ENCODING + "'?>",
+    "<kml xmlns='http://earth.google.com/kml/" + KML_VERSION + "'>",
     generateKML(),
     "</kml>"
   ].join("\n");

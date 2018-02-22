@@ -1,4 +1,3 @@
-const crypto = require("crypto");
 /**
  	Multipart Parser (Finite State Machine)
 
