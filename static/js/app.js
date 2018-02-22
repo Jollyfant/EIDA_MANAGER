@@ -9,6 +9,7 @@ const LATENCY_SERVER = "http://127.0.0.1:3001";
 const ITEMS_PER_PAGE = 75;
 
 var __TABLE_JSON__;
+var chartPointers;
 var _stationJson;
 var _hashMap;
 var _channelJson;
@@ -395,7 +396,7 @@ function initApplication() {
 
     });
   
-    getStationLatencies(uri.search);
+    const MAP_DEFAULT_ZOOM_LEVEL = 12;
 
     $.ajax({
       "url": "/api/channels" + uri.search,
@@ -404,6 +405,7 @@ function initApplication() {
       "success": function(json) {
 
         _channelJson = json;
+        getStationLatencies(uri.search);
 
         document.getElementById("channel-information").innerHTML = generateAccordion(_channelJson);
 
@@ -411,10 +413,7 @@ function initApplication() {
           document.getElementById("channel-information").innerHTML = generateAccordion(_channelJson);
         });
 
-        var nOpen = json.filter(function(x) {
-          var parsedEnd = Date.parse(x.end);
-          return (isNaN(parsedEnd) || parsedEnd > Date.now());
-        }).length;
+        var nOpen = json.filter(isStationActive).length;
 
         var station = json[0];
 
@@ -424,6 +423,8 @@ function initApplication() {
           "title": [station.network, station.station].join("."),
           "position": station.position
         }); 
+
+        updateCrumbTitle(marker.title);
 
         document.getElementById("channel-information-header").innerHTML = Icon("signal") + " " + marker.title;
         document.getElementById("map-information").innerHTML = "Map showing station <b>" + marker.title + "</b> with <b>" + nOpen + "</b> open channels.";
@@ -436,7 +437,7 @@ function initApplication() {
         });
 
         map.setCenter(station.position);
-        map.setZoom(12);
+        map.setZoom(MAP_DEFAULT_ZOOM_LEVEL);
 
       }
     });
@@ -937,10 +938,13 @@ function generateLatencyInformationContent(latencies) {
 
   /* fuction generateLatencyInformationContent
    */
+  var channels = _channelJson.map(function(x) {
+    return x.channel;
+  });
 
   return latencies.map(function(x) {
     return [
-      x.location + "." + x.channel,
+      (channels.indexOf(x.channel) === -1 ? Icon("exclamation", "danger") : "") + " " + x.location + "." + x.channel,
       x.end,
       "<span class='text-" + generateLatencyInformationContentColor(x.channel, x.msLatency) + "'>" + x.msLatency + "</span>"
     ];
@@ -1000,26 +1004,6 @@ function generateBreadcrumbs(crumbs) {
 
 }
 
-
-function generateTableHeadContent(header) {
-  return header.map(AddTagTH).join("\n");
-}
-
-function AddTagOption(x) {
-  return AddTag("option", x);
-}
-
-function AddTag(tag, x) {
-  return "<" + tag + ">" + x + "</" + tag + ">";
-}
-
-function AddTagTD(x) {
-  return AddTag("td", x);
-}
-
-function AddTagTH(x) {
- return AddTag("th", x);
-}
 
 function createLatencyHashmap(latencies) {
 
@@ -1268,7 +1252,7 @@ function generateAccordionContent(list) {
       "<div class='card'>",
         "<div class='card-header small' role='tab' id='heading-" + i + "'>",
             "<button class='btn btn-link' data-toggle='collapse' data-target='#collapse-" + i + "' aria-expanded='true' aria-controls='collapse-" + i + "'>",
-              Icon("caret-right") + " " + (x.location ? x.location + "." : "") + x.channel,
+            Icon("caret-right") + " " + (x.location ? x.location + "." : "") + x.channel,
             "</button>",
             "<span id='heartbeat-" + x.location + "-" + x.channel + "'></span>",
             "<span class='text-danger'>" + (isStationActive(x) ? " " : " " + Icon("lock") + " Channel closed since " + x.end + "</span>"),
@@ -1331,6 +1315,27 @@ function downloadKML() {
    * Opens download for station metata in KML format
    */
 
+   function generateKML() {
+   
+     /* function generateKML
+      * Generates KML string from station JSON for exporting
+      */
+   
+     return _stationJson.map(function(station) {
+       return [
+         "<Placemark>",
+         "<Point>",
+         "<coordinates>" + station.position.lng + "," + station.position.lat + "</coordinates>",
+         "</Point>",
+         "<Network>" + station.network + "</Network>",
+         "<description>" + station.description + "</description>",
+         "<Station>" + station.station + "</Station>",
+         "</Placemark>"
+       ].join("\n");
+     }).join("\n");
+   
+   }
+
   const XML_VERSION = "1.0";
   const XML_ENCODING = "UTF-8";
   const KML_VERSION = "2.2";
@@ -1346,28 +1351,6 @@ function downloadKML() {
   download("stations.kml", dataStr);
 
 }
-
-function generateKML() {
-
-  /* function generateKML
-   * Generates KML string from station JSON for exporting
-   */
-
-  return _stationJson.map(function(x) {
-    return [
-      "<Placemark>",
-      "<Point>",
-      "<coordinates>" + x.position.lng + "," + x.position.lat + "</coordinates>",
-      "</Point>",
-      "<Network>" + x.network + "</Network>",
-      "<description>" + x.description + "</description>",
-      "<Station>" + x.station + "</Station>",
-      "</Placemark>"
-    ].join("\n");
-  }).join("\n");
-
-}
-
 
 function download(name, string) {
 
@@ -1391,314 +1374,6 @@ function downloadTable() {
 
 }
 
-function filterStationTable(content) {
-
-  /* function filterStationTable
-   * Filter input on network & station name
-   */
-
-  // Rows for network & station names
-  const NETWORK_NAME_ROW = 1;
-  const STATION_NAME_ROW = 2;
-
-  // Get the filter value from the DOM and create a regular expression
-  var filterValue = document.getElementById("table-search").value;
-  var regex = new RegExp("^.*" + filterValue + ".*$");
-
-  return content[NETWORK_NAME_ROW].match(regex) || content[STATION_NAME_ROW].match(regex);
-
-}
-
-function generateTableBodyContent(body) {
-
-  /* function generateTableBodyContent
-   * 
-   */
-  const startSlice = ITEMS_PER_PAGE * ACTIVE_PAGE_INDEX;
-  const endSlice = startSlice + ITEMS_PER_PAGE;
-
-  // Slice the data from memory to what is visible & unfiltered
-  return body.slice(startSlice, endSlice).map(function(x) {
-    return "<tr>" + generateTableRowContent(x) + "</tr>"
-  }).join("\n");
-
-}
-
-function filterBodyContent(body) {
-
-  /* function filterBodyContent
-   * Filters the body content based
-   */
-
-  // Search input is empty
-  if(document.getElementById("table-search").value === "") {
-    return body;
-  }
-
-  var start = Date.now();
-
-  var contents = body.filter(filterStationTable);
-
-  console.debug("Filtered " + (body.length - contents.length) + " entries from table in " + (Date.now() - start) + " ms");
-
-  // Return the filtered results
-  return contents;
-
-}
-
-// Global object for keeping pointers to chart objects
-chartPointers = new Object();
-var nPointsBuffered = 512;
-
-/* Class SeedlinkChannel
- *
- * Class for handling individual seedlink channels
- */
-var SeedlinkChannel = function(data) {
-
-  var id = data.id.split(".").join("-");
-
-  // Append the chart container to the list
-  // Zero-fill the intial buffer
-  this.CreateZeroBuffer(data.start, data.sampleRate, data.data[0]);
-
-  this.container = "seedlink-container-" + data.location + "-" + data.channel;
-
-  this.chartContainer = $("#" + this.container + " .chart");
-
-  // Remove the parent div on clicking the delete button
-  // Update the data received through the socket 
-  this.Update(data);
-
-}
-
-/* Property SeedlinkChannel.Containers
- *
- * Quick reference to the seedlink channel container
- */
-SeedlinkChannel.prototype.CreateZeroBuffer = function(start, rate, value) {
-
-  this.dataBuffer = new Array();
-
-  // Backwards zero fill with the initial value
-  for(var i = 0; i < nPointsBuffered; i++) {
-    this.dataBuffer.push({
-      "x": start - ((nPointsBuffered - i) * (1000 / rate)),
-      "y": value
-    });
-  }
-
-}
-
-/* Function SeedlinkChannel.AddBuffer
- *
- * Add data to the buffer
- */
-SeedlinkChannel.prototype.AddBuffer = function(data, sampleRate) {
-
-  for(var i = 0; i < data.length; i++) {
-    this.dataBuffer.push({
-      'x': this.start + (i * (1000 / sampleRate)),
-      'y': data[i]
-    });
-  }
-
-  // Keep a maximum of $nPointsBuffered points in the buffer
-  this.dataBuffer.splice(0, this.dataBuffer.length - nPointsBuffered);
-
-}
-
-/* Function SeedlinkChannel.UpdateTooltip
- *
- * Update the information string above the chart
- */
-SeedlinkChannel.prototype.UpdateTooltip = function() {
-
-  // Determine the latency by taking the current date
-  // and substracting the expected record end
-  var latency = Math.max(0, 1E-3 * (new Date().getTime() - this.end));
-
-  // Construct the tooltip
-  var tooltip = [
-    "<b>" + this.container.split("-").join("."),
-    "</b><small> with <b>",
-    latency.toFixed(2),
-    "s</b> latency",
-    " @ <b>", new Date().toISOString(),
-    " </b><span class='fa fa-heart' aria-hidden='true'></span></small>"
-  ].join("");
-
-}
-
-/* Function SeedlinkChannel.Update
- *
- * Updates the data buffer with new data and
- * redraws the chart
- */
-SeedlinkChannel.prototype.Update = function(data) {
-
-  var bufferedValues = new Array();
-
-  this.start = data.start;
-  this.latency = data.latency;
-
-  var d = document.getElementById("heartbeat-" + data.location + "-" + data.channel);
-  if(d !== null) {
-    d.innerHTML = "<span class='fa fa-heart text-success' aria-hidden='true'><b> Heartbeat</b></span>";
-    setTimeout(function() {
-      d.innerHTML = "";
-    }, 1000);
-  }
-
-  // Currently expected endtime is different from the next
-  // record start time; introduce a gap
-  if(this.end && this.end !== data.start) {
-    this.dataBuffer.push({
-      "x": this.end,
-      "y": null
-    }); 
-  }
-
-  this.AddBuffer(data.data, data.sampleRate);
-
-  this.end = data.end;
-
-  this.Plot();
-
-}
-
-/* Function SeedlinkChannel.Plot
- *
- * Calls Highcharts plotting routing on data buffer
- */
-SeedlinkChannel.prototype.Plot = function() {
-
-  // Update the tooltip
-  this.UpdateTooltip();
-
-  // Redraw the chart container
-  this.chartContainer.highcharts({
-    "chart": {
-      "height": 100,
-      "backgroundColor": null,
-      "animation": false,
-      "type": "spline",
-    },
-    "title": {
-      "text": "",
-    },
-    "xAxis": {
-      "type": "datetime",
-      "lineWidth": 1,
-      "labels": {
-        "style": {
-          "fontFamily": "Helvetica"
-        }
-      }
-    },
-    "yAxis": {
-      "visible": false,
-      "title": {
-        "text": "Counts"
-      }
-    },
-    "plotOptions": {
-      "spline": {
-        "lineWidth": 1,
-        "shadow": true,
-        "turboThreshold": 0,
-        "lineColor": "#C03",
-        "animation": false,
-        "marker": {
-          "enabled": false
-        }
-      }
-    },
-    "credits": {
-      "enabled": false
-    },
-    "legend": {
-        "enabled": false
-    },
-    "exporting": {
-        "enabled": false
-    },
-    "series": [{
-        "name": this.container,
-        "enableMouseTracking": false,
-        "data": this.dataBuffer
-    }]
-  });
-
-}
-
-function validateFiles(files) {
-
-  /* function validateFiles
-   * validates uploaded StationXML files
-   * throws an exception on formatting error
-   */
-
-  const FDSN_STATION_XML_HEADER = "FDSNStationXML";
-  const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
-  const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
-  const XML_MIME_TYPE = "text/xml";
-
-  var stagedStations = new Array();
-
-  // Map of stations included by FDSN webservice
-  var stationsMap = _stationJson.map(function(x) {
-    return x.station;
-  });
-
-  // Validate each file
-  files.forEach(function(file) {
-  
-    // Parse the XML using the native DOMParser
-    var XML = new DOMParser().parseFromString(file.data, XML_MIME_TYPE);
-
-    // Confirm that XML owns the FDSNStationXML namespace
-    if(XML.documentElement.nodeName !== FDSN_STATION_XML_HEADER) {
-      throw("Invalid FDSN Station XML");
-    }
-
-    // Go over all networks and collect station names
-    Array.from(XML.getElementsByTagName("Network")).forEach(function(network) {
-
-      var networkCode = network.getAttribute("code");
-
-      // Confirm network regex & user must own network
-      if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORKS.indexOf(networkCode) === -1) {
-        throw("Invalid network code: " + networkCode);
-      }
-
-      Array.from(network.getElementsByTagName("Station")).forEach(function(station) {
-
-        var stationCode = station.getAttribute("code");
-
-        if(!STATION_REGEXP.test(stationCode)) {
-          throw("Invalid station code: " + stationCode);
-        }
-
-        // Detailed sanization check on station metadata
-        validateStationMetadata(station);
-
-        stagedStations.push({
-          "network": networkCode,
-          "station": stationCode,
-          "new": (stationsMap.indexOf(stationCode) === -1)
-        });
-
-      });
-
-    });
-
-  });
-
-  return stagedStations;
-
-}
-
 function AddMetadataUpload() {
 
   /* function AddMetadataUpload
@@ -1713,7 +1388,7 @@ function AddMetadataUpload() {
     Element("file-submit").disabled = true;
 
     // Abstracted function to read multiple files from event
-    readMultipleFiles(event.target.files, function(files) {
+    readMultipleFiles(Array.from(event.target.files), function(files) {
 
       // Attempt to validate the StationXML metadata in the files
       try {
@@ -1738,134 +1413,6 @@ function AddMetadataUpload() {
 
 }
 
-function validateStationMetadata(station) {
-
-  /* function validateMetadata
-   * Validates common StationXML issues for a single station
-   */
-
-  const GAIN_TOLERNACE_PERCENT = 0.001;
-
-  // Confirm station spatial coordinates
-  var stationLatitude = Number(station.getElementsByTagName("Latitude").item(0).innerHTML);
-  var stationLongitude = Number(station.getElementsByTagName("Longitude").item(0).innerHTML);
-
-  // Make sure the station is on Earth
-  if(stationLatitude < -90 || stationLatitude > 90) {
-    throw("Station latitude is incorrect");
-  }
-  if(stationLongitude < -180 || stationLongitude > 180) {
-    throw("Station longitude is incorrect");
-  }
-
-  var channels = Array.from(station.getElementsByTagName("Channel"));
-
-  if(channels.length === 0) {
-    throw("Channel information is missing");
-  }
-
-  // Go over each channel for the station
-  channels.forEach(function(channel) {
-
-    // Confirm channel spatial coordinates
-    var channelLatitude = Number(channel.getElementsByTagName("Latitude").item(0).innerHTML);
-    var channelLongitude = Number(channel.getElementsByTagName("Longitude").item(0).innerHTML);
-
-    if(channelLatitude !== stationLatitude) {
-      throw("Channel latitude is incorrect");
-    }
-
-    if(channelLongitude !== stationLongitude) {
-      throw("Channel longitude is incorrect");
-    }
-
-    var sampleRate = Number(channel.getElementsByTagName("SampleRate").item(0).innerHTML);
-
-    if(isNaN(sampleRate) || sampleRate === 0) {
-      throw("Invalid sample rate");
-    }
-
-    // Get the response element
-    var response = channel.getElementsByTagName("Response");
-
-    if(response.length === 0) {
-      throw("Response element is missing from inventory");
-    }
-
-    if(response.length > 1) {
-      throw("Multiple response elements included"); 
-    }
-
-    var stages = Array.from(response.item(0).getElementsByTagName("Stage"));
-
-    if(stages.length === 0) {
-      throw("Response stages missing from inventory");
-    }
-
-    var perStageGain = 1;
-
-    // Go over all stages
-    stages.forEach(function(stage) {
-
-      // Get the stage gain
-      stageGain = Number(stage.getElementsByTagName("StageGain").item(0).getElementsByTagName("Value").item(0).innerHTML);
-
-      if(stageGain === 0) {
-        throw("Invalid stage gain of 0");
-      } 
-
-      perStageGain = perStageGain * stageGain;
-
-      // Confirm FIR stage properties
-      Array.from(stage.getElementsByTagName("FIR")).forEach(validateFIRStage);
-
-    });
-
-    // Total channel sensitivity
-    var instrumentSensitivity = Number(response.item(0).getElementsByTagName("InstrumentSensitivity").item(0).getElementsByTagName("Value").item(0).innerHTML);
-
-    if(1 - (Math.max(instrumentSensitivity, perStageGain) / Math.min(instrumentSensitivity, perStageGain)) > GAIN_TOLERNACE_PERCENT) {
-      throw("Computed and reported stage gain is different");
-    }
-
-  });
-
-}
-
-function validateFIRStage(FIRStage) {
-
-  /* function validateFIRStage
-   * Validates the properties of a FIR response stage
-   */
-
-  const FIR_TOLERANCE = 0.02;
-
-  // Confirm FIR Stage input units as COUNTS
-  if(FIRStage.getElementsByTagName("InputUnits").item(0).getElementsByTagName("Name").item(0).innerHTML !== "COUNTS") {
-    throw("FIR Stage input units invalid");
-  }
-
-  // Confirm FIR Stage output units as COUNTS
-  if(FIRStage.getElementsByTagName("OutputUnits").item(0).getElementsByTagName("Name").item(0).innerHTML !== "COUNTS") {
-    throw("FIR Stage output units invalid");
-  }
-
-  var FIRSum = Sum(Array.from(FIRStage.getElementsByTagName("NumeratorCoefficient")).map(function(FIRCoefficient) {
-    return Number(FIRCoefficient.innerHTML);
-  }));
-
-  // Symmetry specified: FIR coefficients are symmetrical (double the sum)
-  if(FIRStage.getElementsByTagName("Symmetry").item(0).innerHTML !== "NONE") {
-    FIRSum = 2 * FIRSum;
-  }
-
-  // Check if the FIR coefficient sum is within tolerance
-  if(Math.abs(1 - FIRSum) > FIR_TOLERANCE) {
-    throw("Invalid FIR Coefficient Sum (" + Math.abs(1 - FIRSum).toFixed(4) + ")");
-  }
-
-}
-
 function readMultipleFiles(files, callback) {
 
   /* function readMultipleFiles
@@ -1874,7 +1421,6 @@ function readMultipleFiles(files, callback) {
    */
 
   var fileContents = new Array();
-  var files = Array.from(files);
 
   // IIFE to read multiple files
   (read = function(file) {
@@ -1890,7 +1436,10 @@ function readMultipleFiles(files, callback) {
       console.debug("FileReader read file " + file.name + " (" + file.size + " bytes)");
 
       // Append the result
-      fileContents.push({"data": reader.result, "size": file.size});
+      fileContents.push({
+        "data": reader.result,
+        "size": file.size
+      });
 
       // Last file has been read
       if(!files.length) {

@@ -1228,6 +1228,8 @@ function generateFooterApp() {
     "  <script src='https://cdn.socket.io/socket.io-1.4.5.js'></script>",
     "  <script src='https://maps.googleapis.com/maps/api/js?key=AIzaSyAN3tYdvQ5tSS5NIKwZX-ZqhsM4NApVV_I'></script>",
     "  <script src='/js/table.js'></script>",
+    "  <script src='/js/fdsn-station-xml-validator.js'></script>",
+    "  <script src='/js/seedlink.js'></script>",
     "  <script src='/js/app.js'></script>",
   ].join("\n");
 
@@ -1361,8 +1363,9 @@ function generateStationDetails(session) {
     "                <div id='map-information'></div>",
     "              </div>",
     "              <div class='card-block'>",
-    "<h4><span class='fa fa-heart-o text-danger' aria-hidden='true'></span> Seedlink Health</h4>",
+    "                <h4><span class='fa fa-heart-o text-danger' aria-hidden='true'></span> Seedlink Health</h4>",
     "                <div id='channel-information-latency'></div>",
+    "                <small><span class='fa fa-exclamation text-danger'></span> Metadata Unavailable</small>",
     "              </div>",
     "            </div>",
     "        </div>",
