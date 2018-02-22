@@ -22,6 +22,7 @@ const CONFIG = require("./config");
 const S_HTTP_OK = 200;
 const S_HTTP_NO_CONTENT = 204;
 const S_HTTP_REDIRECT = 301;
+const E_HTTP_UNAVAILABLE = 503;
 const E_HTTP_UNAUTHORIZED = 401;
 const E_HTTP_FILE_NOT_FOUND = 404;
 const E_HTTP_TEAPOT = 418;
@@ -249,6 +250,10 @@ var Webserver = function() {
       // When the database connection fails
       if(error) {
         return HTTPError(response, E_HTTP_INTERNAL_SERVER_ERROR);
+      }
+
+      if(CONFIG.__CLOSED__) {
+        return HTTPError(response, E_HTTP_UNAVAILABLE);
       }
   
       // URL for posting messages
@@ -560,7 +565,7 @@ function generateHTTPError(status) {
 
   return [
     generateHeader(),
-    "  <body>",
+    "  <body style='padding-top: 20px;'>",
     "    <div class='container'>",
     "      <h2 class='text-muted'><span style='color: #C03;'>" + status +"</span> " + http.STATUS_CODES[status] + " </h2>",
     "    </div>",

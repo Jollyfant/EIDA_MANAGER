@@ -2,6 +2,7 @@
   "__STDOUT__": false,
   "__DEBUG__": true,
   "__VERSION__": "1.0.0",
+  "__CLOSED__": true,
   "LOGFILE": "/Users/Mathijs/Documents/ORFEUS/Manager/logs/server.log",
   "NODE": {
     "ID": "ODC",
