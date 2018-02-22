@@ -6,7 +6,6 @@ const STATION_MARKER_RED = "/images/station-red.png";
 const NODE_MARKER = "/images/node.png";
 const SOCKET_URL = "ws://127.0.0.1:8080";
 const LATENCY_SERVER = "http://127.0.0.1:3001";
-const ITEMS_PER_PAGE = 75;
 
 var __TABLE_JSON__;
 var chartPointers;
@@ -75,7 +74,7 @@ function AddMap() {
   var start = Date.now();
 
   infowindow = new google.maps.InfoWindow();
-  map = new google.maps.Map(Element("map"));
+  map = new google.maps.Map(Element("map"), {"minZoom": 2, "disableDefaultUI": true});
 
   // Listener on map to close the info window
   map.addListener("click", function() {
@@ -181,7 +180,7 @@ function getStationLatencies(query) {
       const LATENCY_TABLE_HEADER = [
         "Channel",
         "Last Record",
-        "Latency (ms)"
+        "Latency (s)"
       ];
 
       var latencies = generateLatencyInformationContent(json);
@@ -917,7 +916,7 @@ function getLatencyStatus(channel, latency) {
   // Limits
   const VLOW_RATE = 1E3;
   const LOW_RATE = 1E6;
-  const BROAD_RATE = 1E5;
+  const BROAD_RATE = 2.5E4;
   const HIGH_RATE = 1E4;
 
   if(channel.startsWith("V")) {
@@ -946,7 +945,7 @@ function generateLatencyInformationContent(latencies) {
     return [
       (channels.indexOf(x.channel) === -1 ? Icon("exclamation", "danger") : "") + " " + x.location + "." + x.channel,
       x.end,
-      "<span class='text-" + generateLatencyInformationContentColor(x.channel, x.msLatency) + "'>" + x.msLatency + "</span>"
+      "<span class='text-" + generateLatencyInformationContentColor(x.channel, x.msLatency) + "'>" + (1E-3 * x.msLatency).toFixed(1) + "</span>"
     ];
   });
 
@@ -1100,7 +1099,7 @@ function AverageLatencyLight(code, x) {
 
   // Generate HTML
   return [
-    "<span title='" + channelCodeToDescription(code, average) + "' class='fa fa-check-circle text-" + generateLatencyInformationContentColor(code, average) + "'>",
+    "<span title='" + channelCodeToDescription(code, average) + "' class='fa fa-exclamation-circle text-" + generateLatencyInformationContentColor(code, average) + "'>",
       "<b style='font-family: monospace;'>" + code + "</b>",
     "</span>",
   ].join("\n");
