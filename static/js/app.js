@@ -467,6 +467,8 @@ function initApplication() {
     // Add upload button for metadata
     AddMetadataUpload();
 
+    AddSeedlink();
+
     var markers = new Array();
     var start = Date.now();
 
@@ -604,6 +606,38 @@ function changeMapLegend(markers) {
       mapLegend.innerHTML = formatMapLegend("deployment", MAP_LEGEND_DEPLOYMENT);
       break;
   }
+
+}
+
+function AddSeedlink() {
+
+  const SEEDLINK_TABLE_HEADER = [
+    "Address",
+    "Port",
+    "Connected",
+    "Stations"
+  ];
+
+  $.ajax({
+    "url": "/api/seedlink",
+    "type": "GET",
+    "dataType": "JSON",
+    "success": function(json) {
+
+      k = json.map(function(x) {
+        return [x.host, x.port, "dunno", "dunno"];
+      });
+
+      new Table({
+        "id": "seedlink-connection-table",
+        "header": SEEDLINK_TABLE_HEADER,
+        "body": k,
+        "search": false
+      });
+
+    }
+
+  });
 
 }
 

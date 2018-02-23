@@ -428,24 +428,8 @@ var Webserver = function() {
 
         parseRequestBody(request, "json", function(json) {
 
-          const IPV4_ADDRESS_REGEX  = new RegExp("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$");
-          const HOSTNAME_REGEX = new RegExp("^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$");
-
-          const port = Number(json.port);
-
-          // Confirm hostname or IPv4
-          if(!IPV4_ADDRESS_REGEX.test(json.host) && !HOSTNAME_REGEX.test(json.host)) {
-            return Redirect(response, "/home?failure");
-          }
-
-          // Accept ports between 0x0400 and 0xFFFF
-          if(isNaN(port) || port < (1 << 10) || port > (1 << 16)) {
-            return Redirect(response, "/home?failure");
-          }
-
-          // Store new seedlink object in database
           var storeObject = {
-            "userId": session._id,
+            "userId": session.userId,
             "host": json.host,
             "port": Number(json.port),
             "created": new Date()
@@ -760,7 +744,6 @@ function APIRequest(request, response, session) {
     GetSeedlinkServers(session, function(data) {
       response.end(data);
     });
-    return;
   }
 
   // Stations managed by the session
@@ -814,15 +797,13 @@ function APIRequest(request, response, session) {
     return;
   }
 
-  return HTTPError(response, E_HTTP_FILE_NOT_FOUND);
+  return HTTPError(E_HTTP_FILE_NOT_FOUND, response);
 
 }
 
 function GetSeedlinkServers(session, callback) {
 
-  Database.seedlink().find({"userId": session._id}).toArray(function(error, results) {
-    callback(JSON.stringify(results));
-  });
+  callback(null);
 
 }
 
@@ -1596,7 +1577,7 @@ function generateProfile(session) {
     "              <input name='host' class='form-control' placeholder='Address' required>",
     "              <span class='input-group-addon'>:</span>",
     "              <input maxlength='5'  name='port' class='form-control' value='18000' placeholder='Port' required>",
-    "              &nbsp; <input class='btn btn-success' type='submit' value='Submit'>",
+    "              <input class='btn btn-success' type='submit' value='Submit'>",
     "            </div>",
     "          </form>",
     "          <hr>",
