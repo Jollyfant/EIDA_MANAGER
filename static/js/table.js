@@ -105,7 +105,7 @@ Table.prototype.generatePaginationList = function(list) {
 
   // Create the number of pages
   return list.filter(function(_, i) {
-    return (i + 1) % this.itemsPerPage === 0
+    return i % this.itemsPerPage === 0
   }.bind(this)).map(function(_, i) {
     return this.paginationItem(i);
   }.bind(this)).join("\n");
@@ -129,7 +129,7 @@ Table.prototype.setActiveIndex = function(context) {
    */
 
   var children = context.children[0];
-  var maxIndex = Math.floor(this.body.length / this.itemsPerPage) - 1;
+  var maxIndex = Math.floor(this.body.length / this.itemsPerPage);
 
   switch(children.innerHTML) {
     case "Next":

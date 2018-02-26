@@ -255,6 +255,54 @@ function generateMessageAlert(type, message) {
 
 }
 
+function messageRoute() {
+
+  const API_URL = "/api/messages";
+
+  const MESSAGE_TABLE_HEADER_SENT = [
+    "Subject",
+    "Recipient",
+    "Message Received"
+  ];
+
+  const MESSAGE_TABLE_HEADER = [
+    "Subject",
+    "Sender",
+    "Message Received"
+  ];
+
+  $.ajax({
+    "url": API_URL, 
+    "type": "GET",
+    "dataType": "JSON",
+    "success": function(json) {
+
+      console.debug("Retrieved " + json.length +  " message(s) from server.");
+
+      new Table({
+        "id": "message-content-sent",
+        "search": true,
+        "header": MESSAGE_TABLE_HEADER_SENT,
+        "body": generateMessageTableContentSent(json.filter(function(x) {
+          return x.author;
+        }))
+      });
+
+      new Table({
+        "id": "message-content",
+        "search": true,
+        "header": MESSAGE_TABLE_HEADER,
+        "body": generateMessageTableContent(json.filter(function(x) {
+          return !x.author;
+        }))
+      });
+
+    }
+
+  });
+
+}
+
 function initApplication() {
 
   /* function initApplication
@@ -306,53 +354,7 @@ function initApplication() {
 
   // Message overview is requested
   if(uri.pathname === "/home/messages") {
-
-    $.ajax({
-      "url": "/api/messages",
-      "type": "GET",
-      "dataType": "JSON",
-      "success": function(json) {
-
-        console.debug("Retrieved " + json.length +  " message(s) from server.");
-
-        var MESSAGE_TABLE_HEADER = [
-          "Subject",
-          "Recipient",
-          "Message Received"
-        ];
-
-        var sent = json.filter(function(x) {
-          return x.author;
-        });
-
-        new Table({
-          "id": "message-content-sent",
-          "search": true,
-          "header": MESSAGE_TABLE_HEADER,
-          "body": generateMessageTableContentSent(sent)
-        });
-
-        var MESSAGE_TABLE_HEADER = [
-          "Subject",
-          "Sender",
-          "Message Received"
-        ];
-
-        var inbox = json.filter(function(x) {
-          return !x.author;
-        });
-
-        new Table({
-          "id": "message-content",
-          "search": true,
-          "header": MESSAGE_TABLE_HEADER,
-          "body": generateMessageTableContent(inbox)
-        });
-
-      }
-
-    });
-
+    messageRoute();
   }
 
   if(uri.pathname === "/home/station") {
@@ -449,6 +451,7 @@ function initApplication() {
     // Send notification
     const E_METADATA_SERVER_ERROR = "There was an error receiving the metadata.";
     const S_METADATA_OK = "The metadata has been succesfully received.";
+    const S_SEEDLINK_OK = "The Seedlink server has been succesfully added.";
 
     switch(uri.search) {
       case "?success":
@@ -457,6 +460,10 @@ function initApplication() {
         break;
       case "?failure":
         Element("modal-content").innerHTML = generateMessageAlert("danger", E_METADATA_SERVER_ERROR);
+        $("#modal-alert").modal();
+        break;
+      case "?s_success":
+        Element("modal-content").innerHTML = generateMessageAlert("danger", S_SEEDLINK_OK);
         $("#modal-alert").modal();
         break;
     }
@@ -480,12 +487,15 @@ function initApplication() {
       "dataType": "JSON",
       "success": function(json) {
 
-        console.debug("Retrieved " + json.length + " stations from server in " + (Date.now() - start) + "ms.");
+        console.debug("Retrieved " + json.stations.length + " stations from server in " + (Date.now() - start) + "ms.");
 
-        _stationJson = json;
+        _stationJson = json.stations;
+
+        // Create a table for the submitted metadata
+        createStagedMetadataTable(json.staged);
 
         // For each entry create a station marker
-        json.forEach(function(station) {
+        json.stations.forEach(function(station) {
           var marker = new google.maps.Marker({
             "map": map,
             "icon": getOperationalStationMarker(station),
@@ -518,7 +528,7 @@ function initApplication() {
         Element("map-display").addEventListener("change", changeMapLegend.bind(this, markers));
 
         // Proceed with the table
-        GenerateTable(json);
+        GenerateTable(json.stations);
 
       }
 
@@ -527,6 +537,65 @@ function initApplication() {
   }
 
 }
+
+function createStagedMetadataTable(json) {
+
+  function getStatus(status) {
+
+    /* function getStatus
+     * Returns string representation of metadata status
+     */
+
+    const METADATA_STATUS_PENDING = 0;
+    const METADATA_STATUS_REJECTED = 1;
+    const METADATA_STATUS_ACCEPTED = 2;
+
+    switch(status) {
+      case METADATA_STATUS_PENDING:
+        return "<span class='text-warning'>" + Icon("clock-o") + " Pending </span>"
+      case METADATA_STATUS_REJECTED:
+        return "<span class='text-danger'>" + Icon("remove") + " Rejected </span>"
+      case METADATA_STATUS_ACCEPTED:
+        return "<span class='text-success'>" + Icon("check") + " Accepted </span>"
+      default:
+        return "<span class='text-muted'>" + Icon("question") + " Unknown </span>"
+    }
+
+  }
+
+  const HTML_TABLE_ID = "table-staged-metadata";
+
+  json.sort(function(a, b) {
+    return Date.parse(b.created) - Date.parse(a.created);
+  });
+
+  var stagedTable = json.map(function(file) {
+    return [
+      file.network, 
+      file.station + (file.new ? "&nbsp; <span class='fa fa-star text-warning'></span>" : ""),
+      file.size,
+      file.created,
+      "<b>" + getStatus(file.status) + "</b>"
+    ];
+  });
+
+  const STAGED_METADATA_TABLE_HEADER = [
+    "Network",
+    "Station",
+    "Size",
+    "Submitted",
+    "Status"
+  ];
+
+  new Table({
+    "id": HTML_TABLE_ID,
+    "header": STAGED_METADATA_TABLE_HEADER,
+    "body": stagedTable,
+    "search": true
+  });
+
+}
+
 
 function changeMapLegend(markers) {
 

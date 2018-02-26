@@ -86,7 +86,9 @@ var User = function(user, id) {
   this.role = user.role;
 
   // Path where the user stores uploaded files
-  this.filepath = path.join("files", user.username); 
+  this.filepath = user.networks.map(function(x) {
+    return path.join("files", x);
+  }); 
 
 }
 
@@ -403,6 +405,16 @@ var Webserver = function() {
 
       }
 
+      if(uri === "/home/admin") {
+
+        if(session.role !== "admin") {
+          return HTTPError(response, E_HTTP_UNAUTHORIZED);
+        }
+
+        return response.end(generateAdminPage(session));
+
+      }
+
       if(uri === "/home/messages") {
         return response.end(generateMessages(session));
       }
@@ -452,7 +464,7 @@ var Webserver = function() {
           }
 
           Database.seedlink().insertOne(storeObject, function(error, result) {
-            return Redirect(response, "/home?" + (error ? "failure" : "success"));
+            return Redirect(response, "/home?" + (error ? "failure" : "s_success"));
           });
  
         });
@@ -643,9 +655,11 @@ function saveFilesObjects(metadata, session) {
       "filename": x.id,
       "network": x.network,
       "station": x.station,
+      "nChannels": x.nChannels,
       "filepath": x.filepath,
       "type": "FDSNStationXML",
       "size": x.size,
+      "status": 1,
       "userId": session._id,
       "created": new Date(),
       "sha256": x.sha256
@@ -671,7 +685,7 @@ function Message(recipient, sender, subject, content) {
     "subject": subject,
     "content": content,
     "read": false,
-    "recipientDeleted": false,
+    "recipientDeletreturn ed": false,
     "senderDeleted": false,
     "created": new Date(),
     "level": 0
@@ -766,7 +780,7 @@ function APIRequest(request, response, session) {
   // Stations managed by the session
   if(uri.pathname === "/api/stations") {
     GetFDSNWSStations(session, function(data) {
-      response.end(ParseFDSNWSResponse(data));
+      response.end(JSON.stringify(data));
     });
     return;
   }
@@ -1083,7 +1097,9 @@ function ParseFDSNWSResponseChannel(data) {
 
   // Run through the response and convert to JSON
   return JSON.stringify(data.split("\n").slice(1, -1).map(function(x) {
+
     var codes = x.split("|");
+
     return {
       "network": codes[0],
       "station": codes[1],
@@ -1100,6 +1116,7 @@ function ParseFDSNWSResponseChannel(data) {
       "start": codes[15],
       "end": codes[16]
     }
+
   }));
 
 }
@@ -1115,8 +1132,10 @@ function ParseFDSNWSResponse(data) {
   }
 
   // Run through the response and convert to JSON
-  return JSON.stringify(data.split("\n").slice(1, -1).map(function(x) {
+  return data.split("\n").slice(1, -1).map(function(x) {
+
     var codes = x.split("|");
+
     return {
       "network": codes[0],
       "station": codes[1],
@@ -1129,7 +1148,8 @@ function ParseFDSNWSResponse(data) {
       "start": codes[6],
       "end": codes[7]
     }
-  }));
+
+  });
 
 }
 
@@ -1174,6 +1194,62 @@ function HTTPRequest(url, callback) {
 
 }
 
+function getSubmittedFiles(session, callback) {
+
+  /* function getSubmittedFiles
+   * Abstracted function to read files from multiple directories
+   * and concatenate the result
+   */
+
+  // Stages:
+  // Pending -> Accepted | Rejected
+  const METADATA_STATUS_REJECTED = 0;
+  const METADATA_STATUS_PENDING = 1;
+  const METADATA_STATUS_CONVERTED = 2;
+  const METADATA_STATUS_ACCEPTED = 3;
+
+  var pipeline = [{
+    "$match": {
+      "userId": Database.ObjectId(session._id),
+      "status": {
+        "$in": [
+          METADATA_STATUS_PENDING,
+          METADATA_STATUS_CONVERTED,
+          METADATA_STATUS_REJECTED
+        ]
+      }
+    }
+  }, {
+    "$group": {
+      "_id": {
+        "network": "$network",
+        "station": "$station",
+      },
+      "created": {
+        "$last": "$created"
+      },
+      "size": {
+        "$last": "$size"
+      },
+      "status": {
+        "$last": "$status"
+      }
+    }
+  }];
+
+  // Query the database for submitted files
+  Database.files().aggregate(pipeline).toArray(function(error, files) {
+
+    if(error) {
+      return callback(error);
+    }
+
+    callback(files);
+
+  });
+
+}
+
 function GetFDSNWSStations(session, callback) {
 
   /* Function GetFDSNWSStations
@@ -1189,7 +1265,69 @@ function GetFDSNWSStations(session, callback) {
     "network": session.networks.join(",")
   });
 
-  HTTPRequest(FDSNWS_STATION_URL + "?" + queryString, callback);
+  HTTPRequest(FDSNWS_STATION_URL + "?" + queryString, function(data) {
+
+    var data = ParseFDSNWSResponse(data);
+
+    var hashMap = new Lookup(data, ["network", "station"]);
+
+    getSubmittedFiles(session, function(files) {
+
+      // Files that are not in the FDSNWS Service response
+      files = files.map(function(x) {
+        return {
+          "network": x._id.network,
+          "station": x._id.station,
+          "nChannels": x.nChannels,
+          "size": x.size,
+          "status": x.status,
+          "created": x.created,
+          "new": !hashMap.includes(x._id.network + x._id.station)
+        }
+      });
+
+      callback({
+        "stations": data,
+        "staged": files
+      });
+
+    });
+
+  });
+
+}
+
+var Lookup = function(array, keys) {
+
+  /* Class Lookup
+   * Container for lookup table
+   */
+
+  if(!Array.isArray(keys)) {
+    throw("Input for look up table needs to be an array");
+  }
+
+  // Create a new hash map
+  var hashMap = new Object();
+
+  array.forEach(function(x) {
+    var key = keys.map(function(y) {
+      return x[y];
+    }).join("");
+    hashMap[key] = null;
+  });
+
+  this.hashMap = hashMap;
+
+}
+
+Lookup.prototype.includes = function(x) {
+
+  /*
+   *
+   */
+
+  return this.hashMap.hasOwnProperty(x);
 
 }
 
@@ -1355,6 +1493,18 @@ function generateMessageDetails(session) {
     "    <div class='container'>",
     "      <div id='message-detail'></div>",
     "    </div>",
+    generateFooter(),
+    generateFooterApp()
+  ].join("\n");
+
+}
+
+function generateAdminPage(session) {
+
+  return [
+    generateHeader(),
+    generateWelcome(session),
+    "<h4> Open Tasks </h4>",
     generateFooter(),
     generateFooterApp()
   ].join("\n");
@@ -1537,7 +1687,7 @@ function generateProfile(session) {
     "          <a class='nav-link' role='tab' data-toggle='tab' href='#settings-container-tab'><span class='fa fa-cog' aria-hidden='true'></span> &nbsp; Metadata</a>",
     "        </li>",
     "        <li class='nav-item'>",
-    "          <a class='nav-link' role='tab' data-toggle='tab' href='#seedlink-container-tab'><span class='fa fa-tree' aria-hidden='true'></span> &nbsp; Seedlink</a>",
+    "          <a class='nav-link' role='tab' data-toggle='tab' href='#seedlink-container-tab'><span class='fa fa-plug' aria-hidden='true'></span> &nbsp; Seedlink</a>",
     "        </li>",
     "      </ul>",
     "      <div class='tab-content'>",
@@ -1576,7 +1726,7 @@ function generateProfile(session) {
     "          </div>",
     "        </div>",
     "        <div class='tab-pane' id='settings-container-tab' role='tabpanel'>",
-    "          <h3> Metadata Management </h3>",
+    "          <h4> Metadata Management </h4>",
     "          <p> Use this form to submit new station metadata to your ORFEUS data center.",
     "          <form class='form-inline' method='post' action='upload' enctype='multipart/form-data'>",
     "            <label class='custom-file'>",
@@ -1586,9 +1736,11 @@ function generateProfile(session) {
     "            &nbsp; <input id='file-submit' class='btn btn-success' type='submit' value='Send' disabled>",
     "          </form>",
     "          <small id='file-help' class='form-text text-muted'></small>",
+    "          <p>",
+    "          <div id='table-staged-metadata'></div>",
     "        </div>",
     "        <div class='tab-pane' id='seedlink-container-tab' role='tabpanel'>",
-    "          <h3> Seedlink Management </h3>",
+    "          <h4> Seedlink Management </h4>",
     "          <p> Use this form to define a new Seedlink server",
     "          <form class='form-inline' method='post' action='seedlink'>",
     "            <div class='input-group'>",
