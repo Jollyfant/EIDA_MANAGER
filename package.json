@@ -1,0 +1,27 @@
+{
+  "name": "orfeus_manager",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jollyfant/ORFEUS_MANAGER.git"
+  },
+  "author": "Mathijs Koymans",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Jollyfant/ORFEUS_MANAGER/issues"
+  },
+  "homepage": "https://github.com/Jollyfant/ORFEUS_MANAGER#readme",
+  "dependencies": {
+    "libxmljs": "^0.18.7",
+    "mongodb": "^3.0.3"
+  }
+}
