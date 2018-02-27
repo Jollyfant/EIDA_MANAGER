@@ -1,5 +1,5 @@
 {
-  "__STDOUT__": false,
+  "__STDOUT__": true,
   "__DEBUG__": true,
   "__VERSION__": "1.0.0",
   "__CLOSED__": false,
@@ -8,8 +8,8 @@
     "ID": "ODC",
     "NAME": "ORFEUS Data Center"
   },
-  "PORT": 8000,
-  "HOST": "127.0.0.1",
+  "PORT": 8088,
+  "HOST": "136.144.177.195",
   "LATENCY_URL": "http://127.0.0.1:3001",
   "MONGO": {
     "NAME": "orfeus-manager",
