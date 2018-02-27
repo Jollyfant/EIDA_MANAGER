@@ -546,8 +546,8 @@ function createStagedMetadataTable(json) {
      * Returns string representation of metadata status
      */
 
-    const METADATA_STATUS_PENDING = 0;
-    const METADATA_STATUS_REJECTED = 1;
+    const METADATA_STATUS_REJECTED = 0;
+    const METADATA_STATUS_PENDING = 1;
     const METADATA_STATUS_ACCEPTED = 2;
 
     switch(status) {
