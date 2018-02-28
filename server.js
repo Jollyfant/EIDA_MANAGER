@@ -15,6 +15,7 @@ const Session = require("./lib/orfeus-session");
 const Console = require("./lib/orfeus-logging");
 const StationXMLParser = require("./lib/orfeus-metadata.js");
 const SHA256 = require("./lib/orfeus-crypto.js");
+const HTTPRequest = require("./lib/orfeus-http.js");
 const STATIC_FILES = require("./lib/orfeus-static");
 
 const CONFIG = require("./config");
@@ -87,7 +88,7 @@ var User = function(user, id) {
 
   // Path where the user stores uploaded files
   this.filepath = user.networks.map(function(x) {
-    return path.join("files", x);
+    return path.join(CONFIG.METADATA.PATH, x);
   }); 
 
 }
@@ -171,6 +172,9 @@ var Webserver = function() {
    * Opens NodeJS webservice on given PORT
    * Handles all incoming connections
    */
+
+  // Call the metaDaemon
+  require("./lib/orfeus-metadaemon.js");
 
   // Create the HTTP server and listen to incoming requests
   var webserver = http.createServer(function(request, response) {
@@ -586,7 +590,7 @@ function writeMultipleFiles(files, session, callback) {
     var STATUS_MESSAGE = "Writing file " + file.metadata.sha256 + " (" + file.metadata.id + ") to disk";
 
     // NodeJS std lib for writing file
-    fs.writeFile(path.join(file.metadata.filepath, file.metadata.sha256), file.data, function(error) {
+    fs.writeFile(path.join(file.metadata.filepath, file.metadata.sha256 + ".stationXML"), file.data, function(error) {
 
       // Write to log
       error ? Console.error(STATUS_MESSAGE) : Console.info(STATUS_MESSAGE);
@@ -656,7 +660,7 @@ function saveFilesObjects(metadata, session) {
       "network": x.network,
       "station": x.station,
       "nChannels": x.nChannels,
-      "filepath": x.filepath,
+      "filepath": path.join(x.filepath, x.sha256),
       "type": "FDSNStationXML",
       "size": x.size,
       "status": 1,
@@ -1153,47 +1157,6 @@ function ParseFDSNWSResponse(data) {
 
 }
 
-function HTTPRequest(url, callback) {
-
-  /* function HTTPRequest
-   * Makes HTTP Get request to url and fires callback on completion
-   */
-
-  // Open HTTP GET request
-  var request = http.get(url, function(response) {
-
-    // Response was 204 No Content
-    if(response.statusCode === S_HTTP_NO_CONTENT) {
-      return callback(null);
-    }
-
-    var chunks = new Array();
-
-    // Data chunk received
-    response.on("data", function(chunk) {
-      chunks.push(chunk);
-    });
-
-    // HTTP Get request ended
-    response.on("end", function() {
-
-      if(response.statusCode !== S_HTTP_OK) {
-        return callback(null);
-      }
-
-      return callback(Buffer.concat(chunks).toString());
-
-    });
-
-  });
-
-  // There was an error with the request (e.g. ECONNREFUSED)
-  request.on("error", function(error) {
-    return callback(null);
-  });
-
-}
-
 function getSubmittedFiles(session, callback) {
 
   /* function getSubmittedFiles
@@ -1206,19 +1169,12 @@ function getSubmittedFiles(session, callback) {
   const METADATA_STATUS_REJECTED = 0;
   const METADATA_STATUS_PENDING = 1;
   const METADATA_STATUS_CONVERTED = 2;
-  const METADATA_STATUS_ACCEPTED = 3;
+  const METADATA_STATUS_MERGED = 3;
 
   var pipeline = [{
     "$match": {
       "userId": Database.ObjectId(session._id),
-      "status": {
-        "$in": [
-          METADATA_STATUS_PENDING,
-          METADATA_STATUS_CONVERTED,
-          METADATA_STATUS_REJECTED
-        ]
-      }
-    }
+    }  
   }, {
     "$group": {
       "_id": {
@@ -1233,6 +1189,17 @@ function getSubmittedFiles(session, callback) {
       },
       "status": {
         "$last": "$status"
+      }
+    }
+  }, {
+    "$match": {
+      "status": {
+        "$in": [
+          METADATA_STATUS_PENDING,
+          METADATA_STATUS_CONVERTED,
+          METADATA_STATUS_REJECTED,
+          METADATA_STATUS_MERGED
+        ]
       }
     }
   }];

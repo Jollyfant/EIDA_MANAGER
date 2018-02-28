@@ -548,15 +548,18 @@ function createStagedMetadataTable(json) {
 
     const METADATA_STATUS_REJECTED = 0;
     const METADATA_STATUS_PENDING = 1;
-    const METADATA_STATUS_ACCEPTED = 2;
+    const METADATA_STATUS_CONVERTED = 2;
+    const METADATA_STATUS_MERGED = 3;
 
     switch(status) {
       case METADATA_STATUS_PENDING:
         return "<span class='text-warning'>" + Icon("clock-o") + " Pending </span>"
       case METADATA_STATUS_REJECTED:
         return "<span class='text-danger'>" + Icon("remove") + " Rejected </span>"
-      case METADATA_STATUS_ACCEPTED:
-        return "<span class='text-success'>" + Icon("check") + " Accepted </span>"
+      case METADATA_STATUS_CONVERTED:
+        return "<span class='text-info'>" + Icon("check") + " Converted </span>"
+      case METADATA_STATUS_MERGED:
+        return "<span class='text-success'>" + Icon("check") + " Merged </span>"
       default:
         return "<span class='text-muted'>" + Icon("question") + " Unknown </span>"
     }
