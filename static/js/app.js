@@ -576,8 +576,10 @@ function createStagedMetadataTable(json) {
     return [
       file.network, 
       file.station + (file.new ? "&nbsp; <span class='fa fa-star text-warning'></span>" : ""),
+      file.nChannels,
       file.size,
       file.created,
+      file.modified || file.created,
       "<b>" + getStatus(file.status) + "</b>"
     ];
   });
@@ -591,9 +593,11 @@ function createStagedMetadataTable(json) {
   const STAGED_METADATA_TABLE_HEADER = [
     "Network",
     "Station",
+    "Number of Channels",
     "Size",
     "Submitted",
-    "Status"
+    "Modified",
+    "Current Status"
   ];
 
   new Table({
@@ -1212,7 +1216,7 @@ function AverageLatencyLight(code, x) {
   // Generate HTML
   return [
     "<span title='" + channelCodeToDescription(code, average) + "' class='fa fa-exclamation-circle text-" + generateLatencyInformationContentColor(code, average) + "'>",
-      "<b style='font-family: monospace;'>" + code + "</b>",
+      "<small style='font-family: monospace;'><b>" + code + "</b></small>",
     "</span>",
   ].join("\n");
 
@@ -1513,7 +1517,7 @@ function AddMetadataUpload() {
 
       // Generate the content
       var stagedFileContent = stagedStations.map(function(x) {
-        return (x.new ? Icon("star", "warning") : "") + x.network + "." + x.station
+        return (x.new ? Icon("star", "warning") + " " : "") + x.network + "." + x.station
       }).join(", ");
 
       Element("file-help").innerHTML = "<b>" + Icon("check", "success") + "</span> Staged Metadata:</b> " + (stagedStations.length ? stagedFileContent : "None"); 

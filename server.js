@@ -665,6 +665,7 @@ function saveFilesObjects(metadata, session) {
   var dbFiles = metadata.map(function(x) {
     return {
       "filename": x.id,
+      "modified": null,
       "network": x.network,
       "station": x.station,
       "nChannels": x.nChannels,
@@ -1195,6 +1196,12 @@ function getSubmittedFiles(session, callback) {
       },
       "status": {
         "$last": "$status"
+      },
+      "nChannels": {
+        "$last": "$status"
+      },
+      "modified": {
+        "$last": "$modified"
       }
     }
   }, {
@@ -1255,6 +1262,7 @@ function GetFDSNWSStations(session, callback) {
           "size": x.size,
           "status": x.status,
           "created": x.created,
+          "modified": x.modified,
           "new": !hashMap.includes(x._id.network + x._id.station)
         }
       });
@@ -1710,7 +1718,7 @@ function generateProfile(session) {
     "        </div>",
     "        <div class='tab-pane' id='settings-container-tab' role='tabpanel'>",
     "          <h4> Metadata Management </h4>",
-    "          <p> Use this form to submit new station metadata to your EIDA data center. Metadata is curated and processed before being exposed by the data center. You can follow the progress your metadata here. Station metadata that is exposed by the webservice will no longer be visible in the table below. This process may take multiple days.",
+    "          <p> Use this form to submit new station metadata to your EIDA data center. Metadata is curated and processed before being exposed by the data center. You can follow the progress your metadata here. Station metadata that is exposed by the webservice will no longer be visible in the table below. This process may some time. <b>Valid StationXML is required.</b>",
     "          <form class='form-inline' method='post' action='upload' enctype='multipart/form-data'>",
     "            <label class='custom-file'>",
     "              <input id='file-stage' name='file-data' type='file' class='form-control-file' aria-describedby='fileHelp' required multiple>",
@@ -1725,9 +1733,9 @@ function generateProfile(session) {
     "            <div id='table-staged-legend' style='display: none;'>",
     "              <small>",
     "              <span class='text-danger'><span class='fa fa-remove'></span><b> Rejected</b></span> - Metadata was rejected",
-    "              &nbsp;<span class='text-warning'><span class='fa fa-clock-o'></span><b> Pending</b></span> - Metadata is pending conversion",
-    "              &nbsp;<span class='text-info'><span class='fa fa-cogs'></span><b> Converted</b></span> - Metadata was converted",
-    "              &nbsp;<span class='text-success'><span class='fa fa-check'></span><b> Approved</b></span> - Metadata has been approved and will be included",
+    "              &nbsp;&nbsp;<span class='text-warning'><span class='fa fa-clock-o'></span><b> Pending</b></span> - Metadata was validated and is pending conversion",
+    "              &nbsp;&nbsp;<span class='text-info'><span class='fa fa-cogs'></span><b> Converted</b></span> - Metadata was converted",
+    "              &nbsp;&nbsp;<span class='text-success'><span class='fa fa-check'></span><b> Approved</b></span> - Approved for inclusion", 
     "              </small>",
     "            </div>",
     "          </div>",
