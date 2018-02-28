@@ -174,7 +174,9 @@ var Webserver = function() {
    */
 
   // Call the metaDaemon
-  require("./lib/orfeus-metadaemon.js");
+  if(CONFIG.METADATA.DAEMON.ENABLED) {
+    require("./lib/orfeus-metadaemon.js");
+  }
 
   // Create the HTTP server and listen to incoming requests
   var webserver = http.createServer(function(request, response) {
@@ -493,7 +495,13 @@ var Webserver = function() {
 
           // Write (multiple) files to disk
           writeMultipleFiles(files, session, function(error) {
+
+            if(error) {
+              Console.error(error);
+            }
+
             return Redirect(response, "/home?" + (error ? "failure" : "success")); 
+
           });
           
         });
@@ -768,7 +776,7 @@ function APIRequest(request, response, session) {
   var uri = url.parse(request.url);
 
   if(uri.pathname.startsWith("/api/latency")) {
-    GetStationLatency(session, function(data) {
+    GetStationLatency(uri, function(data) {
       response.end(data);
     });
     return;
@@ -1066,13 +1074,9 @@ function GetMessages(session, callback) {
 
 }
 
-function GetStationLatency(session, callback) {
+function GetStationLatency(uri, callback) {
 
-  var queryString = querystring.stringify({
-    "network": session.networks.join(",")
-  });
-
-  HTTPRequest(CONFIG.LATENCY_URL + "?" + queryString, callback);
+  HTTPRequest(CONFIG.LATENCY_URL + uri.search, callback);
 
 }
 
@@ -1166,10 +1170,12 @@ function getSubmittedFiles(session, callback) {
 
   // Stages:
   // Pending -> Accepted | Rejected
+  const METADATA_STATUS_UNKNOWN = -1;
   const METADATA_STATUS_REJECTED = 0;
   const METADATA_STATUS_PENDING = 1;
   const METADATA_STATUS_CONVERTED = 2;
-  const METADATA_STATUS_MERGED = 3;
+  const METADATA_STATUS_APPROVED = 3;
+  const METADATA_STATUS_COMPLETED = 4;
 
   var pipeline = [{
     "$match": {
@@ -1198,7 +1204,7 @@ function getSubmittedFiles(session, callback) {
           METADATA_STATUS_PENDING,
           METADATA_STATUS_CONVERTED,
           METADATA_STATUS_REJECTED,
-          METADATA_STATUS_MERGED
+          METADATA_STATUS_APPROVED
         ]
       }
     }
@@ -1617,6 +1623,16 @@ function generateWelcome(session) {
 
 }
 
+function generateVisitInformation(visited) {
+
+  if(!visited) {
+    return "<b>First visit! Welcome to the ORFEUS Manager</b>";
+  }
+
+  return "Last visit at <span class='fa fa-clock-o'></span> <b>" + visited.toISOString() + "</b>"
+
+}
+
 function generateWelcomeInformation(session) {
 
   /* function generateWelcomeInformation
@@ -1627,7 +1643,7 @@ function generateWelcomeInformation(session) {
     "      <div class='alert alert-info'>",
     "        <div style='float: right;'>",
     "          <small>",
-    "            Last visit at <span class='fa fa-clock-o'></span> <b>" + session.visited.toISOString() + "</b>",
+    "            " + generateVisitInformation(session.visited),
     "          </small>",
     "        </div>",
     "        <h3>",
@@ -1694,7 +1710,7 @@ function generateProfile(session) {
     "        </div>",
     "        <div class='tab-pane' id='settings-container-tab' role='tabpanel'>",
     "          <h4> Metadata Management </h4>",
-    "          <p> Use this form to submit new station metadata to your ORFEUS data center.",
+    "          <p> Use this form to submit new station metadata to your EIDA data center. Metadata is curated and processed before being exposed by the data center. You can follow the progress your metadata here. Station metadata that is exposed by the webservice will no longer be visible in the table below. This process may take multiple days.",
     "          <form class='form-inline' method='post' action='upload' enctype='multipart/form-data'>",
     "            <label class='custom-file'>",
     "              <input id='file-stage' name='file-data' type='file' class='form-control-file' aria-describedby='fileHelp' required multiple>",
@@ -1705,6 +1721,16 @@ function generateProfile(session) {
     "          <small id='file-help' class='form-text text-muted'></small>",
     "          <p>",
     "          <div id='table-staged-metadata'></div>",
+    "          <div style='text-align: center;'>",
+    "            <div id='table-staged-legend' style='display: none;'>",
+    "              <small>",
+    "              <span class='text-danger'><span class='fa fa-remove'></span><b> Rejected</b></span> - Metadata was rejected",
+    "              &nbsp;<span class='text-warning'><span class='fa fa-clock-o'></span><b> Pending</b></span> - Metadata is pending conversion",
+    "              &nbsp;<span class='text-info'><span class='fa fa-cogs'></span><b> Converted</b></span> - Metadata was converted",
+    "              &nbsp;<span class='text-success'><span class='fa fa-check'></span><b> Approved</b></span> - Metadata has been approved and will be included",
+    "              </small>",
+    "            </div>",
+    "          </div>",
     "        </div>",
     "        <div class='tab-pane' id='seedlink-container-tab' role='tabpanel'>",
     "          <h4> Seedlink Management </h4>",

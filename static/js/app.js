@@ -4,7 +4,7 @@ const STATION_MARKER_ORANGE = "/images/station-orange.png";
 const STATION_MARKER_GREY = "/images/station-grey.png";
 const STATION_MARKER_RED = "/images/station-red.png";
 const NODE_MARKER = "/images/node.png";
-const SOCKET_URL = "ws://127.0.0.1:8080";
+const SOCKET_URL = "ws://136.144.177.195:6661";
 const LATENCY_SERVER = "http://127.0.0.1:3001";
 
 var __TABLE_JSON__;
@@ -170,7 +170,7 @@ function getStationLatencies(query) {
   var start = Date.now();
 
   $.ajax({
-    "url": LATENCY_SERVER + query, 
+    "url": "/api/latency" + query, 
     "type": "GET",
     "dataType": "JSON",
     "success": function(json) {
@@ -524,7 +524,7 @@ function initApplication() {
         fitMapBounds(markers);
         changeMapLegend(markers);
 
-        Element("map-information").innerHTML = MapInformationText(json.length);
+        Element("map-information").innerHTML = MapInformationText(json.stations.length);
         Element("map-display").addEventListener("change", changeMapLegend.bind(this, markers));
 
         // Proceed with the table
@@ -549,7 +549,7 @@ function createStagedMetadataTable(json) {
     const METADATA_STATUS_REJECTED = 0;
     const METADATA_STATUS_PENDING = 1;
     const METADATA_STATUS_CONVERTED = 2;
-    const METADATA_STATUS_MERGED = 3;
+    const METADATA_STATUS_APPROVED = 3;
 
     switch(status) {
       case METADATA_STATUS_PENDING:
@@ -557,9 +557,9 @@ function createStagedMetadataTable(json) {
       case METADATA_STATUS_REJECTED:
         return "<span class='text-danger'>" + Icon("remove") + " Rejected </span>"
       case METADATA_STATUS_CONVERTED:
-        return "<span class='text-info'>" + Icon("check") + " Converted </span>"
-      case METADATA_STATUS_MERGED:
-        return "<span class='text-success'>" + Icon("check") + " Merged </span>"
+        return "<span class='text-info'>" + Icon("cogs") + " Converted </span>"
+      case METADATA_STATUS_APPROVED:
+        return "<span class='text-success'>" + Icon("check") + " Approved </span>"
       default:
         return "<span class='text-muted'>" + Icon("question") + " Unknown </span>"
     }
@@ -581,6 +581,12 @@ function createStagedMetadataTable(json) {
       "<b>" + getStatus(file.status) + "</b>"
     ];
   });
+
+  if(json.length === 0) {
+    return;
+  }
+
+  Element("table-staged-legend").style.display = 'inline-block';
 
   const STAGED_METADATA_TABLE_HEADER = [
     "Network",
@@ -928,12 +934,12 @@ function getNetworkDOI() {
     "success": function(json) {
 
       if(json === undefined || json && json["doi-link"] === null) {
-        return Element("doi-link").innerHTML = "<span class='fa fa-globe'> " + USER_NETWORKS.join(" ") + "</span>";
+        return Element("doi-link").innerHTML = "<span class='fa fa-globe'></span> " + USER_NETWORKS.join(" "); 
       }
 
       console.debug("DOI returned from FDSN: " + json["doi-link"]);
 
-      Element("doi-link").innerHTML = "<a title='" + json["doi-link"] + "' href='" + json["doi-link"] + "'><span class='fa fa-globe'> " + USER_NETWORKS.join(" ") + "</span></a>";
+      Element("doi-link").innerHTML = "<a title='" + json["doi-link"] + "' href='" + json["doi-link"] + "'><span class='fa fa-globe'></span> " + USER_NETWORKS.join(" ") + "</a>";
 
     }
   });
@@ -1051,7 +1057,7 @@ function generateLatencyInformationContent(latencies) {
     return [
       (channels.indexOf(x.channel) === -1 ? Icon("exclamation", "danger") : "") + " " + x.location + "." + x.channel,
       x.end,
-      "<span class='text-" + generateLatencyInformationContentColor(x.channel, x.msLatency) + "'>" + (1E-3 * x.msLatency).toFixed(1) + "</span>"
+      "<span class='text-" + generateLatencyInformationContentColor(x.channel, x.msLatency) + "'><b>" + (1E-3 * x.msLatency).toFixed(1) + "</b></span>"
     ];
   });
 
@@ -1155,7 +1161,7 @@ function GenerateTable(list) {
    */
 
   $.ajax({
-    "url": "/api/latency",
+    "url": "/api/latency?network=" + USER_NETWORKS.join(","),
     "type": "GET",
     "dataType": "JSON",
     "error": function(error) {

@@ -107,6 +107,12 @@ function validateStationMetadata(station) {
   // Go over each channel for the station
   channels.forEach(function(channel) {
 
+    var channelCode = channel.getAttribute("code");
+
+    if(channelCode === "LOG") {
+      return;
+    }
+
     // Confirm channel spatial coordinates
     var channelLatitude = Number(channel.getElementsByTagName("Latitude").item(0).innerHTML);
     var channelLongitude = Number(channel.getElementsByTagName("Longitude").item(0).innerHTML);
