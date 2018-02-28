@@ -3,7 +3,7 @@ node_modules
 config.json
 *.log
 *.out
-files
 *.xml
 *.swp
 *.swo
+metadata
