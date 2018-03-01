@@ -9,7 +9,7 @@
   "METADATA": {
     "DAEMON": {
       "ENABLED": true,
-      "SLEEP_INTERVAL_MS": 60000
+      "SLEEP_INTERVAL_MS": 10000
     },
     "PATH": "./metadata"
   },
@@ -23,7 +23,8 @@
   "SESSION": {
     "TIMEOUT": 3600000
   },
-  "LATENCY_URL": "http://127.0.0.1:3001",
+  "LATENCY_URL": "http://127.0.0.1:3002",
+  "STATIONS_URL": "http://127.0.0.1:3001",
   "MONGO": {
     "NAME": "orfeus-manager",
     "HOST": "127.0.0.1",

@@ -750,6 +750,14 @@ function APIRequest(request, response, session) {
     return;
   }
 
+  // Get the staged files
+  if(uri.pathname === "/api/staged") {
+    getSubmittedFiles(session, function(data) {
+      response.end(JSON.stringify(data));
+    });
+    return;
+  }
+
   // Stations managed by the session
   if(uri.pathname === "/api/stations") {
     GetFDSNWSStations(session, function(data) {
@@ -808,7 +816,35 @@ function APIRequest(request, response, session) {
 function GetSeedlinkServers(session, callback) {
 
   Database.seedlink().find({"userId": session._id}).toArray(function(error, results) {
-    callback(JSON.stringify(results));
+
+    if(error || results.length === 0) {
+      return JSON.stringify(new Array());
+    }
+
+    var servers = results.map(function(x) {
+      return x.host;
+    }).join(",");
+
+    OHTTP.request(CONFIG.STATIONS_URL + "?host=" + servers, function(data) { 
+
+      if(!data) {
+        return callback(JSON.stringify(results));
+      }
+
+      data = JSON.parse(data);
+
+      results.forEach(function(x) {
+        for(var i = 0; i < data.length; i++) {
+          if(data[i].host === x.host) {
+            x.stations = data[i].stations;
+          }
+        } 
+      });
+
+      callback(JSON.stringify(results));
+
+    });
+
   });
 
 }

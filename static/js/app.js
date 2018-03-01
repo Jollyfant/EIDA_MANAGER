@@ -463,7 +463,7 @@ function initApplication() {
         $("#modal-alert").modal();
         break;
       case "?s_success":
-        Element("modal-content").innerHTML = generateMessageAlert("danger", S_SEEDLINK_OK);
+        Element("modal-content").innerHTML = generateMessageAlert("success", S_SEEDLINK_OK);
         $("#modal-alert").modal();
         break;
     }
@@ -479,6 +479,23 @@ function initApplication() {
     var markers = new Array();
     var start = Date.now();
 
+    function queryStaged() {
+      $.ajax({
+        "cache": false,
+        "url": "/api/staged",
+        "type": "GET",
+        "dataType": "JSON",
+        "success": function(json) {
+
+          createStagedMetadataTable(json);
+
+        }
+      });
+    }
+
+    queryStaged();
+    setInterval(queryStaged, 10000);
+
     // Add the stations to the map
     $.ajax({
       "cache": false,
@@ -490,9 +507,6 @@ function initApplication() {
         console.debug("Retrieved " + json.stations.length + " stations from server in " + (Date.now() - start) + "ms.");
 
         _stationJson = json.stations;
-
-        // Create a table for the submitted metadata
-        createStagedMetadataTable(json.staged);
 
         // For each entry create a station marker
         json.stations.forEach(function(station) {
@@ -578,8 +592,8 @@ function createStagedMetadataTable(json) {
 
   var stagedTable = json.map(function(file) {
     return [
-      file.network, 
-      file.station + (file.new ? "&nbsp; <span class='fa fa-star text-warning'></span>" : ""),
+      file._id.network, 
+      file._id.station + (file.new ? "&nbsp; <span class='fa fa-star text-warning'></span>" : ""),
       file.nChannels,
       file.size,
       file.created,
@@ -587,10 +601,6 @@ function createStagedMetadataTable(json) {
       "<b>" + getStatus(file.status) + "</b>"
     ];
   });
-
-  if(json.length === 0) {
-    return;
-  }
 
   Element("table-staged-legend").style.display = 'inline-block';
 
@@ -711,7 +721,17 @@ function AddSeedlink() {
     "success": function(json) {
 
       k = json.map(function(x) {
-        return [x.host, x.port, "dunno", "dunno"];
+
+        if(x.stations) {
+        s = x.stations.map(function(x) {
+          return x.network + "." + x.station;
+        }).join(", ");
+
+        return [x.host, x.port, Icon("check", "success"), s];
+        }
+
+        return [x.host, x.port, Icon("remove", "danger"), "Unknown"];
+
       });
 
       new Table({
@@ -930,6 +950,10 @@ function MapInformationText(nStations) {
 }
 
 function getNetworkDOI() {
+
+  if(USER_NETWORKS.join(" ") === "*") {
+    return Element("doi-link").innerHTML = "<small>Administrator</small>";
+  }
 
   const API_ADDRESS = "https://www.orfeus-eu.org/api/doi";
   const DOI_API_QUERY = "network=" + USER_NETWORKS.join(",");
