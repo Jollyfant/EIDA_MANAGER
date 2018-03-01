@@ -1,33 +1,23 @@
 // Native includes
-const http = require("http");
-const crypto = require("crypto");
-const assert = require("assert");
+const {createServer} = require("http");
 const path = require("path");
 const url = require("url");
 const fs = require("fs");
 const querystring = require("querystring");
 
-const Multipart = require("./multipart");
+const multipart = require("./lib/multipart");
 
 // ORFEUS libs
 const Database = require("./lib/orfeus-database");
 const Session = require("./lib/orfeus-session");
 const Console = require("./lib/orfeus-logging");
-const StationXMLParser = require("./lib/orfeus-metadata.js");
+const { splitStationXML }= require("./lib/orfeus-metadata.js");
 const SHA256 = require("./lib/orfeus-crypto.js");
-const HTTPRequest = require("./lib/orfeus-http.js");
+const OHTTP = require("./lib/orfeus-http.js");
+const Template = require("./lib/orfeus-template.js");
 const STATIC_FILES = require("./lib/orfeus-static");
 
 const CONFIG = require("./config");
-
-const S_HTTP_OK = 200;
-const S_HTTP_NO_CONTENT = 204;
-const S_HTTP_REDIRECT = 301;
-const E_HTTP_UNAVAILABLE = 503;
-const E_HTTP_UNAUTHORIZED = 401;
-const E_HTTP_FILE_NOT_FOUND = 404;
-const E_HTTP_TEAPOT = 418;
-const E_HTTP_INTERNAL_SERVER_ERROR = 500;
 
 function getSession(headers, callback) {
 
@@ -96,13 +86,13 @@ var User = function(user, id) {
 function HTTPError(response, status) {
 
   response.writeHead(status, {"Content-Type": "text/html"});
-  response.end(generateHTTPError(status));
+  response.end(Template.generateHTTPError(status));
 
 }
 
 function Redirect(response, path) {
   var headers = {"Location": path};
-  response.writeHead(S_HTTP_REDIRECT, headers);
+  response.writeHead(OHTTP.S_HTTP_REDIRECT, headers);
   response.end();
 }
 
@@ -179,7 +169,7 @@ var Webserver = function() {
   }
 
   // Create the HTTP server and listen to incoming requests
-  var webserver = http.createServer(function(request, response) {
+  var webserver = createServer(function(request, response) {
   
     // Prevent browser-side caching of sessions
     response.setHeader("Cache-Control", "private, no-cache, no-store, must-revalidate");
@@ -218,13 +208,13 @@ var Webserver = function() {
     if(STATIC_FILES.indexOf(uri) !== -1) {
       switch(path.extname(uri)) {
         case ".css":
-          response.writeHead(S_HTTP_OK, {"Content-Type": "text/css"});
+          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "text/css"});
           break
         case ".png":
-          response.writeHead(S_HTTP_OK, {"Content-Type": "image/png"});
+          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "image/png"});
           break
         case ".js":
-          response.writeHead(S_HTTP_OK, {"Content-Type": "application/javascript"});
+          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "application/javascript"});
           break;
       }
       return fs.createReadStream(path.join("static", uri)).pipe(response);
@@ -250,18 +240,18 @@ var Webserver = function() {
         }
   
         // Get request is made on the login page
-        response.writeHead(S_HTTP_OK, {"Content-Type": "text/html"});
-        return response.end(generateLogin(request.url));
+        response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "text/html"});
+        return response.end(Template.generateLogin(request.url));
   
       }
 
       // When the database connection fails
       if(error) {
-        return HTTPError(response, E_HTTP_INTERNAL_SERVER_ERROR);
+        return HTTPError(response, OTTHP.E_HTTP_INTERNAL_SERVER_ERROR);
       }
 
       if(CONFIG.__CLOSED__) {
-        return HTTPError(response, E_HTTP_UNAVAILABLE);
+        return HTTPError(response, OHTTP.E_HTTP_UNAVAILABLE);
       }
   
       // URL for posting messages
@@ -344,11 +334,11 @@ var Webserver = function() {
             createSession(user, function(cookie) {
   
               if(cookie === null) {
-                return HTTPError(response, E_HTTP_INTERNAL_SERVER_ERROR);
+                return HTTPError(response, OHTTP.E_HTTP_INTERNAL_SERVER_ERROR);
               }
 
               // Redirect user to home page and set a cookie for this session
-              response.writeHead(S_HTTP_REDIRECT, {
+              response.writeHead(OHTTP.S_HTTP_REDIRECT, {
                 "Set-Cookie": cookie,
                 "Location": "./home?welcome"
               });
@@ -367,7 +357,7 @@ var Webserver = function() {
   
       // Roadblock for non-authenticated sessions
       if(session === null) {
-        return HTTPError(response, E_HTTP_UNAUTHORIZED);
+        return HTTPError(response, OHTTP.E_HTTP_UNAUTHORIZED);
       }
 
       /* +-----------------------------------+
@@ -407,35 +397,25 @@ var Webserver = function() {
           Database.users().updateOne({"_id": session._id}, {"$set": {"version": CONFIG.__VERSION__, "visited": new Date()}});
         }
 
-        return response.end(generateProfile(session));
-
-      }
-
-      if(uri === "/home/admin") {
-
-        if(session.role !== "admin") {
-          return HTTPError(response, E_HTTP_UNAUTHORIZED);
-        }
-
-        return response.end(generateAdminPage(session));
+        return response.end(Template.generateProfile(session));
 
       }
 
       if(uri === "/home/messages") {
-        return response.end(generateMessages(session));
+        return response.end(Template.generateMessages(session));
       }
 
       if(uri === "/home/messages/new") {
-        return response.end(sendNewMessage(request.url, session));
+        return response.end(Template.generateNewMessageTemplate(request.url, session));
       }
 
       if(uri.startsWith("/home/messages/detail")) {
-        return response.end(generateMessageDetails(session));
+        return response.end(Template.generateMessageDetails(session));
       }
    
       // Station details page
       if(uri === "/home/station") {
-        return response.end(generateStationDetails(session));
+        return response.end(Template.generateStationDetails(session));
       }
 
       if(uri === "/seedlink") {
@@ -510,7 +490,7 @@ var Webserver = function() {
   
       }
 
-      return HTTPError(response, E_HTTP_FILE_NOT_FOUND);
+      return HTTPError(response, OHTTP.E_HTTP_FILE_NOT_FOUND);
   
     });
   
@@ -562,7 +542,7 @@ function writeMultipleFiles(files, session, callback) {
 
   // We split any submitted StationXML files
   try {
-    var XMLDocuments = StationXMLParser(files);
+    var XMLDocuments = splitStationXML(files);
   } catch(exception) {
     return callback(exception);
   }
@@ -621,26 +601,6 @@ function writeMultipleFiles(files, session, callback) {
 
 }
 
-function generateHTTPError(status) {
-
-  // Unknown status code
-  if(!http.STATUS_CODES.hasOwnProperty(status)) {
-    status = E_HTTP_TEAPOT;
-  }
-
-  return [
-    generateHeader(),
-    "  <body style='padding-top: 20px;'>",
-    "    <div class='container'>",
-    "      <h2 class='text-muted'><span style='color: #C03;'>" + status +"</span> " + http.STATUS_CODES[status] + " </h2>",
-    "    </div>",
-    "  </body>",
-    generateFooter(),
-    "</html>"
-  ].join("\n");
-
-}
-
 function getAdministrators(callback) {
 
   /* function getAdministrators
@@ -672,7 +632,7 @@ function saveFilesObjects(metadata, session) {
       "filepath": path.join(x.filepath, x.sha256),
       "type": "FDSNStationXML",
       "size": x.size,
-      "status": 1,
+      "status": Database.METADATA_STATUS_PENDING,
       "userId": session._id,
       "created": new Date(),
       "sha256": x.sha256
@@ -698,7 +658,7 @@ function Message(recipient, sender, subject, content) {
     "subject": subject,
     "content": content,
     "read": false,
-    "recipientDeletreturn ed": false,
+    "recipientDeleted": false,
     "senderDeleted": false,
     "created": new Date(),
     "level": 0
@@ -1077,7 +1037,7 @@ function GetMessages(session, callback) {
 
 function GetStationLatency(uri, callback) {
 
-  HTTPRequest(CONFIG.LATENCY_URL + uri.search, callback);
+  OHTTP.request(CONFIG.LATENCY_URL + uri.search, callback);
 
 }
 
@@ -1094,7 +1054,7 @@ function GetFDSNWSChannels(session, uri, callback) {
 
   queryString += "&" + uri.query;
 
-  HTTPRequest(FDSNWS_STATION_URL + "?" + queryString, callback);
+  OHTTP.request(FDSNWS_STATION_URL + "?" + queryString, callback);
 
 }
 
@@ -1171,13 +1131,6 @@ function getSubmittedFiles(session, callback) {
 
   // Stages:
   // Pending -> Accepted | Rejected
-  const METADATA_STATUS_UNKNOWN = -1;
-  const METADATA_STATUS_REJECTED = 0;
-  const METADATA_STATUS_PENDING = 1;
-  const METADATA_STATUS_CONVERTED = 2;
-  const METADATA_STATUS_APPROVED = 3;
-  const METADATA_STATUS_COMPLETED = 4;
-
   var pipeline = [{
     "$match": {
       "userId": Database.ObjectId(session._id),
@@ -1198,7 +1151,7 @@ function getSubmittedFiles(session, callback) {
         "$last": "$status"
       },
       "nChannels": {
-        "$last": "$status"
+        "$last": "$nChannels"
       },
       "modified": {
         "$last": "$modified"
@@ -1208,10 +1161,11 @@ function getSubmittedFiles(session, callback) {
     "$match": {
       "status": {
         "$in": [
-          METADATA_STATUS_PENDING,
-          METADATA_STATUS_CONVERTED,
-          METADATA_STATUS_REJECTED,
-          METADATA_STATUS_APPROVED
+          Database.METADATA_STATUS_REJECTED,
+          Database.METADATA_STATUS_PENDING,
+          Database.METADATA_STATUS_CONVERTED,
+          Database.METADATA_STATUS_VALIDATED,
+          Database.METADATA_STATUS_ACCEPTED
         ]
       }
     }
@@ -1245,7 +1199,7 @@ function GetFDSNWSStations(session, callback) {
     "network": session.networks.join(",")
   });
 
-  HTTPRequest(FDSNWS_STATION_URL + "?" + queryString, function(data) {
+  OHTTP.request(FDSNWS_STATION_URL + "?" + queryString, function(data) {
 
     var data = ParseFDSNWSResponse(data);
 
@@ -1332,440 +1286,6 @@ function Authenticate(postBody, callback) {
 
 }
 
-function generateHeader() {
-
-  /*
-   *
-   */
-  return [
-    "<!DOCTYPE html>",
-    "<html lang='en'>",
-    "  <head>",
-    "    <meta charset='utf-8'>",
-    "    <meta name='viewport' content='width=device-width, initial-scale=1, shrink-to-fit=no'>",
-    "    <meta name='description' content='ORFEUS Manager'>",
-    "    <meta name='author' content='ORFEUS Data Center'>",
-    "    <title>ORFEUS Manager</title>",
-    "    <link rel='stylesheet' href='/css/style.css'>",
-    "  </head>",
-  ].join("\n");
-
-}
-
-function generateInvalid(invalid) {
-
-  /* function generateInvalid
-   * Generates alert message box with status message
-   */
-
-  const E_CREDENTIALS_INVALID = "Invalid credentials";
-  const S_LOGGED_OUT = "Succesfully logged out";
-
-  if(invalid.endsWith("invalid")) {
-    return [
-      "        <div class='alert alert-danger'>",
-      "          <span class='fa fa-remove aria-hidden='true'></span>",
-      E_CREDENTIALS_INVALID,
-      "        </div>"
-    ].join("\n");
-  }
-
-  if(invalid.endsWith("logout")) {
-    return [
-      "        <div class='alert alert-success'>",
-      "          <span class='fa fa-check aria-hidden='true'></span>",
-      S_LOGGED_OUT,
-      "        </div>"
-    ].join("\n");
-  }
-
-  return null;
-
-}
-
-function generateLogin(invalid) {
-
-  return [
-    generateHeader(),
-    "  <body>",
-    "    <div style='text-align: center;'>",
-    "      <img src='/images/knmi.png'>",
-    "    </div>",
-    "    <div class='container'>",
-    "      <form class='form-signin' method='post' action='authenticate'>",
-    "        <h2 class='form-signin-heading'><span style='color: #C03;'>O</span>RFEUS Manager</h2>",
-    "        <div class='input-group'>",
-    "          <span class='input-group-addon'><span class='fa fa-user-circle-o' aria-hidden='true'></span></span>",
-    "          <input name='username' class='form-control' placeholder='Username' required autofocus>",
-    "        </div>",
-    "        <div class='input-group'>",
-    "          <span class='input-group-addon'><span class='fa fa-key' aria-hidden='true'></span></span>",
-    "          <input name='password' type='password' class='form-control' placeholder='Password' required>",
-    "        </div>",
-    "        <hr>",
-    generateInvalid(invalid),
-    "        <button class='btn btn-lg btn-primary btn-block' type='submit'><span class='fa fa-lock' aria-hidden='true'></span> Authenticate</button>",
-    "      </form>",
-    "    </div>",
-    "  </body>",
-    generateFooter(),
-    "</html>"
-  ].join("\n");
-
-}
-
-function generateFooterApp() {
-
-  /* function generateFooterApp
-   * Generates the footer for the application
-   */
-
-  return [
-    "  <script src='https://code.highcharts.com/highcharts.js'></script>",
-    "  <script src='https://cdn.socket.io/socket.io-1.4.5.js'></script>",
-    "  <script src='https://maps.googleapis.com/maps/api/js?key=AIzaSyAN3tYdvQ5tSS5NIKwZX-ZqhsM4NApVV_I'></script>",
-    "  <script src='/js/table.js'></script>",
-    "  <script src='/js/fdsn-station-xml-validator.js'></script>",
-    "  <script src='/js/seedlink.js'></script>",
-    "  <script src='/js/app.js'></script>",
-  ].join("\n");
-
-}
-
-function generateFooter() {
-
-  /* function generateFooter
-   * Generates the footer HTML
-   */
-
-  return [
-    "  <div class='modal fade' id='modal-alert' tabindex='-1' role='dialog' aria-labelledby='exampleModalCenterTitle' aria-hidden='true'>",
-    "    <div class='modal-dialog h-100 d-flex flex-column justify-content-center my-0' role='document'>",
-    "      <div class='modal-content'>",
-    "        <div class='modal-header'>",
-    "          <h4 class='modal-title' id='modal-title'><span class='text-danger'>O</span>RFEUS Manager</h4>",
-    "          <button type='button' class='close' data-dismiss='modal' aria-label='Close'>",
-    "            <span aria-hidden='true'>&times;</span>",
-    "          </button>",
-    "        </div>",
-    "        <div id='modal-content' class='modal-body' style='text-align: center;'></div>",
-    "      </div>",
-    "    </div>",
-    "  </div>",
-    "  <footer class='container text-muted'>",
-    "  <hr>",
-    "  ORFEUS Manager &copy; <a href='https://orfeus-eu.org'>ODC</a> " + new Date().getFullYear() + ". All Rights Reserved.",
-    "  <div style='float: right;'><small>Version v" + CONFIG.__VERSION__ + "</small></div>",
-    "  </footer>",
-    "  <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css'>",
-    "  <link rel='stylesheet' href='https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css' integrity='sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ' crossorigin='anonymous'>",
-    "  <script src='https://code.jquery.com/jquery-3.1.1.min.js'></script>",
-    "  <script src='https://cdnjs.cloudflare.com/ajax/libs/tether/1.4.0/js/tether.min.js'></script>",
-    "  <script src='https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/js/bootstrap.min.js'></script>",
-  ].join("\n");
-
-}
-
-function generateMessageDetails(session) {
-
-  return [
-    generateHeader(),
-    generateWelcome(session),
-    "    <div class='container'>",
-    "      <div id='message-detail'></div>",
-    "    </div>",
-    generateFooter(),
-    generateFooterApp()
-  ].join("\n");
-
-}
-
-function generateAdminPage(session) {
-
-  return [
-    generateHeader(),
-    generateWelcome(session),
-    "<h4> Open Tasks </h4>",
-    generateFooter(),
-    generateFooterApp()
-  ].join("\n");
-
-}
-
-function generateMessages(session) {
-
-  /* function generateMessages
-   * Template for private message inbox
-   */
-
-  return [
-    generateHeader(),
-    generateWelcome(session),
-    "    <div class='container'>",
-    "      <div style='text-align: right;'>",
-    "        <a class='btn btn-success btn-sm' href='/home/messages/new'><span class='fa fa-plus-square'></span> New Message</a>",
-    "      </div>",
-    "      <br>",
-    "      <ul class='nav nav-tabs nav-justified' role='tablist'>",
-    "        <li class='nav-item'>",
-    "          <a class='nav-link active' role='tab' data-toggle='tab' href='#messages-inbox-tab'><span class='fa fa-envelope-o' aria-hidden='true'></span> &nbsp; Message Inbox</a>",
-    "        </li>",
-    "        <li class='nav-item'>",
-    "          <a class='nav-link' role='tab' data-toggle='tab' href='#messages-sent-tab'><span class='fa fa-location-arrow' aria-hidden='true'></span> &nbsp; Sent Messages</a>",
-    "        </li>",
-    "      </ul>",
-    "      <div class='tab-content'>",
-    "        <div class='tab-pane active' id='messages-inbox-tab' role='tabpanel'>",
-    "          <div id='message-content'></div>",
-    "          <div style='text-align: right;'>",
-    "            <button onClick='deleteAllMessages(\"inbox\")' class='btn btn-danger btn-sm' id='delete-all-messages'><span class='fa fa-minus-square'></span> &nbsp; Delete All</button>",
-    "          </div>",
-    "        </div>",
-    "        <div class='tab-pane' id='messages-sent-tab' role='tabpanel'>",
-    "          <div id='message-content-sent'></div>",
-    "          <div style='text-align: right;'>",
-    "            <button onClick='deleteAllMessages(\"sent\")' class='btn btn-danger btn-sm' id='delete-all-messages'><span class='fa fa-minus-square'></span> &nbsp; Delete All</button>",
-    "          </div>",
-    "        </div>",
-    "      </div>",
-    "    </div>",
-    generateFooter(),
-    generateFooterApp()
-  ].join("\n");
-
-}
-
-function sendNewMessage(invalid, session) {
-
-  return [
-    generateHeader(),
-    generateWelcome(session),
-    "      <form class='message-form' method='post' action='/send'>",
-    "        <div id='message-information'></div>",
-    "        <h3>Submit new message</h3>",
-    "        <div class='input-group'>",
-    "          <span class='input-group-addon'><span class='fa fa-pencil' aria-hidden='true'> Subject</span></span>",
-    "          <input name='subject' class='form-control' placeholder='Subject' required autofocus>",
-    "          <span class='input-group-addon'><span class='fa fa-user-circle-o' aria-hidden='true'> Recipient</span></span>",
-    "          <input name='recipient' class='form-control' placeholder='Recipient' required>",
-    "        </div>",
-    "        <div class='input-group'>",
-    "          <textarea class='form-control' name='content' class='form-control' placeholder='Message'></textarea>",
-    "        </div>",
-    "        <hr>",
-    "        <button class='btn btn-lg btn-primary btn-block' type='submit'><span class='fa fa-location-arrow' aria-hidden='true'></span> Send</button>",
-    "      </form>",
-    generateFooter(),
-    generateFooterApp()
-  ].join("\n");
-
-}
-
-function generateStationDetails(session) {
-
-  return [
-    generateHeader(),
-    generateWelcome(session),
-    "  <body>",
-    "    <div class='container'>",
-    "      <div class='row'>",
-    "        <div class='col'>",
-    "          <div id='map'></div>",
-    "            <div class='card'>",
-    "              <div class='card-header'>",
-    "                <div id='map-information'></div>",
-    "              </div>",
-    "              <div class='card-block'>",
-    "                <h4><span class='fa fa-heart-o text-danger' aria-hidden='true'></span> Seedlink Health</h4>",
-    "                <div id='channel-information-latency'></div>",
-    "                <div style='float: right;'>",
-    "                  <small><span class='fa fa-exclamation text-danger'></span> Metadata Unavailable</small>",
-    "                </div>",
-    "              </div>",
-    "            </div>",
-    "        </div>",
-    "        <div class='col'>",
-    "          <h4><span id='channel-information-header'></span> Channel Information</h4>",
-    "          <hr>",
-    "          <div class='form-check alert alert-info'>",
-    "            <label class='form-check-label'>",
-    "              <input id='hide-channels' class='form-check-input' type='checkbox' value=''> Show Closed Channels",
-    "            </label>",
-    "            &nbsp;",
-    "            <label class='form-check-label'>",
-    "              <input id='connect-seedlink' class='form-check-input' type='checkbox' value=''> Connect to Seedlink",
-    "            </label>",
-    "          </div>",
-    "          <div id='channel-information'></div>",
-    "        </div>",
-    "      </div>",
-    "    </div>",
-    "    <div id='station-detail-header'></div>",
-    "  </body>",
-    generateFooter(),
-    generateFooterApp(),
-    "<html>"
-  ].join("\n");
-
-}
-
-
-function generateWelcome(session) {
-
-  return [
-    "    <script>const USER_NETWORKS = " + JSON.stringify(session.networks) + "; USER_VERSION = " + JSON.stringify(session.version) + "</script>",
-    "    <div class='container'>",
-    "      <div style='text-align: center;'>",
-    "        <img src='/images/knmi.png'>",
-    "      </div>",
-    "      <div style='float: right;'>",
-    "        <a href='/home/messages'><span class='badge badge-success'><span class='fa fa-envelope' aria-hidden='true'></span> <small><span id='number-messages'></span></small></span></a>",
-    "        &nbsp;",
-    "        <a href='/logout'><span class='fa fa-sign-out' aria-hidden='true'></span><small>Logout</small></a>",
-    "      </div>",
-    "      <h2 class='form-signin-heading'><span style='color: #C03;'>O</span>RFEUS Manager <small class='text-muted'>" + CONFIG.NODE.ID + "</small></h2>",
-    generateWelcomeInformation(session),
-    "      <div id='breadcrumb-container'></div>",
-    "      <hr>",
-  ].join("\n");
-
-}
-
-function generateVisitInformation(visited) {
-
-  if(!visited) {
-    return "<b>First visit! Welcome to the ORFEUS Manager</b>";
-  }
-
-  return "Last visit at <span class='fa fa-clock-o'></span> <b>" + visited.toISOString() + "</b>"
-
-}
-
-function generateWelcomeInformation(session) {
-
-  /* function generateWelcomeInformation
-   * template for top session banner
-   */
-
-  return [
-    "      <div class='alert alert-info'>",
-    "        <div style='float: right;'>",
-    "          <small>",
-    "            " + generateVisitInformation(session.visited),
-    "          </small>",
-    "        </div>",
-    "        <h3>",
-    "          <span class='fa fa-user-" + (session.role === "admin" ? "circle text-danger" : "circle") + "' aria-hidden='true'></span> " + session.username + " <small class='text-muted'><span id='doi-link'></span></small>",
-    "        </h3>",
-    "      </div>",
-  ].join("\n");
-
-}
-
-function generateProfile(session) {
-
-  return [
-    generateHeader(),
-    generateWelcome(session),
-    "      <ul class='nav nav-tabs nav-justified' role='tablist'>",
-    "        <li class='nav-item'>",
-    "          <a class='nav-link active' role='tab' data-toggle='tab' href='#map-container-tab'><span class='fa fa-map' aria-hidden='true'></span> &nbsp; Map Display</a>",
-    "        </li>",
-    "        <li class='nav-item'>",
-    "          <a class='nav-link' role='tab' data-toggle='tab' href='#table-container-tab'><span class='fa fa-table' aria-hidden='true'></span> &nbsp; Tabular Display</a>",
-    "        </li>",
-    "        <li class='nav-item'>",
-    "          <a class='nav-link' role='tab' data-toggle='tab' href='#settings-container-tab'><span class='fa fa-cog' aria-hidden='true'></span> &nbsp; Metadata</a>",
-    "        </li>",
-    "        <li class='nav-item'>",
-    "          <a class='nav-link' role='tab' data-toggle='tab' href='#seedlink-container-tab'><span class='fa fa-plug' aria-hidden='true'></span> &nbsp; Seedlink</a>",
-    "        </li>",
-    "      </ul>",
-    "      <div class='tab-content'>",
-    "        <div class='tab-pane active' id='map-container-tab' role='tabpanel'>",
-    "          <div class='map-container'>",
-    "            <div style='position: relative;'>",
-    "              <div id='map'></div>",
-    "              <div class='alert alert-info' id='map-legend'></div>",
-    "            </div>",
-    "            <div class='card'>",
-    "              <div class='card-header'>",
-    "                <select class='form-control' id='map-display'>",
-    "                  <option value='operational'>Operational Status</option>",
-    "                  <option value='latency'>Latency Status</option>",
-    "                  <option value='deployment'>Deployment Status</option>",
-    "                </select>",
-    "                <hr>",
-    "                <div style='float: right;'>",
-    "                  <button class='btn btn-link' onClick='downloadKML()'><span class='fa fa-sign-out' aria-hidden='true'></span> <small>Download KML</small></button>",
-    "                </div>",
-    "                <div id='map-information'></div>",
-    "              </div>",
-    "            </div>",
-    "          </div>",
-    "        </div>",
-    "        <div class='tab-pane' id='table-container-tab' role='tabpanel'>",
-    "          <div id='table-container'></div>",
-    "          <hr>",
-    "          <div class='card'>",
-    "            <div class='card-header'>",
-    "              <div style='float: right;'>",
-    "                <button class='btn btn-link' onClick='downloadTable()'><span class='fa fa-sign-out' aria-hidden='true'></span> <small>Download JSON</small></button>",
-    "              </div>",
-    "              <div id='table-information'></div>",
-    "            </div>",
-    "          </div>",
-    "        </div>",
-    "        <div class='tab-pane' id='settings-container-tab' role='tabpanel'>",
-    "          <h4> Metadata Management </h4>",
-    "          <p> Use this form to submit new station metadata to your EIDA data center. Metadata is curated and processed before being exposed by the data center. You can follow the progress your metadata here. Station metadata that is exposed by the webservice will no longer be visible in the table below. This process may some time. <b>Valid StationXML is required.</b>",
-    "          <form class='form-inline' method='post' action='upload' enctype='multipart/form-data'>",
-    "            <label class='custom-file'>",
-    "              <input id='file-stage' name='file-data' type='file' class='form-control-file' aria-describedby='fileHelp' required multiple>",
-    "              <span class='custom-file-control'></span>",
-    "            </label>",
-    "            &nbsp; <input id='file-submit' class='btn btn-success' type='submit' value='Send' disabled>",
-    "          </form>",
-    "          <small id='file-help' class='form-text text-muted'></small>",
-    "          <p>",
-    "          <div id='table-staged-metadata'></div>",
-    "          <div style='text-align: center;'>",
-    "            <div id='table-staged-legend' style='display: none;'>",
-    "              <small>",
-    "              <span class='text-danger'><span class='fa fa-remove'></span><b> Rejected</b></span> - Metadata was rejected",
-    "              &nbsp;&nbsp;<span class='text-warning'><span class='fa fa-clock-o'></span><b> Pending</b></span> - Metadata was validated and is pending conversion",
-    "              &nbsp;&nbsp;<span class='text-info'><span class='fa fa-cogs'></span><b> Converted</b></span> - Metadata was converted",
-    "              &nbsp;&nbsp;<span class='text-success'><span class='fa fa-check'></span><b> Approved</b></span> - Approved for inclusion", 
-    "              </small>",
-    "            </div>",
-    "          </div>",
-    "        </div>",
-    "        <div class='tab-pane' id='seedlink-container-tab' role='tabpanel'>",
-    "          <h4> Seedlink Management </h4>",
-    "          <p> Use this form to define a new Seedlink server",
-    "          <form class='form-inline' method='post' action='seedlink'>",
-    "            <div class='input-group'>",
-    "              <span class='input-group-addon'><span class='fa fa-plug' aria-hidden='true'> Seedlink </span></span>",
-    "              <input name='host' class='form-control' placeholder='Address' required>",
-    "              <span class='input-group-addon'>:</span>",
-    "              <input maxlength='5'  name='port' class='form-control' value='18000' placeholder='Port' required>",
-    "              &nbsp; <input class='btn btn-success' type='submit' value='Submit'>",
-    "            </div>",
-    "          </form>",
-    "          <hr>",
-    "          <h3> Submitted Seedlink Servers </h3>",
-    "          <div id='seedlink-connection-table'></div>",
-    "        </div>",
-    "      </div>",
-    "    </div>",
-    "  </body>",
-    generateFooter(),
-    generateFooterApp(),
-    "<html>"
-  ].join("\n");
-
-}
-
 function parseRequestBody(request, type, callback) {
 
   /* function parseRequestBody
@@ -1800,7 +1320,8 @@ function parseMultiform(buffer, headers) {
 
   var boundary = querystring.parse(headers["content-type"])["multipart/form-data; boundary"];
 
-  return Multipart.Parse(buffer, boundary);
+  return multipart.Parse(buffer, boundary);
+
 }
 
 function escapeHTML(string) {

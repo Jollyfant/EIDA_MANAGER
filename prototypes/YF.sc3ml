@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<seiscomp xmlns="http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.10" version="0.10"><Inventory><network publicID="NET/YF/20180228133502.3237.9" code="YF"><start>1980-01-01T00:00:00.0000Z</start><end>2002-04-02T23:59:59.0000Z</end><description>MIDSEA TEMPORARY NETWORK</description><restricted>false</restricted><shared>true</shared></network></Inventory></seiscomp>

@@ -546,16 +546,20 @@ function createStagedMetadataTable(json) {
      * Returns string representation of metadata status
      */
 
-    const METADATA_STATUS_REJECTED = 0;
+    const METADATA_STATUS_REJECTED = -1;
+    const METADATA_STATUS_UNCHANGED = 0;
     const METADATA_STATUS_PENDING = 1;
-    const METADATA_STATUS_CONVERTED = 2;
-    const METADATA_STATUS_APPROVED = 3;
+    const METADATA_STATUS_VALIDATED = 2;
+    const METADATA_STATUS_CONVERTED = 3;
+    const METADATA_STATUS_APPROVED = 4;
 
     switch(status) {
-      case METADATA_STATUS_PENDING:
-        return "<span class='text-warning'>" + Icon("clock-o") + " Pending </span>"
       case METADATA_STATUS_REJECTED:
         return "<span class='text-danger'>" + Icon("remove") + " Rejected </span>"
+      case METADATA_STATUS_PENDING:
+        return "<span class='text-muted'>" + Icon("clock-o") + " Pending </span>"
+      case METADATA_STATUS_VALIDATED:
+        return "<span class='text-warning'>" + Icon("flag") + " Validated </span>"
       case METADATA_STATUS_CONVERTED:
         return "<span class='text-info'>" + Icon("cogs") + " Converted </span>"
       case METADATA_STATUS_APPROVED:

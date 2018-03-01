@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<seiscomp xmlns="http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.10" version="0.10"><Inventory><network publicID="NET/IU/20180228133455.856101.9" code="IU"><start>1980-01-01T00:00:00.0000Z</start><description>(GSN) IRIS/USGS (IU), GEOFON (GE), and GEUS</description><restricted>false</restricted><shared>true</shared></network></Inventory></seiscomp>

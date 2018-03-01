@@ -20,6 +20,9 @@
   },
   "PORT": 8088,
   "HOST": "136.144.177.195",
+  "SESSION": {
+    "TIMEOUT": 3600000
+  },
   "LATENCY_URL": "http://127.0.0.1:3001",
   "MONGO": {
     "NAME": "orfeus-manager",
