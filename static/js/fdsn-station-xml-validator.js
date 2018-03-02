@@ -49,7 +49,7 @@ function validateFiles(files) {
       var networkCode = network.getAttribute("code");
 
       // Confirm network regex & user must own network
-      if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORKS.indexOf(networkCode) === -1) {
+      if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK !== networkCode) {
         throw("Invalid network code: " + networkCode);
       }
 

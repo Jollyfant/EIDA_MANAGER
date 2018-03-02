@@ -887,8 +887,8 @@ function GetSeedlinkServers(session, callback) {
         results.forEach(function(x) {
           for(var i = 0; i < data.length; i++) {
             if(data[i].host === x.host) {
-
               x.ip = hashMap[x.host];
+              x.identifier = data[i].identifier;
               x.connected = data[i].connected;
               x.version = data[i].version;
               x.stations = data[i].stations.filter(function(station) {

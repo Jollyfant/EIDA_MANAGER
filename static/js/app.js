@@ -706,10 +706,11 @@ function changeMapLegend(markers) {
 function AddSeedlink() {
 
   const SEEDLINK_TABLE_HEADER = [
-    "Reachable",
+    "",
     "Address",
     "Port",
     "Version",
+    "Institution",
     "Stations",
   ];
 
@@ -721,9 +722,10 @@ function AddSeedlink() {
 
       var tableContent = json.map(function(x) {
 
-        var icon = x.connected ? Icon("check", "success") : Icon("remove", "danger");
+        var icon = " &nbsp; " + (x.connected ? Icon("check", "success") : Icon("remove", "danger"));
         var host = x.host + " <small><span class='text-muted'>(" + x.ip + ")</span></small>"
         var version = x.version || "";
+        var identifier = x.identifier || "";
  
         if(x.stations && x.stations.length > 0) {
 
@@ -737,14 +739,14 @@ function AddSeedlink() {
             }
           }).join(", ");
 
-          return [icon, host, x.port, version, s];
+          return [icon, host, x.port, identifier, version, s];
 
         }
 
         if(x.stations && x.stations.length === 0) {
-          return [icon, host, x.port, version, "<small> No stations available for network " + USER_NETWORK + "</small>"];
+          return [icon, host, x.port, identifier, version, "<small> No stations available for network " + USER_NETWORK + "</small>"];
         } else {
-          return [icon, host, x.port, version, "<small>Seedlink Server is unreachable</small>"];
+          return [icon, host, x.port, identifier, version, "<small>Seedlink Server is unreachable</small>"];
         }
 
       });
