@@ -13,6 +13,11 @@
     },
     "PATH": "./metadata"
   },
+  "FDSNWS": {
+    "STATION": {
+      "URL": "http://www.orfeus-eu.org/fdsnws/station/1/query"
+    }
+  },
   "LOGFILE": "/Users/Mathijs/Documents/ORFEUS/Manager/logs/server.log",
   "NODE": {
     "ID": "ODC",
