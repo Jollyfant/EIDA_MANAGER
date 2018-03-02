@@ -474,8 +474,6 @@ function initApplication() {
     // Add upload button for metadata
     AddMetadataUpload();
 
-    AddSeedlink();
-
     var markers = new Array();
     var start = Date.now();
 
@@ -504,12 +502,12 @@ function initApplication() {
       "dataType": "JSON",
       "success": function(json) {
 
-        console.debug("Retrieved " + json.stations.length + " stations from server in " + (Date.now() - start) + "ms.");
+        console.debug("Retrieved " + json.length + " stations from server in " + (Date.now() - start) + "ms.");
 
-        _stationJson = json.stations;
+        _stationJson = json;
 
         // For each entry create a station marker
-        json.stations.forEach(function(station) {
+        json.forEach(function(station) {
           var marker = new google.maps.Marker({
             "map": map,
             "icon": getOperationalStationMarker(station),
@@ -538,11 +536,11 @@ function initApplication() {
         fitMapBounds(markers);
         changeMapLegend(markers);
 
-        Element("map-information").innerHTML = MapInformationText(json.stations.length);
+        Element("map-information").innerHTML = MapInformationText(json.length);
         Element("map-display").addEventListener("change", changeMapLegend.bind(this, markers));
 
         // Proceed with the table
-        GenerateTable(json.stations);
+        GenerateTable(json);
 
       }
 
@@ -708,10 +706,11 @@ function changeMapLegend(markers) {
 function AddSeedlink() {
 
   const SEEDLINK_TABLE_HEADER = [
+    "Reachable",
     "Address",
     "Port",
-    "Connected",
-    "Stations"
+    "Version",
+    "Stations",
   ];
 
   $.ajax({
@@ -720,24 +719,40 @@ function AddSeedlink() {
     "dataType": "JSON",
     "success": function(json) {
 
-      k = json.map(function(x) {
+      var tableContent = json.map(function(x) {
 
-        if(x.stations) {
-        s = x.stations.map(function(x) {
-          return x.network + "." + x.station;
-        }).join(", ");
+        var icon = x.connected ? Icon("check", "success") : Icon("remove", "danger");
+        var host = x.host + " <small><span class='text-muted'>(" + x.ip + ")</span></small>"
+        var version = x.version || "";
+ 
+        if(x.stations && x.stations.length > 0) {
 
-        return [x.host, x.port, Icon("check", "success"), s];
+          s = x.stations.map(function(x) {
+            return x.network + "." + x.station;
+          }).map(function(x) {
+            if(_hashMap.hasOwnProperty(x)) {
+              return "<span class='text-success'><b>" + x + "</b></span>";
+            } else {
+              return "<span class='text-muted'><b>" + x + "</b></span>";
+            }
+          }).join(", ");
+
+          return [icon, host, x.port, version, s];
+
         }
 
-        return [x.host, x.port, Icon("remove", "danger"), "Unknown"];
+        if(x.stations && x.stations.length === 0) {
+          return [icon, host, x.port, version, "<small> No stations available for network " + USER_NETWORK + "</small>"];
+        } else {
+          return [icon, host, x.port, version, "<small>Seedlink Server is unreachable</small>"];
+        }
 
       });
 
       new Table({
         "id": "seedlink-connection-table",
         "header": SEEDLINK_TABLE_HEADER,
-        "body": k,
+        "body": tableContent,
         "search": false
       });
 
@@ -951,12 +966,12 @@ function MapInformationText(nStations) {
 
 function getNetworkDOI() {
 
-  if(USER_NETWORKS.join(" ") === "*") {
+  if(USER_NETWORK === "*") {
     return Element("doi-link").innerHTML = "<small>Administrator</small>";
   }
 
   const API_ADDRESS = "https://www.orfeus-eu.org/api/doi";
-  const DOI_API_QUERY = "network=" + USER_NETWORKS.join(",");
+  const DOI_API_QUERY = "network=" + USER_NETWORK;
 
   // Query the ORFEUS API for the network DOI
   $.ajax({
@@ -966,12 +981,12 @@ function getNetworkDOI() {
     "success": function(json) {
 
       if(json === undefined || json && json["doi-link"] === null) {
-        return Element("doi-link").innerHTML = "<span class='fa fa-globe'></span> " + USER_NETWORKS.join(" "); 
+        return Element("doi-link").innerHTML = "<span class='fa fa-globe'></span> " + USER_NETWORK
       }
 
       console.debug("DOI returned from FDSN: " + json["doi-link"]);
 
-      Element("doi-link").innerHTML = "<a title='" + json["doi-link"] + "' href='" + json["doi-link"] + "'><span class='fa fa-globe'></span> " + USER_NETWORKS.join(" ") + "</a>";
+      Element("doi-link").innerHTML = "<a title='" + json["doi-link"] + "' href='" + json["doi-link"] + "'><span class='fa fa-globe'></span> " + USER_NETWORK + "</a>";
 
     }
   });
@@ -1193,7 +1208,7 @@ function GenerateTable(list) {
    */
 
   $.ajax({
-    "url": "/api/latency?network=" + USER_NETWORKS.join(","),
+    "url": "/api/latency?network=" + USER_NETWORK,
     "type": "GET",
     "dataType": "JSON",
     "error": function(error) {
@@ -1201,8 +1216,8 @@ function GenerateTable(list) {
     },
     "success": function(json) {
       GenerateTableFull(list, json);
+      AddSeedlink();
     }
-
   });
 
 }

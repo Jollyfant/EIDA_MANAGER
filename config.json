@@ -6,6 +6,9 @@
   "SEISCOMP": {
     "PROCESS": "seiscomp"
   },
+  "EXTERNAL": {
+    "IP": "145.23.31.253"
+  },
   "METADATA": {
     "DAEMON": {
       "ENABLED": true,
@@ -15,7 +18,13 @@
   },
   "FDSNWS": {
     "STATION": {
-      "URL": "http://www.orfeus-eu.org/fdsnws/station/1/query"
+      "HOST": "http://www.orfeus-eu.org/fdsnws/station/1/query"
+    }
+  },
+  "SEEDLINK": {
+    "STATION": {
+      "HOST": "http://127.0.0.1",
+      "PORT": 3001
     }
   },
   "LOGFILE": "/Users/Mathijs/Documents/ORFEUS/Manager/logs/server.log",
@@ -29,7 +38,6 @@
     "TIMEOUT": 3600000
   },
   "LATENCY_URL": "http://127.0.0.1:3002",
-  "STATIONS_URL": "http://127.0.0.1:3001",
   "MONGO": {
     "NAME": "orfeus-manager",
     "HOST": "127.0.0.1",

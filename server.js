@@ -1,6 +1,7 @@
 // Native includes
 const {createServer} = require("http");
 const path = require("path");
+const dns = require("dns");
 const url = require("url");
 const fs = require("fs");
 const querystring = require("querystring");
@@ -11,11 +12,11 @@ const multipart = require("./lib/multipart");
 const Database = require("./lib/orfeus-database");
 const Session = require("./lib/orfeus-session");
 const Console = require("./lib/orfeus-logging");
-const { splitStationXML }= require("./lib/orfeus-metadata.js");
 const SHA256 = require("./lib/orfeus-crypto.js");
 const OHTTP = require("./lib/orfeus-http.js");
 const Template = require("./lib/orfeus-template.js");
 const STATIC_FILES = require("./lib/orfeus-static");
+const { splitStationXML } = require("./lib/orfeus-metadata.js");
 
 const CONFIG = require("./config");
 
@@ -71,15 +72,10 @@ var User = function(user, id) {
   this._id = user._id;
   this.sessionId = id;
   this.username = user.username;
-  this.networks = user.networks;
+  this.network = user.network;
   this.version = user.version;
   this.visited = user.visited;
   this.role = user.role;
-
-  // Path where the user stores uploaded files
-  this.filepath = user.networks.map(function(x) {
-    return path.join(CONFIG.METADATA.PATH, x);
-  }); 
 
 }
 
@@ -266,8 +262,10 @@ var Webserver = function() {
           }
 
           // Admin may sign broadcasted message
-          if(postBody.recipient === "BROADCAST" && session.role === "admin") {
+          if(postBody.recipient === "broadcast" && session.role === "admin") {
             var userQuery = {"username": {"$not": {"$eq": session.username}}}
+          } else if(postBody.recipient === "administrators") {
+            var userQuery = {"role": "admin", "username": {"$not": {"$eq": session.username}}}
           } else {
             var userQuery = {"username": postBody.recipient}
           }
@@ -549,7 +547,7 @@ function writeMultipleFiles(files, session, callback) {
 
   // Confirm user is manager of the network
   for(var i = 0; i < XMLDocuments.length; i++) {
-    if(session.networks.indexOf(XMLDocuments[i].metadata.network) === -1) {
+    if(session.network !== XMLDocuments[i].metadata.network) {
       return callback(true); 
     }
   }
@@ -761,7 +759,7 @@ function APIRequest(request, response, session) {
   // Stations managed by the session
   if(uri.pathname === "/api/stations") {
     GetFDSNWSStations(session, function(data) {
-      response.end(JSON.stringify(data));
+      response.end(JSON.stringify(ParseFDSNWSResponse(data)));
     });
     return;
   }
@@ -813,6 +811,47 @@ function APIRequest(request, response, session) {
 
 }
 
+function GetDNS(hosts, callback) {
+
+  /* function GetDNS
+   * Asynchronously gets DNS for multiple hosts
+   * and fires callback on completion
+   */
+
+  var host, DNSQuery, DNSTimer;
+  var DNSRecords = new Array();
+
+  (DNSQuery = function() {
+
+    // Set the timer
+    DNSTimer = Date.now();
+
+    // Get the next host
+    host = hosts.pop();
+
+    // Asynchronous lookup
+    dns.lookup(host, function(error, IPAddress) {
+
+      Console.debug("DNS lookup to " + host + " completed in " + (Date.now() - DNSTimer) + "ms (" + (IPAddress || error.code) + ")");
+
+      DNSRecords.push({
+        "ip": IPAddress || error.code,
+        "host": host
+      });
+
+      // Continue with next lookup
+      if(hosts.length) {
+        return DNSQuery();
+      }
+
+      callback(DNSRecords);
+
+    });
+
+  })();
+
+}
+
 function GetSeedlinkServers(session, callback) {
 
   Database.seedlink().find({"userId": session._id}).toArray(function(error, results) {
@@ -823,25 +862,46 @@ function GetSeedlinkServers(session, callback) {
 
     var servers = results.map(function(x) {
       return x.host;
-    }).join(",");
+    })
 
-    OHTTP.request(CONFIG.STATIONS_URL + "?host=" + servers, function(data) { 
+    // Query the DNS records
+    GetDNS(servers, function(DNSRecords) {
 
-      if(!data) {
-        return callback(JSON.stringify(results));
-      }
+      var servers = DNSRecords.map(function(x) {
+        return x.host
+      }).join(",");
 
-      data = JSON.parse(data);
-
-      results.forEach(function(x) {
-        for(var i = 0; i < data.length; i++) {
-          if(data[i].host === x.host) {
-            x.stations = data[i].stations;
-          }
-        } 
+      var hashMap = new Object();
+      DNSRecords.forEach(function(x) {
+        hashMap[x.host] = x.ip;
       });
 
-      callback(JSON.stringify(results));
+      OHTTP.request(CONFIG.SEEDLINK.STATION.HOST + ":" + CONFIG.SEEDLINK.STATION.PORT + "?host=" + servers, function(data) { 
+
+        if(!data) {
+          return callback(JSON.stringify(results));
+        }
+
+        data = JSON.parse(data);
+
+        results.forEach(function(x) {
+          for(var i = 0; i < data.length; i++) {
+            if(data[i].host === x.host) {
+
+              x.ip = hashMap[x.host];
+              x.connected = data[i].connected;
+              x.version = data[i].version;
+              x.stations = data[i].stations.filter(function(station) {
+                return station.network === session.network;
+              });
+
+            }
+          } 
+        });
+
+        callback(JSON.stringify(results));
+
+      });
 
     });
 
@@ -1080,8 +1140,6 @@ function GetStationLatency(uri, callback) {
 
 function GetFDSNWSChannels(session, uri, callback) {
 
-  const FDSNWS_STATION_URL = "http://www.orfeus-eu.org/fdsnws/station/1/query";
-
   // Hoist this
   var queryString = querystring.stringify({
     "level": "channel",
@@ -1090,7 +1148,7 @@ function GetFDSNWSChannels(session, uri, callback) {
 
   queryString += "&" + uri.query;
 
-  OHTTP.request(FDSNWS_STATION_URL + "?" + queryString, callback);
+  OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, callback);
 
 }
 
@@ -1226,79 +1284,14 @@ function GetFDSNWSStations(session, callback) {
    * Returns station information from FDSNWS Station
    */
 
-  const FDSNWS_STATION_URL = "http://www.orfeus-eu.org/fdsnws/station/1/query";
-
   // Hoist this
   var queryString = querystring.stringify({
     "level": "station",
     "format": "text",
-    "network": session.networks.join(",")
-  });
+    "network": session.network
+  })
 
-  OHTTP.request(FDSNWS_STATION_URL + "?" + queryString, function(data) {
-
-    var data = ParseFDSNWSResponse(data);
-
-    var hashMap = new Lookup(data, ["network", "station"]);
-
-    getSubmittedFiles(session, function(files) {
-
-      // Files that are not in the FDSNWS Service response
-      files = files.map(function(x) {
-        return {
-          "network": x._id.network,
-          "station": x._id.station,
-          "nChannels": x.nChannels,
-          "size": x.size,
-          "status": x.status,
-          "created": x.created,
-          "modified": x.modified,
-          "new": !hashMap.includes(x._id.network + x._id.station)
-        }
-      });
-
-      callback({
-        "stations": data,
-        "staged": files
-      });
-
-    });
-
-  });
-
-}
-
-var Lookup = function(array, keys) {
-
-  /* Class Lookup
-   * Container for lookup table
-   */
-
-  if(!Array.isArray(keys)) {
-    throw("Input for look up table needs to be an array");
-  }
-
-  // Create a new hash map
-  var hashMap = new Object();
-
-  array.forEach(function(x) {
-    var key = keys.map(function(y) {
-      return x[y];
-    }).join("");
-    hashMap[key] = null;
-  });
-
-  this.hashMap = hashMap;
-
-}
-
-Lookup.prototype.includes = function(x) {
-
-  /*
-   *
-   */
-
-  return this.hashMap.hasOwnProperty(x);
+  OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, callback);
 
 }
 
