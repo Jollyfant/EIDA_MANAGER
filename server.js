@@ -431,12 +431,12 @@ var Webserver = function() {
 
           // Confirm hostname or IPv4
           if(!IPV4_ADDRESS_REGEX.test(json.host) && !HOSTNAME_REGEX.test(json.host)) {
-            return Redirect(response, "/home?failure");
+            return Redirect(response, "/home?E_SEEDLINK_HOST_INVALID");
           }
 
           // Accept ports between 0x0400 and 0xFFFF
           if(isNaN(port) || port < (1 << 10) || port > (1 << 16)) {
-            return Redirect(response, "/home?failure");
+            return Redirect(response, "/home?E_SEEDLINK_PORT_INVALID");
           }
 
           // Store new seedlink object in database
@@ -447,8 +447,22 @@ var Webserver = function() {
             "created": new Date()
           }
 
-          Database.seedlink().insertOne(storeObject, function(error, result) {
-            return Redirect(response, "/home?" + (error ? "failure" : "s_success"));
+          // Only insert new seedlink servers
+          Database.seedlink().find({"userId": session._id, "host": json.host, "port": Number(json.port)}).count(function(error, count) {
+
+            if(error) {
+              return Redirect(response, "/home?E_INTERNAL_SERVER_ERROR");
+            }
+
+            // The server is already in the database
+            if(count !== 0) {
+              return Redirect(response, "/home?E_SEEDLINK_SERVER_EXISTS");
+            }
+
+            Database.seedlink().insertOne(storeObject, function(error, result) {
+              return Redirect(response, "/home?" + (error ? "E_INTERNAL_SERVER_ERROR" : "S_SEEDLINK_SERVER_SUCCESS"));
+            });
+
           });
  
         });

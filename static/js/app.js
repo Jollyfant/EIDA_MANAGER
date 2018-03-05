@@ -449,23 +449,32 @@ function initApplication() {
   if(uri.pathname === "/home") {
 
     // Send notification
-    const E_METADATA_SERVER_ERROR = "There was an error receiving the metadata.";
-    const S_METADATA_OK = "The metadata has been succesfully received.";
-    const S_SEEDLINK_OK = "The Seedlink server has been succesfully added.";
+    const S_METADATA_SUCCESS = "The metadata has been succesfully received";
+    const S_SEEDLINK_SERVER_SUCCESS = "The Seedlink server has been succesfully added";
+    const E_INTERNAL_SERVER_ERROR = "The server experienced an internal error";
+    const E_SEEDLINK_SERVER_EXISTS = "The submitted Seedlink server already exists";
+    const E_SEEDLINK_HOST_INVALID = "The Seedlink host is invalid";
+    const E_SEEDLINK_PORT_INVALID = "The Seedlink port is invalid";
+    const E_UNKNOWN_ERROR = "The server experienced an unknown error";
 
-    switch(uri.search) {
-      case "?success":
-        Element("modal-content").innerHTML = generateMessageAlert("success", S_METADATA_OK);
-        $("#modal-alert").modal();
-        break;
-      case "?failure":
-        Element("modal-content").innerHTML = generateMessageAlert("danger", E_METADATA_SERVER_ERROR);
-        $("#modal-alert").modal();
-        break;
-      case "?s_success":
-        Element("modal-content").innerHTML = generateMessageAlert("success", S_SEEDLINK_OK);
-        $("#modal-alert").modal();
-        break;
+    if(uri.search && uri.search !== "?welcome") {
+      switch(uri.search.substring(1)) {
+        case "S_METADATA_SUCCESS":
+          Element("modal-content").innerHTML = generateMessageAlert("success", S_METADATA_SUCCESS); break;
+        case "S_SEEDLINK_SERVER_SUCCESS":
+          Element("modal-content").innerHTML = generateMessageAlert("success", S_SEEDLINK_SERVER_SUCCESS); break;
+        case "E_INTERNAL_SERVER_ERROR":
+          Element("modal-content").innerHTML = generateMessageAlert("danger", E_INTERNAL_SERVER_ERROR); break;
+        case "E_SEEDLINK_SERVER_EXISTS":
+          Element("modal-content").innerHTML = generateMessageAlert("danger", E_SEEDLINK_SERVER_EXISTS); break;
+        case "E_SEEDLINK_HOST_INVALID":
+          Element("modal-content").innerHTML = generateMessageAlert("danger", E_SEEDLINK_HOST_INVALID); break;
+        case "E_SEEDLINK_PORT_INVALID":
+          Element("modal-content").innerHTML = generateMessageAlert("danger", E_SEEDLINK_PORT_INVALID); break;
+        default:
+          Element("modal-content").innerHTML = generateMessageAlert("danger", E_UNKNOWN_ERROR); break;
+      }
+      $("#modal-alert").modal();
     }
 
     // Add map

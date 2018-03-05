@@ -12,7 +12,7 @@
   "METADATA": {
     "DAEMON": {
       "ENABLED": true,
-      "SLEEP_INTERVAL_MS": 10000
+      "SLEEP_INTERVAL_MS": 1000000
     },
     "PATH": "./metadata"
   },
