@@ -9,8 +9,14 @@
   "EXTERNAL": {
     "IP": "145.23.31.253"
   },
+  "STATIC": {
+    "DIRECTORY": "static/"
+  },
   "MAXIMUM_POST_BYTES": 1e9,
   "METADATA": {
+    "SCHEMA": {
+      "PATH": "./schema/fdsn-station-1.0.xsd"
+    },
     "DAEMON": {
       "ENABLED": true,
       "SLEEP_INTERVAL_MS": 100000

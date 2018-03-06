@@ -15,7 +15,6 @@ const SHA256 = require("./lib/orfeus-crypto");
 const OHTTP = require("./lib/orfeus-http");
 const Template = require("./lib/orfeus-template");
 const { sum } = require("./lib/orfeus-util");
-const STATIC_FILES = require("./lib/orfeus-static");
 const { splitStationXML } = require("./lib/orfeus-metadata.js");
 
 const CONFIG = require("./config");
@@ -152,9 +151,12 @@ var Webserver = function() {
    * Handles all incoming connections
    */
 
+  // Static files to be served
+  const STATIC_FILES = require("./lib/orfeus-static");
+
   // Call the metaDaemon
   if(CONFIG.METADATA.DAEMON.ENABLED) {
-    require("./lib/orfeus-metadaemon.js");
+    require("./lib/orfeus-metadaemon");
   }
 
   // Create the HTTP server and listen to incoming requests
@@ -197,15 +199,14 @@ var Webserver = function() {
     // Serve static file
     if(STATIC_FILES.indexOf(uri) !== -1) {
       switch(path.extname(uri)) {
+        case ".json":
+          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "application/json"}); break;
         case ".css":
-          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "text/css"});
-          break
+          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "text/css"}); break;
         case ".png":
-          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "image/png"});
-          break
+          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "image/png"}); break;
         case ".js":
-          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "application/javascript"});
-          break;
+          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "application/javascript"}); break;
       }
       return fs.createReadStream(path.join("static", uri)).pipe(response);
     }
@@ -215,9 +216,9 @@ var Webserver = function() {
       return Redirect(response, "/login");
     }
 
-     /* 
-      * An authenticated session may be required
-      */
+    /* 
+     * An authenticated session may be required
+     */
 
     getSession(request.headers, function(error, session) {
   
@@ -240,6 +241,7 @@ var Webserver = function() {
         return OHTTP.HTTPError(response, OTTHP.E_HTTP_INTERNAL_SERVER_ERROR);
       }
 
+      // Service is closed
       if(CONFIG.__CLOSED__) {
         return OHTTP.HTTPError(response, OHTTP.E_HTTP_UNAVAILABLE);
       }
@@ -305,15 +307,11 @@ var Webserver = function() {
       // Method for authentication
       if(uri === "/authenticate") {
   
+        // Only implement POST request
         if(request.method !== "POST") {
           return OHTTP.HTTPError(response, OHTTP.E_HTTP_NOT_IMPLEMENTED);
         }
         
-        // If the user is already logged in redirect to home page
-        if(session !== null) {
-          return Redirect(response, "/home");
-        }
-
         // Attempt to parse the POST body passed by the HTML form
         // Contains username and password
         parseRequestBody(request, response, "json", function(postBody) {
@@ -329,6 +327,7 @@ var Webserver = function() {
             // Create a new session for the user
             createSession(user, function(cookie) {
   
+              // Could not get a cookie from the jar
               if(cookie === null) {
                 return OHTTP.HTTPError(response, OHTTP.E_HTTP_INTERNAL_SERVER_ERROR);
               }
@@ -763,7 +762,7 @@ function APIRequest(request, response, session) {
 
   if(uri.pathname.startsWith("/api/latency")) {
     return GetStationLatency(uri, function(data) {
-      OHTTP.writeJSON(response, data)
+      OHTTP.writeJSON(response, JSON.parse(data))
     });
   }
 
@@ -826,7 +825,7 @@ function APIRequest(request, response, session) {
 
   if(uri.pathname.startsWith("/api/channels")) {
     return GetFDSNWSChannels(session, url.parse(request.url), function(data) {
-      response.end(ParseFDSNWSResponseChannel(data));
+      OHTTP.writeJSON(response, ParseFDSNWSResponseChannel(data));
     });
   }
 
@@ -855,6 +854,7 @@ function GetSeedlinkServers(session, callback) {
     // Query the DNS records
     OHTTP.getDNS(servers, function(DNSRecords) {
 
+      // Get a list of all hosts
       var servers = DNSRecords.map(function(x) {
         return x.host
       }).join(",");
@@ -1042,7 +1042,7 @@ function GetSpecificMessage(session, request, callback) {
 function GetNewMessages(session, callback) {
 
   /* function GetNewMessages
-   * Return 
+   * Return the number of new messages 
    */
 
   var query = {
@@ -1129,13 +1129,15 @@ function GetMessages(session, callback) {
 }
 
 function GetStationLatency(uri, callback) {
-
   OHTTP.request(CONFIG.LATENCY_URL + uri.search, callback);
-
 }
 
 
 function GetFDSNWSChannels(session, uri, callback) {
+
+  /* function GetFDSNWSChannels
+   * Returns the channels for a given station
+   */
 
   var queryString = querystring.stringify({
     "level": "channel",
