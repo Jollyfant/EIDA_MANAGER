@@ -451,6 +451,7 @@ function initApplication() {
     // Send notification
     const S_METADATA_SUCCESS = "The metadata has been succesfully received";
     const S_SEEDLINK_SERVER_SUCCESS = "The Seedlink server has been succesfully added";
+    const E_METADATA_ERROR = "There was an error receiving the metadata";
     const E_INTERNAL_SERVER_ERROR = "The server experienced an internal error";
     const E_SEEDLINK_SERVER_EXISTS = "The submitted Seedlink server already exists";
     const E_SEEDLINK_HOST_INVALID = "The Seedlink host is invalid";
@@ -463,6 +464,8 @@ function initApplication() {
           Element("modal-content").innerHTML = generateMessageAlert("success", S_METADATA_SUCCESS); break;
         case "S_SEEDLINK_SERVER_SUCCESS":
           Element("modal-content").innerHTML = generateMessageAlert("success", S_SEEDLINK_SERVER_SUCCESS); break;
+        case "E_METADATA_ERROR":
+          Element("modal-content").innerHTML = generateMessageAlert("danger", E_METADATA_ERROR); break;
         case "E_INTERNAL_SERVER_ERROR":
           Element("modal-content").innerHTML = generateMessageAlert("danger", E_INTERNAL_SERVER_ERROR); break;
         case "E_SEEDLINK_SERVER_EXISTS":
@@ -718,8 +721,8 @@ function AddSeedlink() {
     "",
     "Address",
     "Port",
-    "Version",
     "Institution",
+    "Version",
     "Stations",
   ];
 
@@ -991,13 +994,13 @@ function getNetworkDOI() {
     "dataType": "JSON",
     "success": function(json) {
 
-      if(json === undefined || json && json["doi-link"] === null) {
+      if(!json) {
         return Element("doi-link").innerHTML = "<span class='fa fa-globe'></span> " + USER_NETWORK
       }
 
-      console.debug("DOI returned from FDSN: " + json["doi-link"]);
+      console.debug("DOI returned from FDSN: " + json[USER_NETWORK]);
 
-      Element("doi-link").innerHTML = "<a title='" + json["doi-link"] + "' href='" + json["doi-link"] + "'><span class='fa fa-globe'></span> " + USER_NETWORK + "</a>";
+      Element("doi-link").innerHTML = "<a title='" + json[USER_NETWORK] + "' href='" + json[USER_NETWORK] + "'><span class='fa fa-globe'></span> " + USER_NETWORK + "</a>";
 
     }
   });
@@ -1224,6 +1227,7 @@ function GenerateTable(list) {
     "dataType": "JSON",
     "error": function(error) {
       GenerateTableFull(list, new Array());
+      AddSeedlink();
     },
     "success": function(json) {
       GenerateTableFull(list, json);

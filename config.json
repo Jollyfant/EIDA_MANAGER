@@ -9,16 +9,20 @@
   "EXTERNAL": {
     "IP": "145.23.31.253"
   },
+  "MAXIMUM_POST_BYTES": 1e9,
   "METADATA": {
     "DAEMON": {
       "ENABLED": true,
-      "SLEEP_INTERVAL_MS": 1000000
+      "SLEEP_INTERVAL_MS": 100000
     },
     "PATH": "./metadata"
   },
   "FDSNWS": {
     "STATION": {
       "HOST": "http://www.orfeus-eu.org/fdsnws/station/1/query"
+    },
+    "DATASELECT": {
+      "HOST": "http://www.orfeus-eu.org/fdsnws/dataselect/1/query"
     }
   },
   "SEEDLINK": {

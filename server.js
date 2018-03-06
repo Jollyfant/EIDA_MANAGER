@@ -1,7 +1,6 @@
 // Native includes
-const {createServer} = require("http");
+const { createServer } = require("http");
 const path = require("path");
-const dns = require("dns");
 const url = require("url");
 const fs = require("fs");
 const querystring = require("querystring");
@@ -12,9 +11,10 @@ const multipart = require("./lib/multipart");
 const Database = require("./lib/orfeus-database");
 const Session = require("./lib/orfeus-session");
 const Console = require("./lib/orfeus-logging");
-const SHA256 = require("./lib/orfeus-crypto.js");
-const OHTTP = require("./lib/orfeus-http.js");
-const Template = require("./lib/orfeus-template.js");
+const SHA256 = require("./lib/orfeus-crypto");
+const OHTTP = require("./lib/orfeus-http");
+const Template = require("./lib/orfeus-template");
+const { sum } = require("./lib/orfeus-util");
 const STATIC_FILES = require("./lib/orfeus-static");
 const { splitStationXML } = require("./lib/orfeus-metadata.js");
 
@@ -76,13 +76,6 @@ var User = function(user, id) {
   this.version = user.version;
   this.visited = user.visited;
   this.role = user.role;
-
-}
-
-function HTTPError(response, status) {
-
-  response.writeHead(status, {"Content-Type": "text/html"});
-  response.end(Template.generateHTTPError(status));
 
 }
 
@@ -196,6 +189,7 @@ var Webserver = function() {
       const clientIp = request.headers["x-forwarded-for"] || request.connection.remoteAddress || null;
       const userAgent = request.headers["user-agent"] || null
 
+      // HTTPD access log 
       Console.debug([clientIp, uri, request.method, response.statusCode, nBytes, userAgent].join(" "));
 
     });
@@ -243,18 +237,18 @@ var Webserver = function() {
 
       // When the database connection fails
       if(error) {
-        return HTTPError(response, OTTHP.E_HTTP_INTERNAL_SERVER_ERROR);
+        return OHTTP.HTTPError(response, OTTHP.E_HTTP_INTERNAL_SERVER_ERROR);
       }
 
       if(CONFIG.__CLOSED__) {
-        return HTTPError(response, OHTTP.E_HTTP_UNAVAILABLE);
+        return OHTTP.HTTPError(response, OHTTP.E_HTTP_UNAVAILABLE);
       }
   
       // URL for posting messages
       if(uri === "/send") {
 
         // Parse the POSTed request body as JSON
-        parseRequestBody(request, "json", function(postBody) {
+        parseRequestBody(request, response, "json", function(postBody) {
 
           // Disallow message to be sent to self
           if(postBody.recipient === session.username) {
@@ -311,6 +305,10 @@ var Webserver = function() {
       // Method for authentication
       if(uri === "/authenticate") {
   
+        if(request.method !== "POST") {
+          return OHTTP.HTTPError(response, OHTTP.E_HTTP_NOT_IMPLEMENTED);
+        }
+        
         // If the user is already logged in redirect to home page
         if(session !== null) {
           return Redirect(response, "/home");
@@ -318,21 +316,21 @@ var Webserver = function() {
 
         // Attempt to parse the POST body passed by the HTML form
         // Contains username and password
-        parseRequestBody(request, "json", function(postBody) {
+        parseRequestBody(request, response, "json", function(postBody) {
   
           // Check the user credentials
-          Authenticate(postBody, function(valid, user) {
+          Authenticate(postBody, function(error, user) {
   
             // Authentication failed
-            if(!valid) {
-              return Redirect(response, "/login?invalid");
+            if(error) {
+              return Redirect(response, "/login?" + error);
             }
   
             // Create a new session for the user
             createSession(user, function(cookie) {
   
               if(cookie === null) {
-                return HTTPError(response, OHTTP.E_HTTP_INTERNAL_SERVER_ERROR);
+                return OHTTP.HTTPError(response, OHTTP.E_HTTP_INTERNAL_SERVER_ERROR);
               }
 
               // Redirect user to home page and set a cookie for this session
@@ -355,7 +353,7 @@ var Webserver = function() {
   
       // Roadblock for non-authenticated sessions
       if(session === null) {
-        return HTTPError(response, OHTTP.E_HTTP_UNAUTHORIZED);
+        return OHTTP.HTTPError(response, OHTTP.E_HTTP_UNAUTHORIZED);
       }
 
       /* +-----------------------------------+
@@ -379,7 +377,7 @@ var Webserver = function() {
 
           error ? Console.error(STATUS_MESSAGE) : Console.info(STATUS_MESSAGE);
 
-          Redirect(response, "/login?logout");
+          Redirect(response, "/login?S_LOGGED_OUT");
 
         });
 
@@ -416,13 +414,15 @@ var Webserver = function() {
         return response.end(Template.generateStationDetails(session));
       }
 
+      // Method for submitting a new seedlink server
       if(uri === "/seedlink") {
 
+        // Only accept POST requests
         if(request.method !== "POST") {
-          return response.end();
+          return OHTTP.HTTPError(response, OHTTP.E_HTTP_NOT_IMPLEMENTED);
         }
 
-        parseRequestBody(request, "json", function(json) {
+        parseRequestBody(request, response, "json", function(json) {
 
           const IPV4_ADDRESS_REGEX  = new RegExp("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$");
           const HOSTNAME_REGEX = new RegExp("^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$");
@@ -443,12 +443,12 @@ var Webserver = function() {
           var storeObject = {
             "userId": session._id,
             "host": json.host,
-            "port": Number(json.port),
+            "port": port, 
             "created": new Date()
           }
 
           // Only insert new seedlink servers
-          Database.seedlink().find({"userId": session._id, "host": json.host, "port": Number(json.port)}).count(function(error, count) {
+          Database.seedlink().find({"userId": session._id, "host": json.host, "port": port}).count(function(error, count) {
 
             if(error) {
               return Redirect(response, "/home?E_INTERNAL_SERVER_ERROR");
@@ -474,11 +474,11 @@ var Webserver = function() {
       if(uri === "/upload") {
   
         if(request.method !== "POST") {
-          return response.end();
+          return OHTTP.HTTPError(response, OHTTP.E_HTTP_NOT_IMPLEMENTED);
         }
   
         // Parse the POST body (binary file)
-        parseRequestBody(request, "multiform", function(files) {
+        parseRequestBody(request, response, "multiform", function(files) {
 
           // Only accept files with content 
           var files = files.filter(function(x) {
@@ -492,7 +492,7 @@ var Webserver = function() {
               Console.error(error);
             }
 
-            return Redirect(response, "/home?" + (error ? "failure" : "success")); 
+            return Redirect(response, "/home?" + (error ? "E_METADATA_ERROR" : "S_METADATA_SUCCESS")); 
 
           });
           
@@ -502,7 +502,8 @@ var Webserver = function() {
   
       }
 
-      return HTTPError(response, OHTTP.E_HTTP_FILE_NOT_FOUND);
+      // No route matched: send 404
+      return OHTTP.HTTPError(response, OHTTP.E_HTTP_FILE_NOT_FOUND);
   
     });
   
@@ -527,7 +528,7 @@ var Webserver = function() {
 function createDirectory(filepath) {
 
   /* function createDirectory
-   * Creates a directory for filepath if it does not exist
+   * Synchronously creates a directory for filepath if it does not exist
    */
 
   if(fs.existsSync(filepath)) {
@@ -552,9 +553,11 @@ function writeMultipleFiles(files, session, callback) {
    * Writes multiple (split) StationXML files to disk
    */
 
+  var XMLDocuments;
+
   // We split any submitted StationXML files
   try {
-    var XMLDocuments = splitStationXML(files);
+    XMLDocuments = splitStationXML(files);
   } catch(exception) {
     return callback(exception);
   }
@@ -619,19 +622,25 @@ function getAdministrators(callback) {
    * Returns documents for all administrators
    */
  
-  Database.users().find({"role": "admin"}).toArray(function(error, users) {
+  const queryObject = {"role": "admin"}
+
+  Database.users().find(queryObject).toArray(function(error, users) {
 
     if(error || users.length === 0) {
-      return callback(null);
+      return callback(new Array());
     }
 
-    callback(users)
+    callback(users);
 
   });
 
 }
 
 function saveFilesObjects(metadata, session) {
+
+  /* function saveFilesObjects
+   * writes new file objects to the database
+   */
 
   // Store file information in the database
   var dbFiles = metadata.map(function(x) {
@@ -664,6 +673,10 @@ function saveFilesObjects(metadata, session) {
 
 function Message(recipient, sender, subject, content) {
 
+  /* function Message
+   * Creates default object for message with variable content
+   */
+
   return {
     "recipient": recipient,
     "sender": sender,
@@ -692,7 +705,7 @@ function messageAdministrators(metadata, sender) {
   // Get all ORFEUS administrators
   getAdministrators(function(users) {
 
-    if(users === null) {
+    if(users.length === 0) {
       return
     }
 
@@ -708,7 +721,7 @@ function messageAdministrators(metadata, sender) {
 
       // Create one message per added station
       var filenames = metadata.map(function(file) {
-        return file.id;
+        return escapeHTML(file.id);
       }).join(", ");
 
       messages.push(
@@ -749,33 +762,29 @@ function APIRequest(request, response, session) {
   var uri = url.parse(request.url);
 
   if(uri.pathname.startsWith("/api/latency")) {
-    GetStationLatency(uri, function(data) {
-      response.end(data);
+    return GetStationLatency(uri, function(data) {
+      OHTTP.writeJSON(response, data)
     });
-    return;
   }
 
   if(uri.pathname === "/api/seedlink") {
-    GetSeedlinkServers(session, function(data) {
-      response.end(data);
+    return GetSeedlinkServers(session, function(data) {
+      OHTTP.writeJSON(response, data)
     });
-    return;
   }
 
   // Get the staged files
   if(uri.pathname === "/api/staged") {
-    getSubmittedFiles(session, function(data) {
-      response.end(JSON.stringify(data));
+    return getSubmittedFiles(session, function(data) {
+      OHTTP.writeJSON(response, data);
     });
-    return;
   }
 
   // Stations managed by the session
   if(uri.pathname === "/api/stations") {
-    GetFDSNWSStations(session, function(data) {
-      response.end(JSON.stringify(ParseFDSNWSResponse(data)));
+    return GetFDSNWSStations(session, function(data) {
+      OHTTP.writeJSON(response, ParseFDSNWSResponse(data));
     });
-    return;
   }
 
   if(uri.pathname.startsWith("/api/messages/details")) {
@@ -793,10 +802,11 @@ function APIRequest(request, response, session) {
     return;
   }
 
+  // Message API
   if(uri.pathname.startsWith("/api/messages")) {
     if(uri.search && uri.search.startsWith("?new")) {
       GetNewMessages(session, function(json) {
-        response.end(json);
+        OHTTP.writeJSON(response, json);
       });
     } else if(uri.search && uri.search.startsWith("?deleteall")) {
       RemoveAllMessages(session, function(json) {
@@ -815,63 +825,27 @@ function APIRequest(request, response, session) {
   }
 
   if(uri.pathname.startsWith("/api/channels")) {
-    GetFDSNWSChannels(session, url.parse(request.url), function(data) {
+    return GetFDSNWSChannels(session, url.parse(request.url), function(data) {
       response.end(ParseFDSNWSResponseChannel(data));
     });
-    return;
   }
 
-  return HTTPError(response, E_HTTP_FILE_NOT_FOUND);
-
-}
-
-function GetDNS(hosts, callback) {
-
-  /* function GetDNS
-   * Asynchronously gets DNS for multiple hosts
-   * and fires callback on completion
-   */
-
-  var host, DNSQuery, DNSTimer;
-  var DNSRecords = new Array();
-
-  (DNSQuery = function() {
-
-    // Set the timer
-    DNSTimer = Date.now();
-
-    // Get the next host
-    host = hosts.pop();
-
-    // Asynchronous lookup
-    dns.lookup(host, function(error, IPAddress) {
-
-      Console.debug("DNS lookup to " + host + " completed in " + (Date.now() - DNSTimer) + "ms (" + (IPAddress || error.code) + ")");
-
-      DNSRecords.push({
-        "ip": IPAddress || error.code,
-        "host": host
-      });
-
-      // Continue with next lookup
-      if(hosts.length) {
-        return DNSQuery();
-      }
-
-      callback(DNSRecords);
-
-    });
-
-  })();
+  // Send 404
+  return OHTTP.HTTPError(response, E_HTTP_FILE_NOT_FOUND);
 
 }
 
 function GetSeedlinkServers(session, callback) {
 
+  /* function GetSeedlinkServers
+   * Returns submitted seedlink servers from the database
+   */
+
   Database.seedlink().find({"userId": session._id}).toArray(function(error, results) {
 
+    // There was an error or no results: show nothing
     if(error || results.length === 0) {
-      return JSON.stringify(new Array());
+      return new Array();
     }
 
     var servers = results.map(function(x) {
@@ -879,7 +853,7 @@ function GetSeedlinkServers(session, callback) {
     })
 
     // Query the DNS records
-    GetDNS(servers, function(DNSRecords) {
+    OHTTP.getDNS(servers, function(DNSRecords) {
 
       var servers = DNSRecords.map(function(x) {
         return x.host
@@ -893,7 +867,7 @@ function GetSeedlinkServers(session, callback) {
       OHTTP.request(CONFIG.SEEDLINK.STATION.HOST + ":" + CONFIG.SEEDLINK.STATION.PORT + "?host=" + servers, function(data) { 
 
         if(!data) {
-          return callback(JSON.stringify(results));
+          return callback(results);
         }
 
         data = JSON.parse(data);
@@ -901,7 +875,7 @@ function GetSeedlinkServers(session, callback) {
         results.forEach(function(x) {
           for(var i = 0; i < data.length; i++) {
             if(data[i].host === x.host) {
-              x.ip = hashMap[x.host];
+              x.ip = hashMap[x.host] || "Unknown";
               x.identifier = data[i].identifier;
               x.connected = data[i].connected;
               x.version = data[i].version;
@@ -913,7 +887,7 @@ function GetSeedlinkServers(session, callback) {
           } 
         });
 
-        callback(JSON.stringify(results));
+        callback(results);
 
       });
 
@@ -928,6 +902,7 @@ function RemoveAllMessagesSent(session, callback) {
   /* function RemoveAllMessages
    * Sets all messages for user to deleted
    */
+
   var query = {
     "sender": Database.ObjectId(session._id),
     "senderDeleted": false
@@ -945,6 +920,7 @@ function RemoveAllMessages(session, callback) {
   /* function RemoveAllMessages
    * Sets all messages for user to deleted
    */
+
   var query = {
     "recipient": Database.ObjectId(session._id),
     "recipientDeleted": false
@@ -1011,36 +987,41 @@ function GetSpecificMessage(session, request, callback) {
 
   // Get messages as sender or recipient (undeleted)
   var query = {
+    "_id": Database.ObjectId(qs.read),
     "$or": [{
       "recipient": Database.ObjectId(session._id),
       "recipientDeleted": false
     }, {
       "sender": Database.ObjectId(session._id),
       "senderDeleted": false
-    }],
-    "_id": Database.ObjectId(qs.read)
+    }]
   }
 
   // Get specific message from the database
   Database.messages().findOne(query, function(error, message) {
 
+    // Could not find message
     if(error || message === null) {
       Console.error("Error getting single message from database.");
       return callback(null);
     }
 
+    // Check if the author of the message is the owner of the session
     var author = message.sender.toString() === session._id.toString();
 
-    // Set message to read
+    // If requestee is not the author: set message to read
     if(!author) {
       Database.messages().updateOne(query, {"$set": {"read": true}});
     }
 
-    var id = !author ? message.sender : message.recipient;
-
     // Find the username for the message sender 
-    Database.users().findOne({"_id": Database.ObjectId(id)}, function(error, user) {
+    Database.users().findOne({"_id": Database.ObjectId(author ? message.recipient : message.sender)}, function(error, user) {
 
+      if(error || user === null) {
+        return callback(null);
+      }
+
+      // Message information
       var messageContent = {
         "contact": {"role": user.role, "username": user.username},
         "subject": message.subject,
@@ -1071,7 +1052,7 @@ function GetNewMessages(session, callback) {
   }
 
   Database.messages().find(query).count(function(error, count) {
-    callback(JSON.stringify({"count": count}));
+    callback({"count": count});
   });
 
 }
@@ -1099,6 +1080,7 @@ function GetMessages(session, callback) {
       Console.error("Error getting messages from database.");
     }
 
+    // Get all messages where the user is either the sender or recipient
     const userQuery = {
       "_id": {
         "$in": documents.map(function(x) {
@@ -1112,8 +1094,9 @@ function GetMessages(session, callback) {
     // Get user names from user identifiers
     Database.users().find(userQuery).toArray(function(error, users) {
 
-      if(error) {
+      if(error || users.length === 0) {
         Console.error("Error getting users from database.");
+        return callback(null);
       }
 
       // Create a temporary hashMap that maps
@@ -1154,7 +1137,6 @@ function GetStationLatency(uri, callback) {
 
 function GetFDSNWSChannels(session, uri, callback) {
 
-  // Hoist this
   var queryString = querystring.stringify({
     "level": "channel",
     "format": "text",
@@ -1168,12 +1150,16 @@ function GetFDSNWSChannels(session, uri, callback) {
 
 function ParseFDSNWSResponseChannel(data) {
 
+  /* function ParseFDSNWSResponseChannel
+   * Parses text response from FDSNWS Station webservice
+   */
+
   if(data === null) {
     return JSON.stringify(new Array());
   }
 
   // Run through the response and convert to JSON
-  return JSON.stringify(data.split("\n").slice(1, -1).map(function(x) {
+  return data.split("\n").slice(1, -1).map(function(x) {
 
     var codes = x.split("|");
 
@@ -1187,14 +1173,14 @@ function ParseFDSNWSResponseChannel(data) {
         "lng": Number(codes[5])
       },
       "description": codes[10],
-      "gain": codes[11],
+      "gain": Number(codes[11]),
       "sensorUnits": codes[13],
-      "sampleRate": codes[14],
-      "start": codes[15],
-      "end": codes[16]
+      "sampleRate": Number(codes[14]),
+      "start": Date.parse(codes[15]),
+      "end": Date.parse(codes[16])
     }
 
-  }));
+  });
 
 }
 
@@ -1222,8 +1208,8 @@ function ParseFDSNWSResponse(data) {
       },
       "elevation": Number(codes[4]),
       "description": codes[5],
-      "start": codes[6],
-      "end": codes[7]
+      "start": Date.parse(codes[6]),
+      "end": Date.parse(codes[7])
     }
 
   });
@@ -1311,25 +1297,28 @@ function GetFDSNWSStations(session, callback) {
 
 function Authenticate(postBody, callback) {
 
+  /* function Authenticate
+   * Attempts to authenticate the user with submitted username and password
+   */
+
   Database.users().findOne({"username": postBody.username}, function(error, result) {
 
     // Username or password is invalid
     if(error || result === null) {
-      return callback(false);
+      return callback("E_USERNAME_INVALID");
     }
 
-    // Confirm the user password
-    if(result.password === SHA256(postBody.password + result.salt)) {
-      return callback(true, result);
-    } else {
-      return callback(false);
+    if(result.password !== SHA256(postBody.password + result.salt)) {
+      return callback("E_PASSWORD_INVALID");
     }
+
+    return callback(null, result);
 
   });
 
 }
 
-function parseRequestBody(request, type, callback) {
+function parseRequestBody(request, response, type, callback) {
 
   /* function parseRequestBody
    * parses postBody
@@ -1339,12 +1328,25 @@ function parseRequestBody(request, type, callback) {
 
   // Data received from client
   request.on("data", function(chunk) {
+
     chunks.push(chunk);
+
+    // Limit the maximum number of bytes that can be posted
+    if(sum(chunks) > CONFIG.MAXIMUM_POST_BYTES) {
+      return OHTTP.HTTPError(response, OHTTP.E_HTTP_PAYLOAD_TOO_LARGE);
+    }
+
   });
 
   // Request has been ended by client
   request.on("end", function() {
 
+    // The request was aborted by the server
+    if(response.finished) {
+      return;
+    }
+
+    // Add all chunks to a string buffer
     var fullBuffer = Buffer.concat(chunks);
 
     // Support for different types of data
@@ -1353,6 +1355,8 @@ function parseRequestBody(request, type, callback) {
         return callback(parseMultiform(fullBuffer, request.headers));
       case "json":
         return callback(querystring.parse(fullBuffer.toString()));
+      default:
+        return null;
     }
 
   });
@@ -1361,9 +1365,11 @@ function parseRequestBody(request, type, callback) {
 
 function parseMultiform(buffer, headers) {
 
-  var boundary = querystring.parse(headers["content-type"])["multipart/form-data; boundary"];
+  /* function parseMultiform
+   * Parses multiform encoded data
+   */
 
-  return multipart.Parse(buffer, boundary);
+  return multipart.Parse(buffer, multipart.getBoundary(headers["content-type"]));
 
 }
 

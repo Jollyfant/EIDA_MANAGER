@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <seiscomp xmlns="http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.10" version="0.10">
   <Inventory>
-    <network publicID="NET/NL/20180302100949.657843.9" code="NL">
+    <network publicID="NET/NL/20180306103133.460044.9" code="NL">
       <start>1993-01-01T00:00:00.0000Z</start>
       <description>Netherlands Seismic and Acoustic Network</description>
       <restricted>false</restricted>

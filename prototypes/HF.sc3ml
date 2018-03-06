@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <seiscomp xmlns="http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.10" version="0.10">
   <Inventory>
-    <network publicID="NET/HF/20180302100946.34791.9" code="HF">
+    <network publicID="NET/HF/20180306103130.416727.9" code="HF">
       <start>1980-01-01T00:00:00.0000Z</start>
       <description>Swedish Seismic Array Network</description>
       <restricted>false</restricted>

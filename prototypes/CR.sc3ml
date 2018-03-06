@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <seiscomp xmlns="http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.10" version="0.10">
   <Inventory>
-    <network publicID="NET/CR/20180302100943.855934.9" code="CR">
+    <network publicID="NET/CR/20180306103128.125832.9" code="CR">
       <start>1980-01-01T00:00:00.0000Z</start>
       <description>CR network</description>
       <restricted>false</restricted>
