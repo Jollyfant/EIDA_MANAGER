@@ -144,6 +144,68 @@ function createSession(user, callback) {
 
 }
 
+function monkeyPatchResponse(request, response) {
+
+  /* function monkeyPatchResponse
+   * Patches response object and adds some information
+   */
+
+  const CACHE_CONTROL_HEADER = "private, no-cache, no-store, must-revalidate";
+
+  // Prevent browser-side caching of sessions
+  response.setHeader("Cache-Control", CACHE_CONTROL_HEADER);
+  response.bytesWritten = 0;
+
+  // Monkey patch the response write function
+  // To keep track of number of bytes shipped
+  response.write = (function(closure) {
+    return function(chunk) {
+      response.bytesWritten += chunk.length;
+      return closure.apply(this, arguments);
+    }
+  })(response.write);
+
+  // Response finish write to log
+  response.on("finish", function() {
+
+    const clientIP = request.headers["x-forwarded-for"] || request.connection.remoteAddress || null;
+    const userAgent = request.headers["user-agent"] || null
+
+    // HTTPD access log 
+    Console.debug([
+      clientIP,
+      url.parse(request.url).pathname,
+      request.method,
+      response.statusCode,
+      response.bytesWritten,
+      userAgent
+    ].join(" "));
+
+  });
+
+}
+
+function serveStaticFile(response, uri) {
+
+  /* function serveStaticFile
+   * Servers static file to request
+   */
+
+  switch(path.extname(uri)) {
+    case ".json":
+      response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "application/json"}); break;
+    case ".css":
+      response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "text/css"}); break;
+    case ".png":
+      response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "image/png"}); break;
+    case ".js":
+      response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "application/javascript"}); break;
+  }
+
+  return fs.createReadStream(path.join("static", uri)).pipe(response);
+
+}
+
 var Webserver = function() {
 
   /* Class Webserver
@@ -162,53 +224,15 @@ var Webserver = function() {
   // Create the HTTP server and listen to incoming requests
   var webserver = createServer(function(request, response) {
   
-    // Prevent browser-side caching of sessions
-    response.setHeader("Cache-Control", "private, no-cache, no-store, must-revalidate");
-
-    // Parse the resource identifier
     const uri = url.parse(request.url).pathname;
     const search = url.parse(request.url).search;
-    var nBytes = 0;
 
-    // Monkey patch the response write function
-    // To keep track of number of bytes shipped
-    response.write = (function(closure) {
-
-      return function(chunk) {
-
-        // Update bytes written
-        nBytes = nBytes + chunk.length;
-
-        return closure.apply(this, arguments);
-
-      }
-
-    })(response.write);
-
-    // Response finish write to log
-    response.on("finish", function() {
-
-      const clientIp = request.headers["x-forwarded-for"] || request.connection.remoteAddress || null;
-      const userAgent = request.headers["user-agent"] || null
-
-      // HTTPD access log 
-      Console.debug([clientIp, uri, request.method, response.statusCode, nBytes, userAgent].join(" "));
-
-    });
+    // Extend response object
+    monkeyPatchResponse(request, response);
 
     // Serve static file
     if(STATIC_FILES.indexOf(uri) !== -1) {
-      switch(path.extname(uri)) {
-        case ".json":
-          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "application/json"}); break;
-        case ".css":
-          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "text/css"}); break;
-        case ".png":
-          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "image/png"}); break;
-        case ".js":
-          response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "application/javascript"}); break;
-      }
-      return fs.createReadStream(path.join("static", uri)).pipe(response);
+      return serveStaticFile(response, uri);
     }
 
     // Redirect webserver root to the login page
@@ -222,6 +246,7 @@ var Webserver = function() {
 
     getSession(request.headers, function(error, session) {
   
+      // Attach the session to the request
       request.session = session;
 
       // ORFEUS Manager log in page
@@ -248,64 +273,6 @@ var Webserver = function() {
         return OHTTP.HTTPError(response, OHTTP.E_HTTP_UNAVAILABLE);
       }
   
-      // URL for posting messages
-      if(uri === "/send") {
-
-        // Parse the POSTed request body as JSON
-        parseRequestBody(request, response, "json", function(postBody) {
-
-          // Disallow message to be sent to self
-          if(postBody.recipient === request.session.username) {
-            return Redirect(response, "/home/messages/new?self");
-          }
-
-          // Admin may sign broadcasted message
-          if(postBody.recipient === "broadcast" && request.session.role === "admin") {
-            var userQuery = {"username": {"$not": {"$eq": request.session.username}}}
-          } else if(postBody.recipient === "administrators") {
-            var userQuery = {"role": "admin", "username": {"$not": {"$eq": request.session.username}}}
-          } else {
-            var userQuery = {"username": postBody.recipient}
-          }
-
-          // Query the user database for the recipient name
-          Database.users().find(userQuery).toArray(function(error, users) {
-
-            // Unknown recipient
-            if(users.length === 0) {
-              return Redirect(response, "/home/messages/new?unknown");
-            }
-
-            // Create a new message
-            const messageBody = users.map(function(user) {
-              return Message(
-                user._id,
-                request.session._id,
-                escapeHTML(postBody.subject),
-                escapeHTML(postBody.content)
-              )
-            });
-
-            // Store all messages
-            Database.messages().insertMany(messageBody, function(error, result) {
-
-              // Error storing messages
-              if(error) {
-                return Redirect(response, "/home/messages/new?failure");
-              }
-
-              Redirect(response, "/home/messages/new?success");
-
-            });
-
-          });
-
-        });
-
-        return;
-
-      }
-
       // Method for authentication
       if(uri === "/authenticate") {
   
@@ -316,7 +283,7 @@ var Webserver = function() {
         
         // Attempt to parse the POST body passed by the HTML form
         // Contains username and password
-        parseRequestBody(request, response, "json", function(postBody) {
+        OHTTP.parseRequestBody(request, response, "json", function(postBody) {
   
           // Check the user credentials
           Authenticate(postBody, function(error, user) {
@@ -386,6 +353,64 @@ var Webserver = function() {
   
       }
   
+      // URL for posting messages
+      if(uri === "/send") {
+
+        // Parse the POSTed request body as JSON
+        OHTTP.parseRequestBody(request, response, "json", function(postBody) {
+
+          // Disallow message to be sent to self
+          if(postBody.recipient === request.session.username) {
+            return Redirect(response, "/home/messages/new?self");
+          }
+
+          // Admin may sign broadcasted message
+          if(postBody.recipient === "broadcast" && request.session.role === "admin") {
+            var userQuery = {"username": {"$not": {"$eq": request.session.username}}}
+          } else if(postBody.recipient === "administrators") {
+            var userQuery = {"role": "admin", "username": {"$not": {"$eq": request.session.username}}}
+          } else {
+            var userQuery = {"username": postBody.recipient}
+          }
+
+          // Query the user database for the recipient name
+          Database.users().find(userQuery).toArray(function(error, users) {
+
+            // Unknown recipient
+            if(users.length === 0) {
+              return Redirect(response, "/home/messages/new?unknown");
+            }
+
+            // Create a new message
+            const messageBody = users.map(function(user) {
+              return Message(
+                user._id,
+                request.session._id,
+                escapeHTML(postBody.subject),
+                escapeHTML(postBody.content)
+              )
+            });
+
+            // Store all messages
+            Database.messages().insertMany(messageBody, function(error, result) {
+
+              // Error storing messages
+              if(error) {
+                return Redirect(response, "/home/messages/new?failure");
+              }
+
+              Redirect(response, "/home/messages/new?success");
+
+            });
+
+          });
+
+        });
+
+        return;
+
+      }
+
       // Profile page
       if(uri === "/home") {
 
@@ -423,7 +448,7 @@ var Webserver = function() {
           return OHTTP.HTTPError(response, OHTTP.E_HTTP_NOT_IMPLEMENTED);
         }
 
-        parseRequestBody(request, response, "json", function(json) {
+        OHTTP.parseRequestBody(request, response, "json", function(json) {
 
           const IPV4_ADDRESS_REGEX  = new RegExp("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$");
           const HOSTNAME_REGEX = new RegExp("^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$");
@@ -472,6 +497,7 @@ var Webserver = function() {
 
       }
 
+      // Uploading files
       if(uri === "/upload") {
   
         if(request.method !== "POST") {
@@ -479,7 +505,7 @@ var Webserver = function() {
         }
   
         // Parse the POST body (binary file)
-        parseRequestBody(request, response, "multiform", function(files) {
+        OHTTP.parseRequestBody(request, response, "multiform", function(files) {
 
           // Only accept files with content 
           var files = files.filter(function(x) {
@@ -515,7 +541,7 @@ var Webserver = function() {
     Console.info("Webserver started at " + CONFIG.HOST + ":" + CONFIG.PORT);
   });
 
-  // Gracful shutdown of server
+  // Graceful shutdown of server
   process.on("SIGINT", function () {
     Console.info("SIGINT received: closing webserver");
     //webserver.close(function() {
@@ -585,6 +611,10 @@ function writeMultipleFiles(files, session, callback) {
 
   // Write file metadata to the database
   saveFilesObjects(XMLMetadata, session);
+
+  if(XMLDocuments.length === 0) {
+    return callback(null);
+  }
 
   // Asynchronous writing for multiple files to disk
   (writeFile = function() {
@@ -1135,51 +1165,16 @@ function GetFDSNWSChannels(request, callback) {
   queryString += "&" + uri.query;
 
   OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
-    callback(ParseFDSNWSResponseChannel(json));
+    callback(ParseFDSNWSResponse(json, "channel"));
   });
 
 }
 
-function ParseFDSNWSResponseChannel(data) {
-
-  /* function ParseFDSNWSResponseChannel
-   * Parses text response from FDSNWS Station webservice
-   */
-
-  if(data === null) {
-    return JSON.stringify(new Array());
-  }
-
-  // Run through the response and convert to JSON
-  return data.split("\n").slice(1, -1).map(function(x) {
-
-    var codes = x.split("|");
-
-    return {
-      "network": codes[0],
-      "station": codes[1],
-      "location": codes[2],
-      "channel": codes[3],
-      "position": {
-        "lat": Number(codes[4]),
-        "lng": Number(codes[5])
-      },
-      "description": codes[10],
-      "gain": Number(codes[11]),
-      "sensorUnits": codes[13],
-      "sampleRate": Number(codes[14]),
-      "start": Date.parse(codes[15]),
-      "end": Date.parse(codes[16])
-    }
-
-  });
-
-}
-
-function ParseFDSNWSResponse(data) {
+function ParseFDSNWSResponse(data, level) {
 
   /* Function ParseFDSNWSResponse
-   * Returns parsed JSON response from FDSNWS Station
+   * Returns parsed JSON response from FDSNWS Station Webservice
+   * for varying levels of information
    */
 
   if(data === null) {
@@ -1187,21 +1182,44 @@ function ParseFDSNWSResponse(data) {
   }
 
   // Run through the response and convert to JSON
-  return data.split("\n").slice(1, -1).map(function(x) {
+  return data.split("\n").slice(1, -1).map(function(line) {
 
-    var codes = x.split("|");
+    var codes = line.split("|");
 
-    return {
-      "network": codes[0],
-      "station": codes[1],
-      "position": {
-        "lat": Number(codes[2]),
-        "lng": Number(codes[3])
-      },
-      "elevation": Number(codes[4]),
-      "description": codes[5],
-      "start": Date.parse(codes[6]),
-      "end": Date.parse(codes[7])
+    if(level === "station") {
+
+      return {
+        "network": codes[0],
+        "station": codes[1],
+        "position": {
+          "lat": Number(codes[2]),
+          "lng": Number(codes[3])
+        },
+        "elevation": Number(codes[4]),
+        "description": codes[5],
+        "start": codes[6],
+        "end": codes[7]
+      }
+
+    } else if(level === "channel") {
+
+      return {
+        "network": codes[0],
+        "station": codes[1],
+        "location": codes[2],
+        "channel": codes[3],
+        "position": {
+          "lat": Number(codes[4]),
+          "lng": Number(codes[5])
+        },
+        "description": codes[10],
+        "gain": Number(codes[11]),
+        "sensorUnits": codes[13],
+        "sampleRate": Number(codes[14]),
+        "start": codes[15],
+        "end": codes[16]
+      }
+
     }
 
   });
@@ -1284,7 +1302,7 @@ function GetFDSNWSStations(request, callback) {
   })
 
   OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
-    callback(ParseFDSNWSResponse(json));
+    callback(ParseFDSNWSResponse(json, "station"));
   });
 
 }
@@ -1297,7 +1315,7 @@ function Authenticate(postBody, callback) {
 
   Database.users().findOne({"username": postBody.username}, function(error, result) {
 
-    // Username or password is invalid
+    // Username is invalid
     if(error || result === null) {
       return callback("E_USERNAME_INVALID");
     }
@@ -1309,61 +1327,6 @@ function Authenticate(postBody, callback) {
     return callback(null, result);
 
   });
-
-}
-
-function parseRequestBody(request, response, type, callback) {
-
-  /* function parseRequestBody
-   * parses postBody
-   */
-
-  var chunks = new Array();
-
-  // Data received from client
-  request.on("data", function(chunk) {
-
-    chunks.push(chunk);
-
-    // Limit the maximum number of bytes that can be posted
-    if(sum(chunks) > CONFIG.MAXIMUM_POST_BYTES) {
-      return OHTTP.HTTPError(response, OHTTP.E_HTTP_PAYLOAD_TOO_LARGE);
-    }
-
-  });
-
-  // Request has been ended by client
-  request.on("end", function() {
-
-    // The request was aborted by the server
-    if(response.finished) {
-      return;
-    }
-
-    // Add all chunks to a string buffer
-    var fullBuffer = Buffer.concat(chunks);
-
-    // Support for different types of data
-    switch(type) {
-      case "multiform":
-        return callback(parseMultiform(fullBuffer, request.headers));
-      case "json":
-        return callback(querystring.parse(fullBuffer.toString()));
-      default:
-        return null;
-    }
-
-  });
-
-}
-
-function parseMultiform(buffer, headers) {
-
-  /* function parseMultiform
-   * Parses multiform encoded data
-   */
-
-  return multipart.Parse(buffer, multipart.getBoundary(headers["content-type"]));
 
 }
 
