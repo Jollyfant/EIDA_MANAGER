@@ -222,11 +222,13 @@ var Webserver = function() {
 
     getSession(request.headers, function(error, session) {
   
+      request.session = session;
+
       // ORFEUS Manager log in page
       if(uri.startsWith("/login")) {
   
         // If the user is already logged in redirect to home page
-        if(session !== null) {
+        if(request.session !== null) {
           return Redirect(response, "/home");
         }
   
@@ -253,15 +255,15 @@ var Webserver = function() {
         parseRequestBody(request, response, "json", function(postBody) {
 
           // Disallow message to be sent to self
-          if(postBody.recipient === session.username) {
+          if(postBody.recipient === request.session.username) {
             return Redirect(response, "/home/messages/new?self");
           }
 
           // Admin may sign broadcasted message
-          if(postBody.recipient === "broadcast" && session.role === "admin") {
-            var userQuery = {"username": {"$not": {"$eq": session.username}}}
+          if(postBody.recipient === "broadcast" && request.session.role === "admin") {
+            var userQuery = {"username": {"$not": {"$eq": request.session.username}}}
           } else if(postBody.recipient === "administrators") {
-            var userQuery = {"role": "admin", "username": {"$not": {"$eq": session.username}}}
+            var userQuery = {"role": "admin", "username": {"$not": {"$eq": request.session.username}}}
           } else {
             var userQuery = {"username": postBody.recipient}
           }
@@ -278,7 +280,7 @@ var Webserver = function() {
             const messageBody = users.map(function(user) {
               return Message(
                 user._id,
-                session._id,
+                request.session._id,
                 escapeHTML(postBody.subject),
                 escapeHTML(postBody.content)
               )
@@ -351,7 +353,7 @@ var Webserver = function() {
       }
   
       // Roadblock for non-authenticated sessions
-      if(session === null) {
+      if(request.session === null) {
         return OHTTP.HTTPError(response, OHTTP.E_HTTP_UNAUTHORIZED);
       }
 
@@ -363,16 +365,16 @@ var Webserver = function() {
   
       // Forward the request to the API
       if(uri.startsWith("/api")) {
-        return APIRequest(request, response, session); 
+        return APIRequest(request, response); 
       }
   
       // User wishes to log out
       if(uri === "/logout") {
   
         // Destroy the session
-        Database.sessions().deleteOne({"SESSION_ID": session.sessionId}, function(error, result) {
+        Database.sessions().deleteOne({"SESSION_ID": request.session.sessionId}, function(error, result) {
 
-          const STATUS_MESSAGE = "Removed session for " + session.username + " (" + session.sessionId + ")";
+          const STATUS_MESSAGE = "Removed session for " + request.session.username + " (" + request.session.sessionId + ")";
 
           error ? Console.error(STATUS_MESSAGE) : Console.info(STATUS_MESSAGE);
 
@@ -389,28 +391,28 @@ var Webserver = function() {
 
         // Update the last visit & app. version
         if(search === "?welcome") {
-          Database.users().updateOne({"_id": session._id}, {"$set": {"version": CONFIG.__VERSION__, "visited": new Date()}});
+          Database.users().updateOne({"_id": request.session._id}, {"$set": {"version": CONFIG.__VERSION__, "visited": new Date()}});
         }
 
-        return response.end(Template.generateProfile(session));
+        return response.end(Template.generateProfile(request.session));
 
       }
 
       if(uri === "/home/messages") {
-        return response.end(Template.generateMessages(session));
+        return response.end(Template.generateMessages(request.session));
       }
 
       if(uri === "/home/messages/new") {
-        return response.end(Template.generateNewMessageTemplate(request.url, session));
+        return response.end(Template.generateNewMessageTemplate(request.url, request.session));
       }
 
       if(uri.startsWith("/home/messages/detail")) {
-        return response.end(Template.generateMessageDetails(session));
+        return response.end(Template.generateMessageDetails(request.session));
       }
    
       // Station details page
       if(uri === "/home/station") {
-        return response.end(Template.generateStationDetails(session));
+        return response.end(Template.generateStationDetails(request.session));
       }
 
       // Method for submitting a new seedlink server
@@ -440,14 +442,14 @@ var Webserver = function() {
 
           // Store new seedlink object in database
           var storeObject = {
-            "userId": session._id,
+            "userId": request.session._id,
             "host": json.host,
             "port": port, 
             "created": new Date()
           }
 
           // Only insert new seedlink servers
-          Database.seedlink().find({"userId": session._id, "host": json.host, "port": port}).count(function(error, count) {
+          Database.seedlink().find({"userId": request.session._id, "host": json.host, "port": port}).count(function(error, count) {
 
             if(error) {
               return Redirect(response, "/home?E_INTERNAL_SERVER_ERROR");
@@ -485,7 +487,7 @@ var Webserver = function() {
           });
 
           // Write (multiple) files to disk
-          writeMultipleFiles(files, session, function(error) {
+          writeMultipleFiles(files, request.session, function(error) {
 
             if(error) {
               Console.error(error);
@@ -751,96 +753,75 @@ function messageAdministrators(metadata, sender) {
 
 }
 
-function APIRequest(request, response, session) {
+function APIRequest(request, response) {
 
   /* Fuction APIRequest
    * All requests to the ORFEUS API go through here
    */
 
-  // Parse the resource identifier
-  var uri = url.parse(request.url);
+  function APICallback(request, response, callback) {
 
-  if(uri.pathname.startsWith("/api/latency")) {
-    return GetStationLatency(uri, function(data) {
-      OHTTP.writeJSON(response, JSON.parse(data))
-    });
+    /* function APICallback
+     * Wrapper for API callback
+     */
+
+    callback(request, OHTTP.writeJSON.bind(response));
+
   }
 
-  if(uri.pathname === "/api/seedlink") {
-    return GetSeedlinkServers(session, function(data) {
-      OHTTP.writeJSON(response, data)
-    });
-  }
+  // Get the URI from the request
+  const uri = url.parse(request.url);
+  const query = uri.query ? uri.query.split("&").shift() : null;
 
-  // Get the staged files
-  if(uri.pathname === "/api/staged") {
-    return getSubmittedFiles(session, function(data) {
-      OHTTP.writeJSON(response, data);
-    });
-  }
+  // Bind the request & response to the API callback
+  var APICallbackBound = APICallback.bind(this, request, response);
 
-  // Stations managed by the session
-  if(uri.pathname === "/api/stations") {
-    return GetFDSNWSStations(session, function(data) {
-      OHTTP.writeJSON(response, ParseFDSNWSResponse(data));
-    });
+  // Register new routes here
+  switch(uri.pathname) {
+    case "/api/latency":
+      return APICallbackBound(GetStationLatency);
+    case "/api/seedlink":
+      return APICallbackBound(GetSeedlinkServers);
+    case "/api/staged":
+      return APICallbackBound(getSubmittedFiles);
+    case "/api/stations":
+      return APICallbackBound(GetFDSNWSStations);
+    case "/api/channels":
+      return APICallbackBound(GetFDSNWSChannels);
+    case "/api/messages":
+      switch(query) {
+        case "new":
+          return APICallbackBound(GetNewMessages)
+        case "deleteall":
+          return APICallbackBound(RemoveAllMessages);
+        case "deletesent":
+          return APICallbackBound(RemoveAllMessagesSent);
+        default:
+          return APICallbackBound(GetMessages);
+ 
+      }
+    case "/api/messages/details":
+      switch(query) {
+        case "read":
+          return APICallbackBound(GetSpecificMessage);
+        case "delete":
+          return APICallbackBound(RemoveSpecificMessage);
+        default:
+          return OHTTP.HTTPError(response, OHTTP.E_HTTP_NOT_IMPLEMENTED);
+      }
+    default:
+      return OHTTP.HTTPError(response, OHTTP.E_HTTP_FILE_NOT_FOUND);
   }
-
-  if(uri.pathname.startsWith("/api/messages/details")) {
-    if(uri.search !== null && uri.search.startsWith("?read")) {
-      GetSpecificMessage(session, url.parse(request.url), function(json) {
-        response.end(JSON.stringify(json));
-      });
-    } else if(uri.search !== null && uri.search.startsWith("?delete")) {
-      RemoveSpecificMessage(session, url.parse(request.url), function(json) {
-        response.end(json);
-      });
-    } else {
-      response.end(JSON.stringify(null));
-    }
-    return;
-  }
-
-  // Message API
-  if(uri.pathname.startsWith("/api/messages")) {
-    if(uri.search && uri.search.startsWith("?new")) {
-      GetNewMessages(session, function(json) {
-        OHTTP.writeJSON(response, json);
-      });
-    } else if(uri.search && uri.search.startsWith("?deleteall")) {
-      RemoveAllMessages(session, function(json) {
-        response.end(json);
-      });
-    } else if(uri.search && uri.search.startsWith("?deletesent")) {
-      RemoveAllMessagesSent(session, function(json) {
-        response.end(json);
-      });
-    } else {
-      GetMessages(session, function(json) {
-        response.end(json);
-      });
-    }
-    return;
-  }
-
-  if(uri.pathname.startsWith("/api/channels")) {
-    return GetFDSNWSChannels(session, url.parse(request.url), function(data) {
-      OHTTP.writeJSON(response, ParseFDSNWSResponseChannel(data));
-    });
-  }
-
-  // Send 404
-  return OHTTP.HTTPError(response, E_HTTP_FILE_NOT_FOUND);
 
 }
 
-function GetSeedlinkServers(session, callback) {
+function GetSeedlinkServers(request, callback) {
 
   /* function GetSeedlinkServers
    * Returns submitted seedlink servers from the database
    */
 
-  Database.seedlink().find({"userId": session._id}).toArray(function(error, results) {
+  Database.seedlink().find({"userId": request.session._id}).toArray(function(error, results) {
 
     // There was an error or no results: show nothing
     if(error || results.length === 0) {
@@ -880,7 +861,7 @@ function GetSeedlinkServers(session, callback) {
               x.connected = data[i].connected;
               x.version = data[i].version;
               x.stations = data[i].stations.filter(function(station) {
-                return station.network === session.network;
+                return station.network === request.session.network;
               });
 
             }
@@ -897,14 +878,14 @@ function GetSeedlinkServers(session, callback) {
 
 }
 
-function RemoveAllMessagesSent(session, callback) {
+function RemoveAllMessagesSent(request, callback) {
 
   /* function RemoveAllMessages
    * Sets all messages for user to deleted
    */
 
   var query = {
-    "sender": Database.ObjectId(session._id),
+    "sender": Database.ObjectId(request.session._id),
     "senderDeleted": false
   }
 
@@ -915,14 +896,14 @@ function RemoveAllMessagesSent(session, callback) {
 
 }
 
-function RemoveAllMessages(session, callback) {
+function RemoveAllMessages(request, callback) {
 
   /* function RemoveAllMessages
    * Sets all messages for user to deleted
    */
 
   var query = {
-    "recipient": Database.ObjectId(session._id),
+    "recipient": Database.ObjectId(request.session._id),
     "recipientDeleted": false
   }
 
@@ -933,7 +914,7 @@ function RemoveAllMessages(session, callback) {
 
 }
 
-function RemoveSpecificMessage(session, request, callback) {
+function RemoveSpecificMessage(request, callback) {
 
   /* function RemoveSpecificMessage
    * Sets message with particular id to deleted
@@ -943,13 +924,13 @@ function RemoveSpecificMessage(session, request, callback) {
   var qs = querystring.parse(request.query);
 
   var senderQuery = {
-    "sender": Database.ObjectId(session._id),
+    "sender": Database.ObjectId(request.session._id),
     "senderDeleted": false,
     "_id": Database.ObjectId(qs.delete)
   }
 
   var recipientQuery = {
-    "recipient": Database.ObjectId(session._id),
+    "recipient": Database.ObjectId(request.session._id),
     "recipientDeleted": false,
     "_id": Database.ObjectId(qs.delete)
   }
@@ -977,7 +958,7 @@ function RemoveSpecificMessage(session, request, callback) {
 
 }
 
-function GetSpecificMessage(session, request, callback) {
+function GetSpecificMessage(request, callback) {
 
   /* function GetSpecificMessage
    * Returns a specific private message
@@ -989,10 +970,10 @@ function GetSpecificMessage(session, request, callback) {
   var query = {
     "_id": Database.ObjectId(qs.read),
     "$or": [{
-      "recipient": Database.ObjectId(session._id),
+      "recipient": Database.ObjectId(request.session._id),
       "recipientDeleted": false
     }, {
-      "sender": Database.ObjectId(session._id),
+      "sender": Database.ObjectId(request.session._id),
       "senderDeleted": false
     }]
   }
@@ -1007,7 +988,7 @@ function GetSpecificMessage(session, request, callback) {
     }
 
     // Check if the author of the message is the owner of the session
-    var author = message.sender.toString() === session._id.toString();
+    var author = message.sender.toString() === request.session._id.toString();
 
     // If requestee is not the author: set message to read
     if(!author) {
@@ -1039,14 +1020,14 @@ function GetSpecificMessage(session, request, callback) {
 
 }
 
-function GetNewMessages(session, callback) {
+function GetNewMessages(request, callback) {
 
   /* function GetNewMessages
    * Return the number of new messages 
    */
 
   var query = {
-    "recipient": Database.ObjectId(session._id),
+    "recipient": Database.ObjectId(request.session._id),
     "read": false,
     "recipientDeleted": false
   }
@@ -1057,7 +1038,7 @@ function GetNewMessages(session, callback) {
 
 }
 
-function GetMessages(session, callback) {
+function GetMessages(request, callback) {
 
   /* function GetMessages
    * Returns all messages that belong to a user in a session
@@ -1065,10 +1046,10 @@ function GetMessages(session, callback) {
 
   const query = {
     "$or": [{
-      "recipient": Database.ObjectId(session._id),
+      "recipient": Database.ObjectId(request.session._id),
       "recipientDeleted": false
     }, {
-      "sender": Database.ObjectId(session._id),
+      "sender": Database.ObjectId(request.session._id),
       "senderDeleted": false
     }]
   }
@@ -1116,11 +1097,11 @@ function GetMessages(session, callback) {
           "created": x.created,
           "_id": x._id,
           "read": x.read,
-          "author": x.sender.toString() === session._id.toString()
+          "author": x.sender.toString() === request.session._id.toString()
         }
       });
       
-      callback(JSON.stringify(messageContents));
+      callback(messageContents);
 
     });
 
@@ -1128,12 +1109,18 @@ function GetMessages(session, callback) {
 
 }
 
-function GetStationLatency(uri, callback) {
-  OHTTP.request(CONFIG.LATENCY_URL + uri.search, callback);
+function GetStationLatency(request, callback) {
+
+  var uri = url.parse(request.url);
+
+  OHTTP.request(CONFIG.LATENCY_URL + uri.search, function(data) {
+    callback(JSON.parse(data));
+  });
+
 }
 
 
-function GetFDSNWSChannels(session, uri, callback) {
+function GetFDSNWSChannels(request, callback) {
 
   /* function GetFDSNWSChannels
    * Returns the channels for a given station
@@ -1144,9 +1131,12 @@ function GetFDSNWSChannels(session, uri, callback) {
     "format": "text",
   });
 
+  var uri = url.parse(request.url);
   queryString += "&" + uri.query;
 
-  OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, callback);
+  OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
+    callback(ParseFDSNWSResponseChannel(json));
+  });
 
 }
 
@@ -1218,7 +1208,7 @@ function ParseFDSNWSResponse(data) {
 
 }
 
-function getSubmittedFiles(session, callback) {
+function getSubmittedFiles(request, callback) {
 
   /* function getSubmittedFiles
    * Abstracted function to read files from multiple directories
@@ -1229,7 +1219,7 @@ function getSubmittedFiles(session, callback) {
   // Pending -> Accepted | Rejected
   var pipeline = [{
     "$match": {
-      "userId": Database.ObjectId(session._id),
+      "userId": Database.ObjectId(request.session._id),
     }  
   }, {
     "$group": {
@@ -1280,7 +1270,7 @@ function getSubmittedFiles(session, callback) {
 
 }
 
-function GetFDSNWSStations(session, callback) {
+function GetFDSNWSStations(request, callback) {
 
   /* Function GetFDSNWSStations
    * Returns station information from FDSNWS Station
@@ -1290,10 +1280,12 @@ function GetFDSNWSStations(session, callback) {
   var queryString = querystring.stringify({
     "level": "station",
     "format": "text",
-    "network": session.network
+    "network": request.session.network
   })
 
-  OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, callback);
+  OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
+    callback(ParseFDSNWSResponse(json));
+  });
 
 }
 
