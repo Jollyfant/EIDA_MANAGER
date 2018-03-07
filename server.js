@@ -78,12 +78,6 @@ var User = function(user, id) {
 
 }
 
-function Redirect(response, path) {
-  var headers = {"Location": path};
-  response.writeHead(OHTTP.S_HTTP_REDIRECT, headers);
-  response.end();
-}
-
 function Init() {
 
   /* function Init
@@ -237,7 +231,7 @@ var Webserver = function() {
 
     // Redirect webserver root to the login page
     if(uri === "/") {
-      return Redirect(response, "/login");
+      return OHTTP.Redirect(response, "/login");
     }
 
     /* 
@@ -254,7 +248,7 @@ var Webserver = function() {
   
         // If the user is already logged in redirect to home page
         if(request.session !== null) {
-          return Redirect(response, "/home");
+          return OHTTP.Redirect(response, "/home");
         }
   
         // Get request is made on the login page
@@ -290,7 +284,7 @@ var Webserver = function() {
   
             // Authentication failed
             if(error) {
-              return Redirect(response, "/login?" + error);
+              return OHTTP.Redirect(response, "/login?" + error);
             }
   
             // Create a new session for the user
@@ -345,7 +339,7 @@ var Webserver = function() {
 
           error ? Console.error(STATUS_MESSAGE) : Console.info(STATUS_MESSAGE);
 
-          Redirect(response, "/login?S_LOGGED_OUT");
+          OHTTP.Redirect(response, "/login?S_LOGGED_OUT");
 
         });
 
@@ -361,7 +355,7 @@ var Webserver = function() {
 
           // Disallow message to be sent to self
           if(postBody.recipient === request.session.username) {
-            return Redirect(response, "/home/messages/new?self");
+            return OHTTP.Redirect(response, "/home/messages/new?self");
           }
 
           // Admin may sign broadcasted message
@@ -378,7 +372,7 @@ var Webserver = function() {
 
             // Unknown recipient
             if(users.length === 0) {
-              return Redirect(response, "/home/messages/new?unknown");
+              return OHTTP.Redirect(response, "/home/messages/new?unknown");
             }
 
             // Create a new message
@@ -396,10 +390,10 @@ var Webserver = function() {
 
               // Error storing messages
               if(error) {
-                return Redirect(response, "/home/messages/new?failure");
+                return OHTTP.Redirect(response, "/home/messages/new?failure");
               }
 
-              Redirect(response, "/home/messages/new?success");
+              OHTTP.Redirect(response, "/home/messages/new?success");
 
             });
 
@@ -457,12 +451,12 @@ var Webserver = function() {
 
           // Confirm hostname or IPv4
           if(!IPV4_ADDRESS_REGEX.test(json.host) && !HOSTNAME_REGEX.test(json.host)) {
-            return Redirect(response, "/home?E_SEEDLINK_HOST_INVALID");
+            return OHTTP.Redirect(response, "/home?E_SEEDLINK_HOST_INVALID");
           }
 
           // Accept ports between 0x0400 and 0xFFFF
           if(isNaN(port) || port < (1 << 10) || port > (1 << 16)) {
-            return Redirect(response, "/home?E_SEEDLINK_PORT_INVALID");
+            return OHTTP.Redirect(response, "/home?E_SEEDLINK_PORT_INVALID");
           }
 
           // Store new seedlink object in database
@@ -477,16 +471,16 @@ var Webserver = function() {
           Database.seedlink().find({"userId": request.session._id, "host": json.host, "port": port}).count(function(error, count) {
 
             if(error) {
-              return Redirect(response, "/home?E_INTERNAL_SERVER_ERROR");
+              return OHTTP.Redirect(response, "/home?E_INTERNAL_SERVER_ERROR");
             }
 
             // The server is already in the database
             if(count !== 0) {
-              return Redirect(response, "/home?E_SEEDLINK_SERVER_EXISTS");
+              return OHTTP.Redirect(response, "/home?E_SEEDLINK_SERVER_EXISTS");
             }
 
             Database.seedlink().insertOne(storeObject, function(error, result) {
-              return Redirect(response, "/home?" + (error ? "E_INTERNAL_SERVER_ERROR" : "S_SEEDLINK_SERVER_SUCCESS"));
+              return OHTTP.Redirect(response, "/home?" + (error ? "E_INTERNAL_SERVER_ERROR" : "S_SEEDLINK_SERVER_SUCCESS"));
             });
 
           });
@@ -519,7 +513,7 @@ var Webserver = function() {
               Console.error(error);
             }
 
-            return Redirect(response, "/home?" + (error ? "E_METADATA_ERROR" : "S_METADATA_SUCCESS")); 
+            return OHTTP.Redirect(response, "/home?" + (error ? "E_METADATA_ERROR" : "S_METADATA_SUCCESS")); 
 
           });
           
