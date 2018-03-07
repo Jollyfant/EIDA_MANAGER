@@ -14,7 +14,7 @@ const Console = require("./lib/orfeus-logging");
 const SHA256 = require("./lib/orfeus-crypto");
 const OHTTP = require("./lib/orfeus-http");
 const Template = require("./lib/orfeus-template");
-const { sum } = require("./lib/orfeus-util");
+const { sum, createDirectory } = require("./lib/orfeus-util");
 const { splitStationXML } = require("./lib/orfeus-metadata.js");
 
 const CONFIG = require("./config");
@@ -549,28 +549,6 @@ var Webserver = function() {
       process.exit(0);
     //});
   });
-
-}
-
-function createDirectory(filepath) {
-
-  /* function createDirectory
-   * Synchronously creates a directory for filepath if it does not exist
-   */
-
-  if(fs.existsSync(filepath)) {
-    return;
-  }
-
-  var dirname = path.dirname(filepath);
-
-  if(!fs.existsSync(dirname)) {
-    createDirectory(dirname);
-  }
-
-  Console.debug("Creating directory " + filepath);
-
-  fs.mkdirSync(filepath);
 
 }
 
