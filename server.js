@@ -14,7 +14,7 @@ const Console = require("./lib/orfeus-logging");
 const SHA256 = require("./lib/orfeus-crypto");
 const OHTTP = require("./lib/orfeus-http");
 const Template = require("./lib/orfeus-template");
-const { sum, createDirectory } = require("./lib/orfeus-util");
+const { sum, createDirectory, escapeHTML } = require("./lib/orfeus-util");
 const { splitStationXML } = require("./lib/orfeus-metadata.js");
 
 const CONFIG = require("./config");
@@ -781,7 +781,7 @@ function APIRequest(request, response) {
   // Register new routes here
   switch(uri.pathname) {
     case "/api/latency":
-      return APICallbackBound(GetStationLatency);
+      return APICallbackBound(getStationLatencies);
     case "/api/seedlink":
       return APICallbackBound(GetSeedlinkServers);
     case "/api/staged":
@@ -862,9 +862,14 @@ function GetSeedlinkServers(request, callback) {
               x.identifier = data[i].identifier;
               x.connected = data[i].connected;
               x.version = data[i].version;
-              x.stations = data[i].stations.filter(function(station) {
-                return station.network === request.session.network;
-              });
+
+              if(data[i].stations === null) {
+                x.stations = "Not Available";
+              } else {
+                x.stations = data[i].stations.filter(function(station) {
+                  return station.network === request.session.network;
+                });
+              }
 
             }
           } 
@@ -1063,6 +1068,10 @@ function GetMessages(request, callback) {
       Console.error("Error getting messages from database.");
     }
 
+    if(documents.length === 0) {
+      return callback(null);
+    }
+
     // Get all messages where the user is either the sender or recipient
     const userQuery = {
       "_id": {
@@ -1111,7 +1120,11 @@ function GetMessages(request, callback) {
 
 }
 
-function GetStationLatency(request, callback) {
+function getStationLatencies(request, callback) {
+
+  /* function getStationLatencies
+   * Returns Seedlink latencies for a network, station
+   */
 
   var uri = url.parse(request.url);
 
@@ -1133,16 +1146,16 @@ function GetFDSNWSChannels(request, callback) {
     "format": "text",
   });
 
-  var uri = url.parse(request.url);
-  queryString += "&" + uri.query;
+  // Extend the query string
+  queryString += "&" + url.parse(request.url).query;
 
   OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
-    callback(ParseFDSNWSResponse(json, "channel"));
+    callback(ParseFDSNWSResponse(json));
   });
 
 }
 
-function ParseFDSNWSResponse(data, level) {
+function ParseFDSNWSResponse(data) {
 
   /* Function ParseFDSNWSResponse
    * Returns parsed JSON response from FDSNWS Station Webservice
@@ -1158,40 +1171,38 @@ function ParseFDSNWSResponse(data, level) {
 
     var codes = line.split("|");
 
-    if(level === "station") {
-
-      return {
-        "network": codes[0],
-        "station": codes[1],
-        "position": {
-          "lat": Number(codes[2]),
-          "lng": Number(codes[3])
-        },
-        "elevation": Number(codes[4]),
-        "description": codes[5],
-        "start": codes[6],
-        "end": codes[7]
-      }
-
-    } else if(level === "channel") {
-
-      return {
-        "network": codes[0],
-        "station": codes[1],
-        "location": codes[2],
-        "channel": codes[3],
-        "position": {
-          "lat": Number(codes[4]),
-          "lng": Number(codes[5])
-        },
-        "description": codes[10],
-        "gain": Number(codes[11]),
-        "sensorUnits": codes[13],
-        "sampleRate": Number(codes[14]),
-        "start": codes[15],
-        "end": codes[16]
-      }
-
+    // Mapping of service to object
+    switch(codes.length) {
+      case 8:
+        return {
+          "network": codes[0],
+          "station": codes[1],
+          "position": {
+            "lat": Number(codes[2]),
+            "lng": Number(codes[3])
+          },
+          "elevation": Number(codes[4]),
+          "description": codes[5],
+          "start": codes[6],
+          "end": codes[7]
+        }
+      case 17:
+        return {
+          "network": codes[0],
+          "station": codes[1],
+          "location": codes[2],
+          "channel": codes[3],
+          "position": {
+            "lat": Number(codes[4]),
+            "lng": Number(codes[5])
+          },
+          "description": codes[10],
+          "gain": Number(codes[11]),
+          "sensorUnits": codes[13],
+          "sampleRate": Number(codes[14]),
+          "start": codes[15],
+          "end": codes[16]
+        }
     }
 
   });
@@ -1274,7 +1285,7 @@ function GetFDSNWSStations(request, callback) {
   })
 
   OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
-    callback(ParseFDSNWSResponse(json, "station"));
+    callback(ParseFDSNWSResponse(json));
   });
 
 }
@@ -1298,30 +1309,6 @@ function Authenticate(postBody, callback) {
 
     return callback(null, result);
 
-  });
-
-}
-
-function escapeHTML(string) {
-
-  /* function escapeHTML
-   * Escapes HTML in user provided content
-   */
-
-  const entityMap = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#39;",
-    "/": "&#x2F;",
-    "`": "&#x60;",
-    "=": "&#x3D;"
-  };
-
-  // Replace entities
-  return String(string).replace(/[&<>"'`=\/]/g, function(character) {
-    return entityMap[character];
   });
 
 }

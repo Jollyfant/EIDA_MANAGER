@@ -5,7 +5,6 @@ const STATION_MARKER_GREY = "/images/station-grey.png";
 const STATION_MARKER_RED = "/images/station-red.png";
 const NODE_MARKER = "/images/node.png";
 const SOCKET_URL = "https://orfeus-eu.org/"
-const LATENCY_SERVER = "http://127.0.0.1:3001";
 
 var __TABLE_JSON__;
 var chartPointers;
@@ -175,7 +174,7 @@ function getStationLatencies(query) {
     "dataType": "JSON",
     "success": function(json) {
 
-      console.debug("Retrieved " + json.length + " latencies from " + LATENCY_SERVER + query +  " in " + (Date.now() - start) + " ms.");
+      console.debug("Retrieved " + json.length + " latencies in " + (Date.now() - start) + " ms.");
 
       const LATENCY_TABLE_HEADER = [
         "Channel",
@@ -364,6 +363,8 @@ function initApplication() {
     // Hoist an empty socket
     __SOCKET__ = null
 
+    var qs = parseQuery(window.location.search);
+
     // Change event to toggle WS connection
     Element("connect-seedlink").addEventListener("change", function() {
 
@@ -381,7 +382,7 @@ function initApplication() {
       });
 
       __SOCKET__.on("connect", function() {
-        __SOCKET__.emit("subscribe", "NL.HGN"); 
+        __SOCKET__.emit("subscribe", qs.network + "." + qs.station); 
         console.debug("Connected to socket at " + SOCKET_URL);
       });
 
@@ -737,19 +738,24 @@ function AddSeedlink() {
         var icon = " &nbsp; " + (x.connected ? Icon("check", "success") : Icon("remove", "danger"));
         var host = x.host + " <small><span class='text-muted'>(" + x.ip + ")</span></small>"
         var version = x.version || "";
+        version = version.split("::")[0];
         var identifier = x.identifier || "";
  
         if(x.stations && x.stations.length > 0) {
 
-          s = x.stations.map(function(x) {
-            return x.network + "." + x.station;
-          }).map(function(x) {
-            if(_hashMap.hasOwnProperty(x)) {
-              return "<span class='text-success'><b>" + x + "</b></span>";
-            } else {
-              return "<span class='text-muted'><b>" + x + "</b></span>";
-            }
-          }).join(", ");
+          if(Array.isArray(x.stations)) {
+            s = x.stations.map(function(x) {
+              return x.network + "." + x.station;
+            }).map(function(x) {
+              if(_hashMap.hasOwnProperty(x)) {
+                return "<span class='text-success'><b>" + x + "</b></span>";
+              } else {
+                return "<span class='text-muted'><b>" + x + "</b></span>";
+              }
+            }).join(", ");
+          } else {
+            s = "<small>" + x.stations + "</small>";
+          }
 
           return [icon, host, x.port, identifier, version, s];
 
@@ -1391,7 +1397,7 @@ function GenerateTableFull(list, latencies) {
 function MakeTable() {
 
   const TABLE_HEADER = [
-    "Status",
+    "Channel Status",
     "Network",
     "Station",
     "Description",
@@ -1466,8 +1472,8 @@ function generateAccordionContentChannelString(channel) {
       "<div class='chart'></div>",
     "</div>",
     "<hr>",
-    "<button class='btn btn-link'>" + Icon("eye") + "<small> View Instrument Response</small></button>",
-    "<button class='btn btn-link'>" + Icon("download") + "<small> Download Instrument Response</small></button>"
+    //"<button class='btn btn-link'>" + Icon("eye") + "<small> View Instrument Response</small></button>",
+    "<a target='_blank' href='https://www.orfeus-eu.org/fdsnws/station/1/query?level=response&cha=" + channel.channel + "&net=" + channel.network + "&sta=" + channel.station + "'>" + Icon("download") + "<small> Download Instrument Response (StationXML) </small></a>"
   ].join("\n");
 
 }
@@ -1628,4 +1634,19 @@ function readMultipleFiles(files, callback) {
 
 }
 
+function parseQuery(queryString) {
+
+  var query = new Object;
+  var pairs = (queryString[0] === "?" ? queryString.substr(1) : queryString).split("&");
+
+  for(var i = 0; i < pairs.length; i++) {
+    var pair = pairs[i].split('=');
+    query[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1] || '');
+  }
+
+  return query;
+
+}
+
 new App();
+

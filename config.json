@@ -25,10 +25,10 @@
   },
   "FDSNWS": {
     "STATION": {
-      "HOST": "http://www.orfeus-eu.org/fdsnws/station/1/query"
+      "HOST": "http://orfeus-eu.org/fdsnws/station/1/query"
     },
     "DATASELECT": {
-      "HOST": "http://www.orfeus-eu.org/fdsnws/dataselect/1/query"
+      "HOST": "http://orfeus-eu.org/fdsnws/dataselect/1/query"
     }
   },
   "SEEDLINK": {
