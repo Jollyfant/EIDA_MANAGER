@@ -14,6 +14,11 @@ body {
   padding-bottom: 20px;
 }
 
+.heartbeat {
+  font-size: 14px;
+  vertical-align: middle;
+}
+
 .btn-link {
   cursor: pointer;
 }

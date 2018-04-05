@@ -803,10 +803,10 @@ function APIRequest(request, response) {
  
       }
     case "/api/messages/details":
-      switch(query) {
-        case "read":
+      switch(request.method) {
+        case "GET":
           return APICallbackBound(GetSpecificMessage);
-        case "delete":
+        case "DELETE":
           return APICallbackBound(RemoveSpecificMessage);
         default:
           return OHTTP.HTTPError(response, OHTTP.E_HTTP_NOT_IMPLEMENTED);
@@ -928,13 +928,13 @@ function RemoveSpecificMessage(request, callback) {
   var senderQuery = {
     "sender": Database.ObjectId(request.session._id),
     "senderDeleted": false,
-    "_id": Database.ObjectId(qs.delete)
+    "_id": Database.ObjectId(qs.id)
   }
 
   var recipientQuery = {
     "recipient": Database.ObjectId(request.session._id),
     "recipientDeleted": false,
-    "_id": Database.ObjectId(qs.delete)
+    "_id": Database.ObjectId(qs.id)
   }
 
   // Get specific message from the database
@@ -966,11 +966,11 @@ function GetSpecificMessage(request, callback) {
    * Returns a specific private message
    */
 
-  var qs = querystring.parse(request.query);
+  var qs = querystring.parse(url.parse(request.url).query);
 
   // Get messages as sender or recipient (undeleted)
   var query = {
-    "_id": Database.ObjectId(qs.read),
+    "_id": Database.ObjectId(qs.id),
     "$or": [{
       "recipient": Database.ObjectId(request.session._id),
       "recipientDeleted": false

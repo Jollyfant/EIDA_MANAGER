@@ -4,7 +4,7 @@ const STATION_MARKER_ORANGE = "/images/station-orange.png";
 const STATION_MARKER_GREY = "/images/station-grey.png";
 const STATION_MARKER_RED = "/images/station-red.png";
 const NODE_MARKER = "/images/node.png";
-const SOCKET_URL = "ws://136.144.177.195:6661";
+const SOCKET_URL = "https://orfeus-eu.org/"
 const LATENCY_SERVER = "http://127.0.0.1:3001";
 
 var __TABLE_JSON__;
@@ -372,7 +372,7 @@ function initApplication() {
         __SOCKET__.disconnect();
         return;
       } else {
-        __SOCKET__ = io(SOCKET_URL);
+        __SOCKET__ = io(SOCKET_URL, {"path": "/socket.io"});
       }
 
       __SOCKET__.on("disconnect", function() {
@@ -381,7 +381,7 @@ function initApplication() {
       });
 
       __SOCKET__.on("connect", function() {
-        __SOCKET__.emit("subscribe", "broad"); 
+        __SOCKET__.emit("subscribe", "NL.HGN"); 
         console.debug("Connected to socket at " + SOCKET_URL);
       });
 
@@ -830,7 +830,7 @@ function generateMessageTableContentSent(json) {
 
   return json.map(function(x) {
     return [
-      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
+      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?id=" + x._id + "'>" + x.subject + "</b></a>",
       formatMessageSender(x.recipient),
       x.created
     ];
@@ -842,7 +842,7 @@ function generateMessageTableContent(json) {
 
   return json.map(function(x) {
     return [
-      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?read=" + x._id + "'>" + x.subject + "</b></a>",
+      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?id=" + x._id + "'>" + x.subject + "</b></a>",
       formatMessageSender(x.sender),
       x.created
     ];
@@ -928,8 +928,8 @@ function deleteMessage() {
 
   // Instead of "read" we pass "delete" to the API with the same message identifier
   $.ajax({
-    "url": "/api/messages/details" + location.search.replace("read", "delete"),
-    "type": "GET",
+    "url": "/api/messages/details" + window.location.search,
+    "type": "DELETE",
     "dataType": "JSON",
     "success": function(json) {
 
@@ -1427,7 +1427,7 @@ function generateAccordionContent(list) {
             "<button class='btn btn-link' data-toggle='collapse' data-target='#collapse-" + i + "' aria-expanded='true' aria-controls='collapse-" + i + "'>",
             Icon("caret-right") + " " + (x.location ? x.location + "." : "") + x.channel,
             "</button>",
-            "<span id='heartbeat-" + x.location + "-" + x.channel + "'></span>",
+            "<span class='heartbeat' id='heartbeat-" + x.location + "-" + x.channel + "'></span>",
             "<span class='text-danger'>" + (isStationActive(x) ? " " : " " + Icon("lock") + " Channel closed since " + x.end + "</span>"),
         "</div>",
         "<div id='collapse-" + i + "' class='collapse' role='tabpanel' aria-labelledby='heading-" + i + "' data-parent='#accordion'>",
