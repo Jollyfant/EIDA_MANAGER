@@ -1,5 +1,6 @@
 NodeJS*
 prototypes/*.sc3ml
+lock
 node_modules
 config.json
 *.log

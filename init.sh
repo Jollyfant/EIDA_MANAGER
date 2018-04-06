@@ -15,7 +15,7 @@ case $1 in
 		rm -rf ./NodeJS-* > /dev/null
 
 		# Grab new source from GitHub & npm
-		echo "Installing ORFEUS Manager dependencies"
+		echo "Installing EIDA Manager dependencies"
 		npm install
 		git clone $GIT_SEEDLINK_STATIONS
 		git clone $GIT_SEEDLINK_LATENCIES
@@ -26,9 +26,10 @@ case $1 in
                 cat config.json | python -c 'import json; import sys; print json.dumps(json.load(sys.stdin)["STATIONS"], indent=2)' > NodeJS-Seedlink-Stations/config.json
 
 		# Get the prototypes
+		echo "Downloading network prototypes"
                 cat config.json | python -c 'import json; import sys; print json.dumps(json.load(sys.stdin)["NODE"]["ID"])' | xargs prototypes/prototype.sh
 
-		echo "ORFEUS Manager can be started by giving: ./init.sh start"
+		echo "EIDA Manager can be started by giving: ./init.sh start"
 		;;
 
 	restart)
@@ -53,7 +54,7 @@ case $1 in
 			mkdir $LOCK_DIRECTORY
 		fi
 
-		echo "Starting ORFEUS Manager";
+		echo "Starting EIDA Manager";
 
 		# Start two NodeJS microservices
 		nohup node server.js &> /dev/null &
@@ -66,11 +67,11 @@ case $1 in
 
 	stop)
                 if [ -z "$(ls -A $LOCK_DIRECTORY)" ]; then
-                        echo "ORFEUS Manager is not running"
+                        echo "EIDA Manager is not running"
 			exit 0
 		fi
 
-		echo "Stopping ORFEUS Manager";
+		echo "Stopping EIDA Manager";
 
 		# Kill running processes
 		for file in $LOCK_DIRECTORY/*; do
@@ -81,7 +82,7 @@ case $1 in
 
 	status)
 		if [ -z "$(ls -A $LOCK_DIRECTORY)" ]; then
-			echo "ORFEUS Manager is not running"
+			echo "EIDA Manager is not running"
 			exit 0
 		fi
 
@@ -89,20 +90,20 @@ case $1 in
 		for file in $LOCK_DIRECTORY/*; do
 			case $(basename $file) in
 				server.pid)
-					echo "ORFEUS Server Manager is running"
+					echo "EIDA Server Manager is running"
 				;;
 				latency.pid)
-					echo "Latency server is running"
+					echo "Latency server module is running"
 				;;
 				stations.pid)
-					echo "Station server is running"
+					echo "Seedlink server module is running"
 				;;
 			esac
 		done
 		
 		;;
 	*)
-		echo "Give one of install|start|stop|status"
+		echo "Give one of install|start|stop|restart|status"
 		;;
 esac
 exit 0
