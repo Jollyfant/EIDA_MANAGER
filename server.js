@@ -834,12 +834,16 @@ function GetSeedlinkServers(request, callback) {
       return x.host;
     })
 
+    var servPort = results.map(function(x) {
+      return x.host + ":" + x.port;
+    }).join(",");
+
     // Query the DNS records
     OHTTP.getDNS(servers, function(DNSRecords) {
 
       // Get a list of all hosts
       var servers = DNSRecords.map(function(x) {
-        return x.host
+        return x.host;
       }).join(",");
 
       var hashMap = new Object();
@@ -847,7 +851,7 @@ function GetSeedlinkServers(request, callback) {
         hashMap[x.host] = x.ip;
       });
 
-      OHTTP.request(CONFIG.SEEDLINK.STATION.HOST + ":" + CONFIG.SEEDLINK.STATION.PORT + "?host=" + servers, function(data) { 
+      OHTTP.request("http://" + CONFIG.STATIONS.HOST + ":" + CONFIG.STATIONS.PORT + "?host=" + servPort, function(data) { 
 
         if(!data) {
           return callback(results);
@@ -857,7 +861,7 @@ function GetSeedlinkServers(request, callback) {
 
         results.forEach(function(x) {
           for(var i = 0; i < data.length; i++) {
-            if(data[i].host === x.host) {
+            if(data[i].host === x.host + ":" + x.port) {
               x.ip = hashMap[x.host] || "Unknown";
               x.identifier = data[i].identifier;
               x.connected = data[i].connected;
@@ -1128,7 +1132,7 @@ function getStationLatencies(request, callback) {
 
   var uri = url.parse(request.url);
 
-  OHTTP.request(CONFIG.LATENCY_URL + uri.search, function(data) {
+  OHTTP.request("http://" + CONFIG.LATENCY.HOST + ":" + CONFIG.LATENCY.PORT + uri.search, function(data) {
     callback(JSON.parse(data));
   });
 

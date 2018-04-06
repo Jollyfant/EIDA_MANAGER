@@ -1,12 +1,13 @@
 #!/bin/bash
 
 LOCK_DIRECTORY="./lock"
-GIT_ONE="https://github.com/Jollyfant/NodeJS-Seedlink-Stations.git"
-GIT_TWO="https://github.com/Jollyfant/NodeJS-Seedlink-Latencies.git"
+GIT_SEEDLINK_STATIONS="https://github.com/Jollyfant/NodeJS-Seedlink-Stations.git"
+GIT_SEEDLINK_LATENCIES="https://github.com/Jollyfant/NodeJS-Seedlink-Latencies.git"
 
 case $1 in
 
 	install)
+
 		# Clean previous installation
 		rm -rf ./node_modules > /dev/null
 		rm -rf ./NodeJS-* > /dev/null
@@ -14,12 +15,19 @@ case $1 in
 		# Grab new source from GitHub & npm
 		echo "Installing ORFEUS Manager dependencies"
 		npm install
-		git clone $GIT_ONE
-		git clone $GIT_TWO
+		git clone $GIT_SEEDLINK_STATIONS
+		git clone $GIT_SEEDLINK_LATENCIES
+
+		# Copy the configuration to the modules
+		echo "Copying configuration to modules"
+                cat config.json | python -c 'import json; import sys; print json.dumps(json.load(sys.stdin)["LATENCY"], indent=2)' > NodeJS-Seedlink-Latencies/config.json
+                cat config.json | python -c 'import json; import sys; print json.dumps(json.load(sys.stdin)["STATIONS"], indent=2)' > NodeJS-Seedlink-Stations/config.json
+
 		echo "ORFEUS Manager can be started by giving: ./init.sh start"
 		;;
 
 	start)
+
 		# Confirm MongoDB is running
 		if ! pgrep -x "mongod" > /dev/null; then
 			echo "Mongod is not running"
@@ -27,8 +35,8 @@ case $1 in
 		fi
 
 		# Create lock directory
-		if [ ! -d "./lock" ]; then
-			mkdir "lock"
+		if [ ! -d $LOCK_DIRECTORY ]; then
+			mkdir $LOCK_DIRECTORY
 		fi
 
 		echo "Starting ORFEUS Manager";
@@ -36,9 +44,9 @@ case $1 in
 		# Start two NodeJS microservices
 		nohup node server.js &> /dev/null &
                 echo $! > ./lock/server.pid &
-		nohup node NodeJS-Seedlink-Latencies/Latency.js &> /dev/null &
+		nohup node NodeJS-Seedlink-Latencies &> /dev/null &
                 echo $! > ./lock/latency.pid &
-		nohup node NodeJS-Seedlink-Stations/stations.js &> /dev/null &
+		nohup node NodeJS-Seedlink-Stations &> /dev/null &
                 echo $! > ./lock/stations.pid &
                 ;;
 
@@ -52,7 +60,7 @@ case $1 in
 
 		# Kill running processes
 		for file in $LOCK_DIRECTORY/*; do
-			kill $(cat $file) > /dev/null
+			kill $(cat $file) > /dev/null 2>&1
 			rm $file
                 done
 		;;

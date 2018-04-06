@@ -1,5 +1,5 @@
 {
-  "__STDOUT__": true,
+  "__STDOUT__": false,
   "__DEBUG__": true,
   "__VERSION__": "1.0.0",
   "__CLOSED__": false,
@@ -10,18 +10,18 @@
     "IP": "145.23.31.253"
   },
   "STATIC": {
-    "DIRECTORY": "static/"
+    "DIRECTORY": "./static/"
   },
   "MAXIMUM_POST_BYTES": 1e9,
   "METADATA": {
+    "PATH": "./metadata",
     "SCHEMA": {
       "PATH": "./schema/fdsn-station-1.0.xsd"
     },
     "DAEMON": {
       "ENABLED": true,
       "SLEEP_INTERVAL_MS": 100000
-    },
-    "PATH": "./metadata"
+    }
   },
   "FDSNWS": {
     "STATION": {
@@ -31,13 +31,7 @@
       "HOST": "http://orfeus-eu.org/fdsnws/dataselect/1/query"
     }
   },
-  "SEEDLINK": {
-    "STATION": {
-      "HOST": "http://127.0.0.1",
-      "PORT": 3001
-    }
-  },
-  "LOGFILE": "/Users/Mathijs/Documents/ORFEUS/Manager/logs/server.log",
+  "LOGFILE": "./logs/server.log",
   "NODE": {
     "ID": "ODC",
     "NAME": "ORFEUS Data Center"
@@ -47,7 +41,23 @@
   "SESSION": {
     "TIMEOUT": 3600000
   },
-  "LATENCY_URL": "http://127.0.0.1:3002",
+  "LATENCY": {
+    "PORT": 3002,
+    "HOST": "127.0.0.1",
+    "SEEDLINK": {
+      "HOST": "eida.orfeus-eu.org",
+      "PORT": 18000
+    },
+    "REFRESH_INTERVAL": 60000
+  },
+  "STATIONS": {
+    "PORT": 3001,
+    "HOST": "127.0.0.1",
+    "REFRESH_INTERVAL": 3600000,
+    "SOCKET": {
+      "TIMEOUT": 5000
+    }
+  },
   "MONGO": {
     "NAME": "orfeus-manager",
     "HOST": "127.0.0.1",
