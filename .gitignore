@@ -1,4 +1,5 @@
 NodeJS*
+prototypes/*.sc3ml
 node_modules
 config.json
 *.log

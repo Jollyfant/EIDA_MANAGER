@@ -1,6 +1,8 @@
 #!/bin/bash
 
 LOCK_DIRECTORY="./lock"
+
+# Modules
 GIT_SEEDLINK_STATIONS="https://github.com/Jollyfant/NodeJS-Seedlink-Stations.git"
 GIT_SEEDLINK_LATENCIES="https://github.com/Jollyfant/NodeJS-Seedlink-Latencies.git"
 
@@ -23,6 +25,9 @@ case $1 in
                 cat config.json | python -c 'import json; import sys; print json.dumps(json.load(sys.stdin)["LATENCY"], indent=2)' > NodeJS-Seedlink-Latencies/config.json
                 cat config.json | python -c 'import json; import sys; print json.dumps(json.load(sys.stdin)["STATIONS"], indent=2)' > NodeJS-Seedlink-Stations/config.json
 
+		# Get the prototypes
+                cat config.json | python -c 'import json; import sys; print json.dumps(json.load(sys.stdin)["NODE"]["ID"])' | xargs prototypes/prototype.sh
+
 		echo "ORFEUS Manager can be started by giving: ./init.sh start"
 		;;
 
@@ -31,6 +36,11 @@ case $1 in
 		# Confirm MongoDB is running
 		if ! pgrep -x "mongod" > /dev/null; then
 			echo "Mongod is not running"
+			exit 0
+		fi
+
+		if [ ! -x "$(command -v seiscomp)" ]; then
+			echo "SeisComP3 is not installed"
 			exit 0
 		fi
 

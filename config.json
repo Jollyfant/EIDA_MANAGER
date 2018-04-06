@@ -3,6 +3,8 @@
   "__DEBUG__": true,
   "__VERSION__": "1.0.0",
   "__CLOSED__": false,
+  "PORT": 8088,
+  "HOST": "136.144.177.195",
   "SEISCOMP": {
     "PROCESS": "seiscomp"
   },
@@ -20,7 +22,7 @@
     },
     "DAEMON": {
       "ENABLED": true,
-      "SLEEP_INTERVAL_MS": 100000
+      "SLEEP_INTERVAL_MS": 3600000
     }
   },
   "FDSNWS": {
@@ -36,8 +38,6 @@
     "ID": "ODC",
     "NAME": "ORFEUS Data Center"
   },
-  "PORT": 8088,
-  "HOST": "136.144.177.195",
   "SESSION": {
     "TIMEOUT": 3600000
   },
