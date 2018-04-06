@@ -31,6 +31,10 @@ case $1 in
 		echo "ORFEUS Manager can be started by giving: ./init.sh start"
 		;;
 
+	restart)
+		sh ./init.sh stop
+		sh ./init.sh start
+		;;
 	start)
 
 		# Confirm MongoDB is running

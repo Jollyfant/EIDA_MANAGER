@@ -188,6 +188,8 @@ function serveStaticFile(response, uri) {
   switch(path.extname(uri)) {
     case ".json":
       response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "application/json"}); break;
+    case ".ico":
+      response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "image/x-icon"}); break;
     case ".css":
       response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "text/css"}); break;
     case ".png":
