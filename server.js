@@ -166,7 +166,7 @@ function monkeyPatchResponse(request, response) {
     const userAgent = request.headers["user-agent"] || null
 
     // HTTPD access log 
-    Console.debug([
+    Console.access([
       clientIP,
       url.parse(request.url).pathname,
       request.method,

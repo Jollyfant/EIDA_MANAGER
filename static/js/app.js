@@ -496,11 +496,7 @@ function initApplication() {
         "url": "/api/staged",
         "type": "GET",
         "dataType": "JSON",
-        "success": function(json) {
-
-          createStagedMetadataTable(json);
-
-        }
+        "success": createStagedMetadataTable
       });
     }
 
@@ -1454,6 +1450,14 @@ function accFilter(channel) {
 
 function generateAccordionContentChannelString(channel) {
 
+  var query = "?" + [
+    "level=response",
+    "&net=", channel.network,
+    "&sta=", channel.station,
+    "&cha=", channel.channel,
+    "&loc=", channel.location || "--"
+  ].join("");
+
   // Static table do not use Table class
   var tableHTML = [
     "<table class='table table-sm table-striped'>",
@@ -1473,8 +1477,163 @@ function generateAccordionContentChannelString(channel) {
     "</div>",
     "<hr>",
     //"<button class='btn btn-link'>" + Icon("eye") + "<small> View Instrument Response</small></button>",
-    "<a target='_blank' href='https://www.orfeus-eu.org/fdsnws/station/1/query?level=response&cha=" + channel.channel + "&net=" + channel.network + "&sta=" + channel.station + "'>" + Icon("download") + "<small> Download Instrument Response (StationXML) </small></a>"
+    "<button class='btn btn-link' onClick='getInstrumentResponse(\"" + [channel.network, channel.station, channel.location, channel.channel].join(".") + "\")'>View Sensor Response</button>",
+    "<a style='float: right;' class='btn btn-link' target='_blank' href='https://www.orfeus-eu.org/fdsnws/station/1/query" + query + "'>" + Icon("download") + "</a>",
   ].join("\n");
+
+}
+
+function getInstrumentResponse(query) {
+
+  network = query.split(".")[0];
+  station = query.split(".")[1];
+  loc = query.split(".")[2];
+  channel = query.split(".")[3];
+
+  var API = "https://orfeus-eu.org/api/response/" + network + "/" + station + "/" + loc + "/" + channel + "?units=velocity";
+
+  document.getElementById("response-loading-bar").style.display = "block";
+
+  $.ajax({
+    "url": API, 
+    "type": "GET",
+    "dataType": "JSON",
+    "success": function(json) {
+      responseAmplitudeChart(json);
+      responsePhaseChart(json);
+    },
+    "complete": function() {
+      document.getElementById("response-loading-bar").style.display = "none";
+    }
+  });
+
+}
+
+function createPlotLine(x) {
+
+  return {
+    "label": {
+      "style": {"color": "#C03",
+      },
+      "text": "Nyquist Frequency",
+      "rotation": 90,
+      "verticalAlign": "top",
+    },
+    "color": "#C03",
+    "width": 2,
+    "value": x,
+  }
+
+}
+
+function getUnique(value, index, self) {
+  return self.indexOf(value) === index;
+}
+
+function responsePhaseChart(result) {
+
+  /* FUNCTION responsePhaseChart
+   * Creates phase/frequency plot
+   */
+
+  // Create plot lines for nyquist frequencies
+  var plotLines = result.payload.map(function(x) {
+    return x.nyquist
+  }).filter(getUnique).map(createPlotLine);
+
+  // The Phase response highchart container
+  Highcharts.chart("response-phase", {
+    "chart": {      
+      "height": 200,
+      "animation": false,
+      "zoomType": "x"
+    },
+    "title": {
+      "text": "" 
+    },  
+    "subtitle": {
+      "text": ''
+    },  
+    "xAxis": {
+      "title": { 
+        "text": "Frequency (Hz)"
+      },
+      "type": "logarithmic",
+      "plotLines": plotLines 
+    },
+    "yAxis": {
+      "title": {
+        "text": "Phase (radians)"
+      }
+    },
+    "legend": {
+      "enabled": false
+    },
+    "credits": {
+      "enabled": false
+    },
+    "plotOptions": {
+      "series": {
+        "shadow": false
+      }
+    },
+    "series": result.payload.filter(function(x) { return x.typo === "phase"}),
+  });
+
+}
+
+function responseAmplitudeChart(result) {
+
+  /* FUNCTION responseAmplitudeChart
+   * Creates amplitude/frequency plot
+   */
+ 
+  // Create plot lines for nyquist frequencies
+  var plotLines = result.payload.map(function(x) {
+    return x.nyquist
+  }).filter(getUnique).map(createPlotLine);
+
+  Highcharts.chart("response-amplitude", {
+    "chart": {
+      "height": 200,
+      "animation": false,
+      "zoomType": "x"
+    },
+    "title": {
+      "text": ""
+    },  
+    "subtitle": {
+      "text": ""
+    },  
+    "xAxis": {
+      "title": {
+        "text": ""
+      },
+      "type": "logarithmic",
+      "plotLines": plotLines
+    },  
+    "yAxis": {
+      "type": "logarithmic",
+      "title": {
+        "text": "Amplitude"
+      }
+    },  
+    "legend": {
+      "enabled": false
+    },  
+    "plotOptions": {
+      "series": {
+        "shadow": false 
+      },   
+    },
+    "credits": {
+      "enabled": false
+    },
+    "series": result.payload.filter(function(x) {
+      return x.typo === "amplitude"
+    }),
+    "type": "spline",
+  });
 
 }
 
@@ -1518,6 +1677,7 @@ function downloadKML() {
   const XML_VERSION = "1.0";
   const XML_ENCODING = "UTF-8";
   const KML_VERSION = "2.2";
+  const MIME_TYPE = "data:text/xml;charset=utf-8";
 
   XMLString = [
     "<?xml version='" + XML_VERSION + "' encoding='" + XML_ENCODING + "'?>",
@@ -1526,30 +1686,42 @@ function downloadKML() {
     "</kml>"
   ].join("\n");
 
-  var dataStr = "data:text/xml;charset=utf-8," + encodeURIComponent(XMLString);
-  download("stations.kml", dataStr);
+  downloadURIComponent(
+    "stations.kml",
+    MIME_TYPE + "," + encodeURIComponent(XMLString)
+  );
 
 }
 
-function download(name, string) {
+function downloadURIComponent(name, string) {
 
   /* function download
    * Creates a temporary link component used for downloading
-   * encoded data
    */
 
   var downloadAnchorNode = document.createElement("a");
   downloadAnchorNode.setAttribute("href", string);
   downloadAnchorNode.setAttribute("download", name);
+  document.body.appendChild(downloadAnchorNode);
   downloadAnchorNode.click();
-  downloadAnchorNode.remove();
+
+  // Clean up
+  document.body.removeChild(downloadAnchorNode);
 
 }
 
 function downloadTable() {
 
-  var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(_stationJson));
-  download("stations.json", dataStr);
+  /* function downloadTable
+   * Generates JSON representation of station table
+   */
+
+  const MIME_TYPE = "data:text/json;charset=utf-8";
+
+  var dataStr = downloadURIComponent(
+    "stations.json",
+    MIME_TYPE + "," + encodeURIComponent(JSON.stringify(_stationJson))
+  );
 
 }
 

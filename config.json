@@ -5,6 +5,8 @@
   "__CLOSED__": false,
   "PORT": 8088,
   "HOST": "136.144.177.195",
+  "MAXIMUM_POST_BYTES": 1e9,
+  "LOGFILE": "./logs/server.log",
   "SEISCOMP": {
     "PROCESS": "seiscomp"
   },
@@ -14,14 +16,13 @@
   "STATIC": {
     "DIRECTORY": "./static/"
   },
-  "MAXIMUM_POST_BYTES": 1e9,
   "METADATA": {
     "PATH": "./metadata",
     "SCHEMA": {
       "PATH": "./schema/fdsn-station-1.0.xsd"
     },
     "DAEMON": {
-      "ENABLED": true,
+      "ENABLED": false,
       "SLEEP_INTERVAL_MS": 3600000
     }
   },
@@ -33,7 +34,6 @@
       "HOST": "http://orfeus-eu.org/fdsnws/dataselect/1/query"
     }
   },
-  "LOGFILE": "./logs/server.log",
   "NODE": {
     "ID": "ODC",
     "NAME": "ORFEUS Data Center"
