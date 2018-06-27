@@ -934,7 +934,7 @@ function RemoveSpecificMessage(request, callback) {
    */
 
   // Get the message identifier from the query string
-  var qs = querystring.parse(request.query);
+  var qs = querystring.parse(url.parse(request.url).query);
 
   var senderQuery = {
     "sender": Database.ObjectId(request.session._id),

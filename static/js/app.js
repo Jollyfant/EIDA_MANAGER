@@ -1000,9 +1000,11 @@ function getNetworkDOI() {
         return Element("doi-link").innerHTML = "<span class='fa fa-globe'></span> " + USER_NETWORK
       }
 
-      console.debug("DOI returned from FDSN: " + json[USER_NETWORK]);
+      var doi = json[USER_NETWORK].doi;
 
-      Element("doi-link").innerHTML = "<a title='" + json[USER_NETWORK] + "' href='" + json[USER_NETWORK] + "'><span class='fa fa-globe'></span> " + USER_NETWORK + "</a>";
+      console.debug("DOI returned from FDSN: " + doi);
+
+      Element("doi-link").innerHTML = "<a title='" + doi + "' href='" + doi + "'><span class='fa fa-globe'></span> " + USER_NETWORK + "</a>";
 
     }
   });
@@ -1476,10 +1478,24 @@ function generateAccordionContentChannelString(channel) {
       "<div class='chart'></div>",
     "</div>",
     "<hr>",
-    //"<button class='btn btn-link'>" + Icon("eye") + "<small> View Instrument Response</small></button>",
-    "<button class='btn btn-link' onClick='getInstrumentResponse(\"" + [channel.network, channel.station, channel.location, channel.channel].join(".") + "\")'>View Sensor Response</button>",
-    "<a style='float: right;' class='btn btn-link' target='_blank' href='https://www.orfeus-eu.org/fdsnws/station/1/query" + query + "'>" + Icon("download") + "</a>",
+    "<button class='btn btn-link' onClick='getInstrumentResponse(\"" + [channel.network, channel.station, channel.location, channel.channel, channel.sensorUnits].join(".") + "\")'>" + Icon("eye") + " View Sensor Response</button>",
+    "<a style='float: right;' class='btn btn-link' target='_blank' href='https://www.orfeus-eu.org/fdsnws/station/1/query" + query + "'>" + Icon("download") + " StationXML</a>",
   ].join("\n");
+
+}
+
+function mapUnit(unit) {
+
+  switch(unit) {
+    case "M":
+      return "displacement";
+    case "M/S":
+      return "velocity";
+    case "M/S**2":
+      return "acceleration";
+    default:
+      return "velocity";
+  }
 
 }
 
@@ -1487,10 +1503,11 @@ function getInstrumentResponse(query) {
 
   network = query.split(".")[0];
   station = query.split(".")[1];
-  loc = query.split(".")[2];
+  loc = query.split(".")[2] || "--";
   channel = query.split(".")[3];
+  units = query.split(".")[4];
 
-  var API = "https://orfeus-eu.org/api/response/" + network + "/" + station + "/" + loc + "/" + channel + "?units=velocity";
+  var API = "https://orfeus-eu.org/api/response/" + network + "/" + station + "/" + loc + "/" + channel + "?units=" + mapUnit(units);
 
   document.getElementById("response-loading-bar").style.display = "block";
 
@@ -1513,7 +1530,8 @@ function createPlotLine(x) {
 
   return {
     "label": {
-      "style": {"color": "#C03",
+      "style": {
+        "color": "#C03",
       },
       "text": "Nyquist Frequency",
       "rotation": 90,
@@ -1536,10 +1554,9 @@ function responsePhaseChart(result) {
    * Creates phase/frequency plot
    */
 
-  // Create plot lines for nyquist frequencies
-  var plotLines = result.payload.map(function(x) {
-    return x.nyquist
-  }).filter(getUnique).map(createPlotLine);
+  if(!result) {
+    return document.getElementById("response-phase").innerHTML = "Instrument response is unavailable";
+  }
 
   // The Phase response highchart container
   Highcharts.chart("response-phase", {
@@ -1555,15 +1572,53 @@ function responsePhaseChart(result) {
       "text": ''
     },  
     "xAxis": {
+      "minorTickInterval": "auto",
+      "labels": {
+        "style": {
+          "fontWeight": "bold",
+          "fontSize": "12px"
+        }
+      },
       "title": { 
         "text": "Frequency (Hz)"
       },
-      "type": "logarithmic",
-      "plotLines": plotLines 
+      "type": "logarithmic"
     },
     "yAxis": {
       "title": {
         "text": "Phase (radians)"
+      },
+      "min": -Math.PI,
+      "max": Math.PI,
+      "tickPositions": [-Math.PI, -0.5 * Math.PI, 0, 0.5 * Math.PI, Math.PI],
+      "labels": {
+        "style": {
+          "fontWeight": "bold",
+          "fontSize": "12px"
+        },
+        "formatter": function() {
+          switch(this.value.toFixed(2)) {
+            case "-3.14":
+              return "-π";
+            case "3.14":
+              return "π";
+            case "-1.57":
+              return "-½π";
+            case "1.57":
+              return "½π";
+            default:
+              return 0;
+          }
+        }
+      }
+    },
+    "tooltip": { 
+      "formatter": function() {
+        return [
+          "<b>" + this.series.name + "</b>",
+          "<b>Phase</b>: " + (this.y / Math.PI).toFixed(2) + "π",
+          "<b>Frequency</b>: " + this.x.toFixed(2) + "Hz"
+        ].join("<br>");
       }
     },
     "legend": {
@@ -1574,6 +1629,7 @@ function responsePhaseChart(result) {
     },
     "plotOptions": {
       "series": {
+        "lineWidth": 3,
         "shadow": false
       }
     },
@@ -1588,10 +1644,9 @@ function responseAmplitudeChart(result) {
    * Creates amplitude/frequency plot
    */
  
-  // Create plot lines for nyquist frequencies
-  var plotLines = result.payload.map(function(x) {
-    return x.nyquist
-  }).filter(getUnique).map(createPlotLine);
+  if(!result) {
+    return document.getElementById("response-amplitude").innerHTML = "Instrument response is unavailable";
+  }
 
   Highcharts.chart("response-amplitude", {
     "chart": {
@@ -1600,29 +1655,50 @@ function responseAmplitudeChart(result) {
       "zoomType": "x"
     },
     "title": {
-      "text": ""
+      "text": result.payload[0].name
     },  
     "subtitle": {
-      "text": ""
+      "text": "Instrument Frequency Response"
     },  
     "xAxis": {
+      "minorTickInterval": "auto",
+      "visible": true,
+      "labels": {
+        "enabled": false
+      },
       "title": {
         "text": ""
       },
-      "type": "logarithmic",
-      "plotLines": plotLines
+      "type": "logarithmic"
     },  
     "yAxis": {
+      "minorTickInterval": "auto",
       "type": "logarithmic",
+      "labels": {
+        "style": {
+          "fontWeight": "bold",
+          "fontSize": "12px"
+        }
+      },
       "title": {
-        "text": "Amplitude"
+        "text": "Amplitude" 
       }
     },  
     "legend": {
       "enabled": false
-    },  
+    },
+    "tooltip": {
+      "formatter": function() {
+        return [
+          "<b>" + this.series.name + "</b>",
+          "<b>Amplitude</b>: " + this.y.toFixed(2),
+          "<b>Frequency</b>: " + this.x.toFixed(2) + "Hz"
+        ].join("<br>");
+      }
+    }, 
     "plotOptions": {
       "series": {
+        "lineWidth": 3,
         "shadow": false 
       },   
     },
@@ -1631,8 +1707,7 @@ function responseAmplitudeChart(result) {
     },
     "series": result.payload.filter(function(x) {
       return x.typo === "amplitude"
-    }),
-    "type": "spline",
+    })
   });
 
 }
