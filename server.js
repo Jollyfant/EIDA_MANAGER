@@ -1,3 +1,18 @@
+/* server.js
+ * 
+ * Main server code handling incoming HTTP requests
+ * for the EIDA Manager
+ *
+ * Copyright: ORFEUS Data Center
+ * Author: Mathijs Koymans, 2018
+ *
+ */
+
+"use strict";
+
+// Make require relative to the root directory
+require("./require");
+
 // Native includes
 const { createServer } = require("http");
 const path = require("path");
@@ -5,6 +20,7 @@ const url = require("url");
 const fs = require("fs");
 const querystring = require("querystring");
 
+// Third-party libs
 const multipart = require("./lib/multipart");
 
 // ORFEUS libs
@@ -233,7 +249,7 @@ var Webserver = function() {
 
     // Redirect webserver root to the login page
     if(uri === "/") {
-      return OHTTP.Redirect(response, "/login");
+      return OHTTP.redirect(response, "/login");
     }
 
     /* 
@@ -250,7 +266,7 @@ var Webserver = function() {
   
         // If the user is already logged in redirect to home page
         if(request.session !== null) {
-          return OHTTP.Redirect(response, "/home");
+          return OHTTP.redirect(response, "/home");
         }
   
         // Get request is made on the login page
@@ -286,7 +302,7 @@ var Webserver = function() {
   
             // Authentication failed
             if(error) {
-              return OHTTP.Redirect(response, "/login?" + error);
+              return OHTTP.redirect(response, "/login?" + error);
             }
   
             // Create a new session for the user
@@ -341,7 +357,7 @@ var Webserver = function() {
 
           error ? Console.error(STATUS_MESSAGE) : Console.info(STATUS_MESSAGE);
 
-          OHTTP.Redirect(response, "/login?S_LOGGED_OUT");
+          OHTTP.redirect(response, "/login?S_LOGGED_OUT");
 
         });
 
@@ -357,7 +373,7 @@ var Webserver = function() {
 
           // Disallow message to be sent to self
           if(postBody.recipient === request.session.username) {
-            return OHTTP.Redirect(response, "/home/messages/new?self");
+            return OHTTP.redirect(response, "/home/messages/new?self");
           }
 
           // Admin may sign broadcasted message
@@ -374,7 +390,7 @@ var Webserver = function() {
 
             // Unknown recipient
             if(users.length === 0) {
-              return OHTTP.Redirect(response, "/home/messages/new?unknown");
+              return OHTTP.redirect(response, "/home/messages/new?unknown");
             }
 
             // Create a new message
@@ -392,10 +408,10 @@ var Webserver = function() {
 
               // Error storing messages
               if(error) {
-                return OHTTP.Redirect(response, "/home/messages/new?failure");
+                return OHTTP.redirect(response, "/home/messages/new?failure");
               }
 
-              OHTTP.Redirect(response, "/home/messages/new?success");
+              OHTTP.redirect(response, "/home/messages/new?success");
 
             });
 
@@ -453,12 +469,12 @@ var Webserver = function() {
 
           // Confirm hostname or IPv4
           if(!IPV4_ADDRESS_REGEX.test(json.host) && !HOSTNAME_REGEX.test(json.host)) {
-            return OHTTP.Redirect(response, "/home?E_SEEDLINK_HOST_INVALID");
+            return OHTTP.redirect(response, "/home?E_SEEDLINK_HOST_INVALID");
           }
 
           // Accept ports between 0x0400 and 0xFFFF
           if(isNaN(port) || port < (1 << 10) || port > (1 << 16)) {
-            return OHTTP.Redirect(response, "/home?E_SEEDLINK_PORT_INVALID");
+            return OHTTP.redirect(response, "/home?E_SEEDLINK_PORT_INVALID");
           }
 
           // Store new seedlink object in database
@@ -473,16 +489,16 @@ var Webserver = function() {
           Database.seedlink().find({"userId": request.session._id, "host": json.host, "port": port}).count(function(error, count) {
 
             if(error) {
-              return OHTTP.Redirect(response, "/home?E_INTERNAL_SERVER_ERROR");
+              return OHTTP.redirect(response, "/home?E_INTERNAL_SERVER_ERROR");
             }
 
             // The server is already in the database
             if(count !== 0) {
-              return OHTTP.Redirect(response, "/home?E_SEEDLINK_SERVER_EXISTS");
+              return OHTTP.redirect(response, "/home?E_SEEDLINK_SERVER_EXISTS");
             }
 
             Database.seedlink().insertOne(storeObject, function(error, result) {
-              return OHTTP.Redirect(response, "/home?" + (error ? "E_INTERNAL_SERVER_ERROR" : "S_SEEDLINK_SERVER_SUCCESS"));
+              return OHTTP.redirect(response, "/home?" + (error ? "E_INTERNAL_SERVER_ERROR" : "S_SEEDLINK_SERVER_SUCCESS"));
             });
 
           });
@@ -515,7 +531,7 @@ var Webserver = function() {
               Console.error(error);
             }
 
-            return OHTTP.Redirect(response, "/home?" + (error ? "E_METADATA_ERROR" : "S_METADATA_SUCCESS")); 
+            return OHTTP.redirect(response, "/home?" + (error ? "E_METADATA_ERROR" : "S_METADATA_SUCCESS")); 
 
           });
           
@@ -823,6 +839,7 @@ function GetSeedlinkServers(request, callback) {
 
   /* function GetSeedlinkServers
    * Returns submitted seedlink servers from the database
+   * FIXME!!
    */
 
   Database.seedlink().find({"userId": request.session._id}).toArray(function(error, results) {
@@ -862,6 +879,7 @@ function GetSeedlinkServers(request, callback) {
         data = JSON.parse(data);
 
         results.forEach(function(x) {
+
           for(var i = 0; i < data.length; i++) {
             if(data[i].host === x.host + ":" + x.port) {
               x.ip = hashMap[x.host] || "Unknown";
@@ -879,6 +897,7 @@ function GetSeedlinkServers(request, callback) {
 
             }
           } 
+
         });
 
         callback(results);
@@ -931,6 +950,7 @@ function RemoveSpecificMessage(request, callback) {
 
   /* function RemoveSpecificMessage
    * Sets message with particular id to deleted
+   * FIXME!!
    */
 
   // Get the message identifier from the query string
@@ -1132,9 +1152,7 @@ function getStationLatencies(request, callback) {
    * Returns Seedlink latencies for a network, station
    */
 
-  var uri = url.parse(request.url);
-
-  OHTTP.request("http://" + CONFIG.LATENCY.HOST + ":" + CONFIG.LATENCY.PORT + uri.search, function(data) {
+  OHTTP.request("http://" + CONFIG.LATENCY.HOST + ":" + CONFIG.LATENCY.PORT + url.parse(request.url).search, function(data) {
     callback(JSON.parse(data));
   });
 
