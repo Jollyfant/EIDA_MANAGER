@@ -25,9 +25,9 @@ const multipart = require("./lib/multipart");
 
 // ORFEUS libs
 const Database = require("./lib/orfeus-database");
-const Session = require("./lib/orfeus-session");
+const { User, Session } = require("./lib/orfeus-session");
 const Console = require("./lib/orfeus-logging");
-const SHA256 = require("./lib/orfeus-crypto");
+const { SHA256 } = require("./lib/orfeus-crypto");
 const OHTTP = require("./lib/orfeus-http");
 const Template = require("./lib/orfeus-template");
 const { sum, createDirectory, escapeHTML } = require("./lib/orfeus-util");
@@ -75,22 +75,6 @@ function getSession(headers, callback) {
     });
 
   });
-
-}
-
-var User = function(user, id) {
-
-  /* Class User
-   * Holds user information
-   */
-
-  this._id = user._id;
-  this.sessionId = id;
-  this.username = user.username;
-  this.network = user.network;
-  this.version = user.version;
-  this.visited = user.visited;
-  this.role = user.role;
 
 }
 
@@ -581,13 +565,13 @@ function writeMultipleFiles(files, session, callback) {
 
   // Confirm user is manager of the network
   for(var i = 0; i < XMLDocuments.length; i++) {
-    if(session.network !== XMLDocuments[i].metadata.network) {
+    if(session.role !== "admin" && session.network !== XMLDocuments[i].metadata.network) {
       return callback(true); 
     }
   }
 
   // Create a copy of all metadata
-  XMLMetadata = XMLDocuments.map(function(x) {
+  var XMLMetadata = XMLDocuments.map(function(x) {
     return x.metadata;
   });
 
@@ -605,6 +589,8 @@ function writeMultipleFiles(files, session, callback) {
   if(XMLDocuments.length === 0) {
     return callback(null);
   }
+
+  var writeFile;
 
   // Asynchronous writing for multiple files to disk
   (writeFile = function() {

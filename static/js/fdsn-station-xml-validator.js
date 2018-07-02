@@ -48,8 +48,8 @@ function validateFiles(files) {
 
       var networkCode = network.getAttribute("code");
 
-      // Confirm network regex & user must own network
-      if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK !== networkCode) {
+      // Confirm network regex & user must own network (allow administrators)
+      if(!NETWORK_REGEXP.test(networkCode) || (USER_NETWORK !== "*" && USER_NETWORK !== networkCode)) {
         throw("Invalid network code: " + networkCode);
       }
 
