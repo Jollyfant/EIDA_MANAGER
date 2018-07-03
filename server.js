@@ -55,7 +55,7 @@ function getSession(headers, callback) {
 
   // Parse the cookie header and get the SESSION_ID
   headers.cookie.split(";").forEach(function(cookie) {
-    qs = querystring.parse(cookie);
+    qs = querystring.parse(cookie.trim());
     if(qs.SESSION_ID) {
       sessionQuery = {"SESSION_ID": qs.SESSION_ID}
     }
