@@ -51,9 +51,15 @@ function getSession(headers, callback) {
     return callback(null, null);
   }
 
+  var qs, sessionQuery;
+
   // Parse the cookie header and get the SESSION_ID
-  var cookie = querystring.parse(headers.cookie.split(";")[0]);
-  var sessionQuery = {"SESSION_ID": cookie.SESSION_ID};
+  headers.cookie.split(";").forEach(function(cookie) {
+    qs = querystring.parse(cookie);
+    if(qs.SESSION_ID) {
+      sessionQuery = {"SESSION_ID": qs.SESSION_ID}
+    }
+  });
 
   Database.sessions().findOne(sessionQuery, function(error, session) {
 
