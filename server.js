@@ -61,6 +61,10 @@ function getSession(headers, callback) {
     }
   });
 
+  if(sessionQuery === undefined) {
+    return callback(null, null);
+  }
+
   Database.sessions().findOne(sessionQuery, function(error, session) {
 
     // Error or session could not be found
