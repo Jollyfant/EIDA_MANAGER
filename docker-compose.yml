@@ -1,0 +1,37 @@
+# docker-compose for EIDA-manager
+
+version: '3.3'
+
+services:
+
+  # Default MongoDB image for users, sessions, etc..
+  # Mount volume for persistent data storage
+  mongo:
+    image: mongo
+    restart: always
+    volumes:
+      - ./data/mongo:/data/db
+
+  # EIDA Manager web application
+  # Mount log folder and submitted metadata folder
+  # Expose port 8088 to the outside
+  eida-manager:
+    image: eida-manager:1.0
+    restart: always
+    volumes:
+      - ./logs:/usr/src/app/logs
+      - ./data/metadata:/usr/src/app/metadata
+    ports:
+      - 8088:8088
+
+  # NodeJS Seedlink latency connector
+  # Can be pulled from https://github.com/Jollyfant/NodeJS-Seedlink-Latencies
+  seedlink-latencies:
+    image: seedlink-latencies:1.0
+    restart: always
+
+  # NodeJS Seedlink station connector
+  # Can be pulled from https://github.com/Jollyfant/NodeJS-Seedlink-Stations
+  seedlink-stations:
+    image: seedlink-stations:1.0
+    restart: always

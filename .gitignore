@@ -8,4 +8,5 @@ config.json
 *.xml
 *.swp
 *.swo
-metadata
+data
+seiscomp*

@@ -22,6 +22,6 @@
   "homepage": "https://github.com/Jollyfant/ORFEUS_MANAGER#readme",
   "dependencies": {
     "libxmljs": "^0.18.7",
-    "mongodb": "^3.0.3"
+    "mongodb": "^3.1.0"
   }
 }

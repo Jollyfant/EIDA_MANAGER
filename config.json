@@ -4,7 +4,7 @@
   "__VERSION__": "1.0.0",
   "__CLOSED__": false,
   "PORT": 8088,
-  "HOST": "136.144.177.195",
+  "HOST": "0.0.0.0",
   "MAXIMUM_POST_BYTES": 1e9,
   "LOGFILE": "./logs/server.log",
   "SEISCOMP": {
@@ -42,25 +42,16 @@
     "TIMEOUT": 3600000
   },
   "LATENCY": {
-    "PORT": 3002,
-    "HOST": "127.0.0.1",
-    "SEEDLINK": {
-      "HOST": "eida.orfeus-eu.org",
-      "PORT": 18000
-    },
-    "REFRESH_INTERVAL": 60000
+    "HOST": "seedlink-latencies",
+    "PORT": 8087
   },
   "STATIONS": {
-    "PORT": 3001,
-    "HOST": "127.0.0.1",
-    "REFRESH_INTERVAL": 3600000,
-    "SOCKET": {
-      "TIMEOUT": 5000
-    }
+    "HOST": "seedlink-stations",
+    "PORT": 8086
   },
   "MONGO": {
     "NAME": "orfeus-manager",
-    "HOST": "127.0.0.1",
+    "HOST": "mongo",
     "PORT": 27017
   }
 }

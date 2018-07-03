@@ -91,7 +91,9 @@ function Init() {
   
     // Could not connect to Mongo
     if(error) {
-      return Console.fatal(DATABASE_CONNECTION_ERROR);
+      Console.fatal(error);
+      Console.fatal(DATABASE_CONNECTION_ERROR);
+      return setTimeout(Init, 5000);
     }
   
     // Create a new webserver

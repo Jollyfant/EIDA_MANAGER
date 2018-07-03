@@ -509,9 +509,9 @@
 					</xs:element>
 					<xs:element name="NormalizationFactor" type="xs:double" default="1.0"/>
 					<xs:element name="NormalizationFrequency" type="fsx:FrequencyType"/>
-					<xs:element name="Pole" type="fsx:PoleZeroType" minOccurs="0"
-						maxOccurs="unbounded"/>
 					<xs:element name="Zero" type="fsx:PoleZeroType" minOccurs="0"
+						maxOccurs="unbounded"/>
+					<xs:element name="Pole" type="fsx:PoleZeroType" minOccurs="0"
 						maxOccurs="unbounded"/>
 				</xs:sequence>
 			</xs:extension>
