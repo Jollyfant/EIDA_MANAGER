@@ -76,7 +76,7 @@ function getSession(headers, callback) {
       }
 
       // Callback with a new authenticated user
-      callback(null, new User(user, cookie.SESSION_ID));
+      callback(null, new User(user, sessionQuery.SESSION_ID));
 
     });
 
