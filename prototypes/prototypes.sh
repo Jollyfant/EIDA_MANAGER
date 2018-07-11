@@ -53,7 +53,7 @@ curl -s "$FDSNWS_STATION?level=network&format=text" | sed 1d | while read line; 
   # Get the FDSN StationXML for this station and convert to SC3ML network prototype
   curl -s "$FDSNWS_STATION?network=$network&level=network&endtime=$networkStart" | 
   seiscomp --asroot exec import_inv fdsnxml - - 2>/dev/null |
-  xmllint --format - > "./$networkCode.sc3ml"
+  xmllint --format - > "./prototypes/$networkCode.sc3ml"
 
 done
 

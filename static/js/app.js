@@ -4,7 +4,7 @@ const STATION_MARKER_ORANGE = "/images/station-orange.png";
 const STATION_MARKER_GREY = "/images/station-grey.png";
 const STATION_MARKER_RED = "/images/station-red.png";
 const NODE_MARKER = "/images/node.png";
-const SOCKET_URL = "https://orfeus-eu.org/"
+const SOCKET_URL = "ws://0.0.0.0:8089"
 
 var __TABLE_JSON__;
 var chartPointers;
@@ -360,33 +360,30 @@ function initApplication() {
 
     AddMap();
 
-    // Hoist an empty socket
-    __SOCKET__ = null
-
     var qs = parseQuery(window.location.search);
+    var exampleSocket;
 
     // Change event to toggle WS connection
     Element("connect-seedlink").addEventListener("change", function() {
 
-      // Not connected and socket is empty
-      if(!Element("connect-seedlink").checked && __SOCKET__) {
-        __SOCKET__.disconnect();
-        return;
-      } else {
-        __SOCKET__ = io(SOCKET_URL, {"path": "/socket.io"});
+      // Close the socket
+      if(!this.checked) {
+        return exampleSocket.close();
       }
 
-      __SOCKET__.on("disconnect", function() {
-        console.debug("Disconnected socket from " + SOCKET_URL);
-        __SOCKET__ = null;
-      });
+      exampleSocket = new WebSocket(SOCKET_URL);
+      
+      exampleSocket.onopen = function(event) {
+        exampleSocket.send(JSON.stringify({"subscribe": qs.network + "." + qs.station}));
+      }
+      
+      exampleSocket.onmessage = function(event) {
 
-      __SOCKET__.on("connect", function() {
-        __SOCKET__.emit("subscribe", qs.network + "." + qs.station); 
-        console.debug("Connected to socket at " + SOCKET_URL);
-      });
+        var data = JSON.parse(event.data);
 
-      __SOCKET__.on("record", function(data) {
+        if(data.success || data.error) {
+          return;
+        }
 
         if(!chartPointers.hasOwnProperty(data.id)) {
           chartPointers[data.id] = new SeedlinkChannel(data);
@@ -394,7 +391,7 @@ function initApplication() {
           chartPointers[data.id].Update(data);
         }
 
-      });
+      }
 
     });
   

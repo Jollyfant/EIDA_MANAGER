@@ -1,7 +1,6 @@
 # docker-compose for EIDA-manager
 
 version: '3.3'
-
 services:
 
   # Default MongoDB image for users, sessions, etc..
@@ -35,3 +34,12 @@ services:
   seedlink-stations:
     image: seedlink-stations:1.0
     restart: always
+
+  # Expose the data proxy
+  seedlink-proxy:
+    image: seedlink-proxy:1.0
+    restart: always
+    ports:
+      - 8089:8089
+    environment:
+      - "SERVICE_PORT=8089"

@@ -94,7 +94,6 @@ function Init() {
    * Initializes the application
    */
 
-  const DATABASE_CONNECTION_ERROR = "Could not open connection to the database.";
 
   // Attempt to connect to the database
   Database.connect(function(error) {
@@ -102,7 +101,6 @@ function Init() {
     // Could not connect to Mongo
     if(error) {
       Console.fatal(error);
-      Console.fatal(DATABASE_CONNECTION_ERROR);
       return setTimeout(Init, 5000);
     }
   
