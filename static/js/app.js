@@ -711,6 +711,10 @@ function changeMapLegend(markers) {
 
 function AddSeedlink() {
 
+  /*
+   *
+   */
+
   const SEEDLINK_TABLE_HEADER = [
     "",
     "Address",
@@ -979,11 +983,15 @@ function MapInformationText(nStations) {
 
 function getNetworkDOI() {
 
+  /* Function getNetworkDOI
+   * Queries the ORFEUS DOI API for information
+   */
+
   if(USER_NETWORK === "*") {
     return Element("doi-link").innerHTML = "<small>Administrator</small>";
   }
 
-  const API_ADDRESS = "https://www.orfeus-eu.org/api/doi";
+  const API_ADDRESS = "http://0.0.0.0:8090";
   const DOI_API_QUERY = "network=" + USER_NETWORK;
 
   // Query the ORFEUS API for the network DOI
@@ -1170,7 +1178,7 @@ function generateBreadcrumbs(crumbs) {
      if(i === (crumbs.length - 1)) {
        return "<li id='final-crumb' class='breadcrumb-item active'>" + x + "</li>";
      } else {
-      return "<li class='breadcrumb-item'><a href='" + fullCrumb + "'>" + x + "</a></li>";
+       return "<li class='breadcrumb-item'><a href='" + fullCrumb + "'>" + x + "</a></li>";
      }
 
   }).join("\n");
@@ -1190,16 +1198,21 @@ function createLatencyHashmap(latencies) {
 
   // Go over the array
   latencies.forEach(function(x) {
+
     var identifier = x.network + "." + x.station;
+
     if(!hashMap.hasOwnProperty(identifier)) {
       hashMap[identifier] = new Object();
     }
+
     var chaIdentifier = x.channel.charAt(0);
     if(!hashMap[identifier].hasOwnProperty(chaIdentifier)) {
       hashMap[identifier][chaIdentifier] = new Array();
     }
+
     hashMap[identifier][chaIdentifier].push({"msLatency": x.msLatency, "channel": x.channel});
-  })
+
+  });
 
   console.debug("Latency hashmap generated in " + (Date.now() - start) + " ms.");
 
@@ -1219,7 +1232,7 @@ console.debug = (function(fnClosure) {
 function GenerateTable(list) {
 
   /* function GenerateTable
-   * 
+   * Generates the station latency table to be shown
    */
 
   $.ajax({

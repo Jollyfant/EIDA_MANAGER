@@ -4,16 +4,16 @@
 # $ docker build -t eida-manager:1.0 .
 
 FROM node:8
-MAINTAINER Mathijs Koymans
+
+# Add some metadata
+LABEL maintainer="Mathijs Koymans"
+LABEL email="koymans@knmi.nl"
 
 # Set the source directory for the application
 WORKDIR /usr/src/app
 
-# Copy source code
-COPY . .
-
-# Install NodeJS dependencies
-RUN npm install
+COPY seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz \
+     seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz
 
 # Unpack SeisComP3
 RUN tar -zxvf seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz \
@@ -22,11 +22,20 @@ RUN tar -zxvf seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz \
 	&& sh seiscomp3/share/deps/debian/8.0/install-base.sh \
 	&& rm seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz
 
+# Copy source code
+COPY package*.json ./
+
+# Install NodeJS dependencies
+RUN npm install
+
 # Set some environment variables
 ENV INSTALL_DIR /usr/src/app/seiscomp3
 ENV PATH $PATH:$INSTALL_DIR/bin:$INSTALL_DIR/sbin
 ENV LD_LIBRARY_PATH $LD_LIBRARY_PATH:$INSTALL_DIR/lib
 ENV PYTHONPATH $PYTHONPATH:$INSTALL_DIR/lib/python
+
+# Copy rest of the source
+COPY . .
 
 # Get the network prototypes for EIDA Manager
 RUN sh ./prototypes/prototypes.sh ODC

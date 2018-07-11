@@ -28,12 +28,20 @@ services:
   seedlink-latencies:
     image: seedlink-latencies:1.0
     restart: always
+    ports:
+      - 8087:8087
+    environment:
+      - "SERVICE_PORT=8087"
 
   # NodeJS Seedlink station connector
   # Can be pulled from https://github.com/Jollyfant/NodeJS-Seedlink-Stations
   seedlink-stations:
     image: seedlink-stations:1.0
     restart: always
+    ports:
+      - 8086:8086
+    environment:
+      - "SERVICE_PORT=8086"
 
   # Expose the data proxy
   seedlink-proxy:
@@ -43,3 +51,11 @@ services:
       - 8089:8089
     environment:
       - "SERVICE_PORT=8089"
+
+  doi-webservice:
+    image: doi-webservice:1.0
+    restart: always
+    ports:
+      - 8090:8090
+    environment:
+      - "SERVICE_PORT=8090"
