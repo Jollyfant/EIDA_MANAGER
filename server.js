@@ -805,15 +805,21 @@ function APIRequest(request, response) {
     case "/api/channels":
       return APICallbackBound(GetFDSNWSChannels);
     case "/api/messages":
-      switch(query) {
-        case "new":
-          return APICallbackBound(GetNewMessages)
-        case "deleteall":
-          return APICallbackBound(RemoveAllMessages);
-        case "deletesent":
-          return APICallbackBound(RemoveAllMessagesSent);
-        default:
-          return APICallbackBound(GetMessages);
+      switch(request.method) {
+        case "GET":
+          switch(query) {
+            case "new":
+              return APICallbackBound(GetNewMessages)
+            default:
+              return APICallbackBound(GetMessages);
+          }
+        case "DELETE":
+          switch(query) {
+            case "deleteall":
+              return APICallbackBound(RemoveAllMessages);
+            case "deletesent":
+              return APICallbackBound(RemoveAllMessagesSent);
+          }
  
       }
     case "/api/messages/details":
@@ -835,9 +841,9 @@ function GetSeedlinkServers(request, callback) {
 
   /* function GetSeedlinkServers
    * Returns submitted seedlink servers from the database
-   * FIXME!!
    */
 
+  // Query the database for Seedlink servers
   Database.seedlink().find({"userId": request.session._id}).toArray(function(error, results) {
 
     // There was an error or no results: show nothing
@@ -845,28 +851,27 @@ function GetSeedlinkServers(request, callback) {
       return new Array();
     }
 
+    // Extact all the hostnames
     var servers = results.map(function(x) {
       return x.host;
     })
 
-    var servPort = results.map(function(x) {
+    // Combine all servers and ports
+    var serversAndPorts = results.map(function(x) {
       return x.host + ":" + x.port;
     }).join(",");
 
     // Query the DNS records
     OHTTP.getDNS(servers, function(DNSRecords) {
 
-      // Get a list of all hosts
-      var servers = DNSRecords.map(function(x) {
-        return x.host;
-      }).join(",");
-
+      // Create a temporary hashmap for easy look up
       var hashMap = new Object();
       DNSRecords.forEach(function(x) {
         hashMap[x.host] = x.ip;
       });
 
-      OHTTP.request("http://" + CONFIG.STATIONS.HOST + ":" + CONFIG.STATIONS.PORT + "?host=" + servPort, function(data) { 
+      // Make the request to the internal API
+      OHTTP.request("http://" + CONFIG.STATIONS.HOST + ":" + CONFIG.STATIONS.PORT + "?host=" + serversAndPorts, function(data) { 
 
         if(!data) {
           return callback(results);
@@ -874,10 +879,11 @@ function GetSeedlinkServers(request, callback) {
 
         data = JSON.parse(data);
 
+        // Collect all the results
         results.forEach(function(x) {
 
           for(var i = 0; i < data.length; i++) {
-            if(data[i].host === x.host + ":" + x.port) {
+            if(data[i].server.url === x.host + ":" + x.port) {
               x.ip = hashMap[x.host] || "Unknown";
               x.identifier = data[i].identifier;
               x.connected = data[i].connected;
@@ -944,9 +950,8 @@ function RemoveAllMessages(request, callback) {
 
 function RemoveSpecificMessage(request, callback) {
 
-  /* function RemoveSpecificMessage
+  /* Function RemoveSpecificMessage
    * Sets message with particular id to deleted
-   * FIXME!!
    */
 
   // Get the message identifier from the query string
@@ -989,7 +994,7 @@ function RemoveSpecificMessage(request, callback) {
 
 function GetSpecificMessage(request, callback) {
 
-  /* function GetSpecificMessage
+  /* Function GetSpecificMessage
    * Returns a specific private message
    */
 
@@ -1051,7 +1056,7 @@ function GetSpecificMessage(request, callback) {
 
 function GetNewMessages(request, callback) {
 
-  /* function GetNewMessages
+  /* Function GetNewMessages
    * Return the number of new messages 
    */
 
@@ -1069,7 +1074,7 @@ function GetNewMessages(request, callback) {
 
 function GetMessages(request, callback) {
 
-  /* function GetMessages
+  /* Function GetMessages
    * Returns all messages that belong to a user in a session
    */
 
@@ -1182,8 +1187,9 @@ function ParseFDSNWSResponse(data) {
    * for varying levels of information
    */
 
+  // Return an empty array
   if(data === null) {
-    return JSON.stringify(new Array());
+    return new Array();
   }
 
   // Run through the response and convert to JSON
@@ -1297,7 +1303,6 @@ function GetFDSNWSStations(request, callback) {
    * Returns station information from FDSNWS Station
    */
 
-  // Hoist this
   var queryString = querystring.stringify({
     "level": "station",
     "format": "text",
@@ -1323,6 +1328,7 @@ function Authenticate(postBody, callback) {
       return callback("E_USERNAME_INVALID");
     }
 
+    // Password check failed
     if(result.password !== SHA256(postBody.password + result.salt)) {
       return callback("E_PASSWORD_INVALID");
     }

@@ -70,7 +70,7 @@ SeedlinkChannel.prototype.Update = function(data) {
   var heartbeatElement = Element("heartbeat-" + data.location + "-" + data.channel);
 
   if(heartbeatElement !== null) {
-    heartbeatElement.innerHTML = Icon("heart-o", "success") + " <span class='text-success'><b>Heartbeat</b></span>";
+    heartbeatElement.innerHTML = getIcon("heart-o", "success") + " <span class='text-success'><b>Heartbeat</b></span>";
     $(heartbeatElement).show()
     $(heartbeatElement).fadeOut(1500)
   }
