@@ -1655,23 +1655,24 @@ App.prototype.generateStationTable = function() {
 
 }
 
+function Sum(array) {
+
+  /* Function Sum
+   * returns the average of an array
+   */
+
+  return array.reduce(function(a, b) {
+    return a + b;
+  }, 0);
+
+}
+
+
 function getAverage(array) {
 
   /* Function getAverage
    * returns the average of an array
    */
-
-  function Sum(array) {
-  
-    /* Function Sum
-     * returns the average of an array
-     */
-  
-    return array.reduce(function(a, b) {
-      return a + b;
-    }, 0);
-  
-  }
 
   return Sum(array) / array.length;
 
