@@ -360,6 +360,48 @@ App.prototype.launchMessages = function() {
    * Launches part of the application dealing with messages
    */
 
+  function messageSubjectText(x) {
+ 
+    /* Function App.launchMessages::messageSubjectText
+     * Launches part of the application dealing with messages
+     */
+
+    return (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?id=" + x._id + "'>" + x.subject + "</b></a>";
+
+  }
+
+  function generateMessageTableContent(json) {
+  
+    /* Function App.launchMessages::generateMessageTableContent
+     * Generates the table content of received messages
+     */
+  
+    return json.map(function(x) {
+      return [
+        messageSubjectText(x),
+        formatMessageSender(x.sender),
+        x.created
+      ];
+    });
+  
+  }
+
+  function generateMessageTableContentSent(json) {
+  
+    /* Function App.launchMessages::generateMessageTableContentSent
+     * Generates the table content of sent messages
+     */
+  
+    return json.map(function(x) {
+      return [
+        messageSubjectText(x),
+        formatMessageSender(x.recipient),
+        x.created
+      ];
+    });
+  
+  }
+
   const API_URL = "/api/messages";
 
   const MESSAGE_TABLE_HEADER_SENT = [
@@ -1033,38 +1075,6 @@ function Element(id) {
    */
 
   return document.getElementById(id);
-
-}
-
-function generateMessageTableContentSent(json) {
-
-  /* Function generateMessageTableContentSent
-   * Generates the table content of sent messages
-   */
-
-  return json.map(function(x) {
-    return [
-      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?id=" + x._id + "'>" + x.subject + "</b></a>",
-      formatMessageSender(x.recipient),
-      x.created
-    ];
-  });
-
-}
-
-function generateMessageTableContent(json) {
-
-  /* Function generateMessageTableContent
-   * Generates the table content of received messages
-   */
-
-  return json.map(function(x) {
-    return [
-      (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?id=" + x._id + "'>" + x.subject + "</b></a>",
-      formatMessageSender(x.sender),
-      x.created
-    ];
-  });
 
 }
 
@@ -2174,6 +2184,30 @@ function downloadURIComponent(name, string) {
 
   // Clean up
   document.body.removeChild(downloadAnchorNode);
+
+}
+
+function downloadAsCSV() {
+
+  /* Function downloadAsJSON
+   * Generates JSON representation of station table
+   */
+
+  const MIME_TYPE = "data:text/csv;charset=utf-8";
+
+  const CSV_HEADER = ["Network", "Station", "Description", "Latitude", "Longitude", "Elevation", "Start"].join(",");
+
+  var payload = _stationJson.map(function(x) {
+    return [x.network, x.station, x.description, x.position.lat, x.position.lng, x.elevation, x.start].join(",");
+  });
+
+  // Add the header
+  payload.unshift(CSV_HEADER);
+
+  // Add new lines and encode the data
+  var payload = encodeURIComponent(payload.join("\n"));
+
+  downloadURIComponent("stations.csv", MIME_TYPE + "," + payload);
 
 }
 

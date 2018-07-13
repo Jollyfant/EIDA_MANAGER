@@ -5,7 +5,6 @@
   "__CLOSED__": false,
   "PORT": 8088,
   "HOST": "0.0.0.0",
-  "MAXIMUM_POST_BYTES": 1e9,
   "LOGFILE": "./logs/server.log",
   "SEISCOMP": {
     "PROCESS": "seiscomp"
@@ -16,13 +15,14 @@
   "STATIC": {
     "DIRECTORY": "./static/"
   },
+  "MAXIMUM_POST_BYTES": 1E8,
   "METADATA": {
     "PATH": "./metadata",
     "SCHEMA": {
       "PATH": "./schema/fdsn-station-1.0.xsd"
     },
     "DAEMON": {
-      "ENABLED": true,
+      "ENABLED": false,
       "SLEEP_INTERVAL_MS": 3600000
     }
   },
@@ -51,7 +51,7 @@
   },
   "MONGO": {
     "NAME": "orfeus-manager",
-    "HOST": "mongo",
+    "HOST": "0.0.0.0",
     "PORT": 27017
   }
 }
