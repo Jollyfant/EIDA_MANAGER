@@ -1,6 +1,6 @@
 {
   "__STDOUT__": false,
-  "__DEBUG__": true,
+  "__DEBUG__": false,
   "__VERSION__": "1.0.0",
   "__CLOSED__": false,
   "PORT": 8088,

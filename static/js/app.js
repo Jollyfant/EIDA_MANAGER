@@ -665,11 +665,11 @@ App.prototype.launchHome = function() {
     "dataType": "JSON",
     "success": function(json) {
 
-      console.debug("Retrieved " + json.length + " stations from server in " + (Date.now() - start) + "ms.");
-
-      if(json.length === 0) {
+      if(json === null || json.length === 0) {
         return;
       }
+
+      console.debug("Retrieved " + json.length + " stations from server in " + (Date.now() - start) + "ms.");
 
       // Cache
       _stationJson = json;
@@ -1641,13 +1641,16 @@ App.prototype.generateStationTable = function() {
     
     }
 
-    console.debug("Received " + latencies.length + " channel latencies from server in " + (Date.now() - start) + " ms.");
+    if(latencies !== undefined) {
+      console.debug("Received " + latencies.length + " channel latencies from server in " + (Date.now() - start) + " ms.");
 
-    // Create a hash map of the latencies for quick look-up
-    _latencyHashMap = createLatencyHashmap(latencies);
+      // Create a hash map of the latencies for quick look-up
+      _latencyHashMap = createLatencyHashmap(latencies);
+    }
   
     // Updates the station table
     makeStationTable();
+
 
     this.addSeedlink()
   
