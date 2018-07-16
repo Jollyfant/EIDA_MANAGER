@@ -76,7 +76,7 @@ App.prototype.AddMap = function() {
    * Initializes code for Google Maps application
    */
 
-  function generateNodeInfoWindow(node) {
+  function generateNodeInfoWindow(node, times) {
   
     /* AddMap::generateNodeInfoWindow
      * Generates HTML for the EIDA node info window
@@ -85,7 +85,13 @@ App.prototype.AddMap = function() {
     return [
       "<h5>" + getCountryFlag(node.id) + " EIDA Node " + node.id + "</h5>",
       "<hr>",
-      node.title
+      node.title,
+      "<hr>",
+      "<b> Node Webservice Health </b>",
+      "<br>",
+      (times.dataselect ? getIcon("circle", "success") : getIcon("circle", "danger")) + " FDSNWS Dataselect " + times.dataselect + "ms",
+      "<br>",
+      (times.station ? getIcon("circle", "success") : getIcon("circle", "danger")) + " FDSNWS Station " + times.station + "ms"
     ].join("");
   
   }
@@ -128,14 +134,58 @@ App.prototype.AddMap = function() {
 
     // Add listener to the EIDA nodes
     marker.addListener("click", function() {
+
       this.infowindow.close();
-      this.infowindow.setContent(generateNodeInfoWindow(marker));
-      this.infowindow.open(this.map, marker);
+
+      this.getFDSNWSStatus(function(responseTimes) {
+        this.infowindow.setContent(generateNodeInfoWindow(marker, responseTimes));
+        this.infowindow.open(this.map, marker);
+      }.bind(this));
+
     }.bind(this));
 
   }.bind(this));
 
   console.debug("Map has been initialized in " + (Date.now() - start) + " ms.");
+
+}
+
+App.prototype.getFDSNWSStatus = function(callback) {
+
+  /* Function App.getFDSNWSStatus
+   * Fires callback with number of miliseconds FDSNWS services took to respond
+   */
+
+  var _station = null;
+  var _dataselect = null; 
+
+  var start = Date.now();
+
+  function cally() {
+
+    if(_station && _dataselect) {
+      callback({"station": _station, "dataselect": _dataselect});
+    }
+
+  }
+
+  $.ajax({
+    "url": "https://www.orfeus-eu.org/fdsnws/station/1/version",
+    "method": "GET",
+    "success": function() {
+      _dataselect = Date.now() - start;
+    },
+    "complete": cally
+  });
+
+  $.ajax({
+    "url": "https://www.orfeus-eu.org/fdsnws/dataselect/1/version",
+    "method": "GET",
+    "success": function() {
+      _station = Date.now() - start;
+    },
+    "complete": cally
+  });
 
 }
 
@@ -614,14 +664,14 @@ App.prototype.launchHome = function() {
   }
 
   // Send notification depending on query from the URL
-  const S_METADATA_SUCCESS = "The metadata has been succesfully received";
-  const S_SEEDLINK_SERVER_SUCCESS = "The Seedlink server has been succesfully added";
-  const E_METADATA_ERROR = "There was an error receiving the metadata";
-  const E_INTERNAL_SERVER_ERROR = "The server experienced an internal error";
-  const E_SEEDLINK_SERVER_EXISTS = "The submitted Seedlink server already exists";
-  const E_SEEDLINK_HOST_INVALID = "The Seedlink host is invalid";
-  const E_SEEDLINK_PORT_INVALID = "The Seedlink port is invalid";
-  const E_UNKNOWN_ERROR = "The server experienced an unknown error";
+  const S_METADATA_SUCCESS = "The metadata has been succesfully received.";
+  const S_SEEDLINK_SERVER_SUCCESS = "The Seedlink server has been succesfully added.";
+  const E_METADATA_ERROR = "There was an error receiving the metadata.";
+  const E_INTERNAL_SERVER_ERROR = "The server experienced an internal error.";
+  const E_SEEDLINK_SERVER_EXISTS = "The submitted Seedlink server already exists.";
+  const E_SEEDLINK_HOST_INVALID = "The Seedlink host is invalid.";
+  const E_SEEDLINK_PORT_INVALID = "The Seedlink port is invalid.";
+  const E_UNKNOWN_ERROR = "The server experienced an unknown error.";
 
   // Some error messages
   if(this.uri.search && this.uri.search !== "?welcome") {
@@ -665,7 +715,7 @@ App.prototype.launchHome = function() {
     "dataType": "JSON",
     "success": function(json) {
 
-      if(json === null || json.length === 0) {
+      if(!json || json.length === 0) {
         return;
       }
 

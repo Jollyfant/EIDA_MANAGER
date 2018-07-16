@@ -33,22 +33,23 @@ const template = require("./lib/orfeus-template");
 const { sum, createDirectory, escapeHTML } = require("./lib/orfeus-util");
 const { splitStationXML } = require("./lib/orfeus-metadata.js");
 
+// Static information
 const CONFIG = require("./config");
 const STATIC_FILES = require("./lib/orfeus-static");
 
-function Init() {
+function init() {
 
-  /* function Init
+  /* function init
    * Initializes the application
    */
 
   // Attempt to connect to the database
   database.connect(function(error) {
   
-    // Could not connect to Mongo
+    // Could not connect to Mongo: retry in 5 seconds
     if(error) {
       logger.fatal(error);
-      return setTimeout(Init, 5000);
+      return setTimeout(init, 5000);
     }
   
     // Create a new webserver
@@ -497,6 +498,24 @@ WebRequest.prototype.launchSend = function() {
    * Launchs code to handle message submission
    */
 
+  function getRecipientQuery(session, recipient) {
+
+    /* Function WebRequest.launchSend::getRecipientQuery
+     * Returns query to find the recipieint
+     */
+
+    if(session.role === "admin" && recipient === "broadcast") {
+      return {"username": {"$not": {"$eq": session.username}}}
+    }
+
+    if(recipient === "administrators") {
+      return {"role": "admin", "username": {"$not": {"$eq": session.username}}}
+    }
+
+    return {"username": recipient}
+
+  }
+
   // Parse the POSTed request body as JSON
   this.parseRequestBody("json", function(postBody) {
 
@@ -505,16 +524,7 @@ WebRequest.prototype.launchSend = function() {
       return this.redirect("/home/messages/new?self");
     }
 
-    var userQuery;
-
-    // Admin may sign broadcasted message
-    if(this.session.role === "admin" && postBody.recipient === "broadcast") {
-      var userQuery = {"username": {"$not": {"$eq": this.session.username}}}
-    } else if(postBody.recipient === "administrators") {
-      var userQuery = {"role": "admin", "username": {"$not": {"$eq": this.session.username}}}
-    } else {
-      var userQuery = {"username": postBody.recipient}
-    }
+    var userQuery = getRecipientQuery(this.session, postBody.recipient);
 
     // Query the user database for the recipient name
     database.users().find(userQuery).toArray(function(error, users) {
@@ -1326,7 +1336,7 @@ WebRequest.prototype.getSpecificMessage = function() {
 
 WebRequest.prototype.getNewMessages = function() {
 
-  /* Function GetNewMessages
+  /* Function WebRequest.getNewMessages
    * Return the number of new messages 
    */
 
@@ -1380,7 +1390,7 @@ WebRequest.prototype.getMessages = function() {
       }
     }
 
-    // Get user names from user identifiers
+    // Get usernames from user identifiers
     database.users().find(userQuery).toArray(function(error, users) {
 
       if(error) {
@@ -1625,4 +1635,4 @@ WebRequest.prototype.getFDSNWSStations = function() {
 }
 
 // Init the server
-Init();
+init();
