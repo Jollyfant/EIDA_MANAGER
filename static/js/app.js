@@ -13,7 +13,6 @@ var chartPointers;
 var _stationJson = new Array();
 var _latencyHashMap = new Object();
 var _channelJson = new Array();
-var ACTIVE_PAGE_INDEX = 0;
 
 var App = function() {
 
@@ -67,6 +66,41 @@ function getCountryFlag(archive) {
   } else {
     return "";
   }
+
+}
+
+function HTTPRequest(url, callback) {
+
+  /* Function HTTPRequest
+   * Makes an async call to a remote resource
+   * jQuery $.ajax is really annoying
+   */
+
+  var xhr = new XMLHttpRequest();
+
+  // When the resource is ready
+  xhr.onload = function() {
+
+    // Ignore HTTP errors
+    if(this.status !== 200) {
+      return callback(null);
+    }
+
+    // Check the content type
+    switch(this.getResponseHeader("Content-Type")) {
+      case "application/json":
+      case "application/vnd.schemaorg.ld+json":
+        return callback(JSON.parse(xhr.response));
+      case "text/plain":
+      case "text/html; charset=UTF-8":
+        return callback(xhr.response);
+    }
+
+  }
+
+  // Close the request
+  xhr.open("GET", url);
+  xhr.send();
 
 }
 
@@ -169,22 +203,14 @@ App.prototype.getFDSNWSStatus = function(callback) {
 
   }
 
-  $.ajax({
-    "url": "https://www.orfeus-eu.org/fdsnws/station/1/version",
-    "method": "GET",
-    "success": function() {
-      _dataselect = Date.now() - start;
-    },
-    "complete": cally
+  HTTPRequest("https://www.orfeus-eu.org/fdsnws/station/1/version", function(json){
+    _station = Date.now() - start;
+    cally();
   });
 
-  $.ajax({
-    "url": "https://www.orfeus-eu.org/fdsnws/dataselect/1/version",
-    "method": "GET",
-    "success": function() {
-      _station = Date.now() - start;
-    },
-    "complete": cally
+  HTTPRequest("https://www.orfeus-eu.org/fdsnws/dataselect/1/version", function(json){
+    _dataselect = Date.now() - start;
+    cally();
   });
 
 }
@@ -217,15 +243,9 @@ App.prototype.setupNotificationPolling = function() {
   var start = Date.now();
 
   // Make a request to get the number of new messages
-  $.ajax({
-    "cache": false,
-    "url": "/api/messages?new",
-    "type": "GET",
-    "dataType": "JSON",
-    "success": function(json) {
-      console.debug("Retrieved " + json.count + " new message(s) from server in " + (Date.now() - start) + " ms.");
-      Element("number-messages").innerHTML = generateNotificationMessage(json.count);
-    }
+  HTTPRequest("/api/messages?new", function(json) {
+    console.debug("Retrieved " + json.count + " new message(s) from server in " + (Date.now() - start) + " ms.");
+    Element("number-messages").innerHTML = generateNotificationMessage(json.count);
   });
 
   // Set next refresh for notification poll
@@ -291,23 +311,21 @@ App.prototype.getStationLatencies = function() {
 
   var start = Date.now();
 
-  $.ajax({
-    "url": "/api/latency" + window.location.search, 
-    "type": "GET",
-    "dataType": "JSON",
-    "success": function(json) {
+  HTTPRequest("/api/latency" + window.location.search, function(json) {
 
-      console.debug("Received " + json.length + " latencies in " + (Date.now() - start) + " ms.");
-
-      // Create the channel latency table
-      new Table({
-        "id": "channel-information-latency",
-        "search": false,
-        "header": LATENCY_TABLE_HEADER,
-        "body": generateLatencyBody(json)
-      });
-
+    if(json === null) {
+      return;
     }
+
+    console.debug("Received " + json.length + " latencies in " + (Date.now() - start) + " ms.");
+
+    // Create the channel latency table
+    new Table({
+      "id": "channel-information-latency",
+      "search": false,
+      "header": LATENCY_TABLE_HEADER,
+      "body": generateLatencyBody(json)
+    });
 
   });
 
@@ -361,13 +379,9 @@ App.prototype.launchMessageDetails = function() {
     return;
   }
 
-  $.ajax({
-    "url": "/api/messages/details" + window.location.search,
-    "type": "GET",
-    "dataType": "JSON",
-    "success": function(json) {
-      Element("message-detail").innerHTML = generateMessageDetails(json);
-    }
+  // Get details from the API
+  HTTPRequest("/api/messages/details" + window.location.search, function(json) {
+    Element("message-detail").innerHTML = generateMessageDetails(json);
   });
 
 }
@@ -466,33 +480,27 @@ App.prototype.launchMessages = function() {
     "Message Received"
   ];
 
-  $.ajax({
-    "url": API_URL, 
-    "type": "GET",
-    "dataType": "JSON",
-    "success": function(json) {
+  HTTPRequest(API_URL, function(json) {
 
-      console.debug("Retrieved " + json.length +  " message(s) from server.");
+    console.debug("Retrieved " + json.length +  " message(s) from server.");
 
-      new Table({
-        "id": "message-content-sent",
-        "search": true,
-        "header": MESSAGE_TABLE_HEADER_SENT,
-        "body": generateMessageTableContentSent(json.filter(function(x) {
-          return x.author;
-        }))
-      });
+    new Table({
+      "id": "message-content-sent",
+      "search": true,
+      "header": MESSAGE_TABLE_HEADER_SENT,
+      "body": generateMessageTableContentSent(json.filter(function(x) {
+        return x.author;
+      }))
+    });
 
-      new Table({
-        "id": "message-content",
-        "search": true,
-        "header": MESSAGE_TABLE_HEADER,
-        "body": generateMessageTableContent(json.filter(function(x) {
-          return !x.author;
-        }))
-      });
-
-    }
+    new Table({
+      "id": "message-content",
+      "search": true,
+      "header": MESSAGE_TABLE_HEADER,
+      "body": generateMessageTableContent(json.filter(function(x) {
+        return !x.author;
+      }))
+    });
 
   });
 
@@ -635,13 +643,7 @@ App.prototype.setupStagedFilePolling = function() {
   // Polling interval
   const STAGED_POLL_MS = 60000;
 
-  $.ajax({
-    "cache": false,
-    "url": "/api/staged",
-    "type": "GET",
-    "dataType": "JSON",
-    "success": createStagedMetadataTable
-  });
+  HTTPRequest("/api/staged", createStagedMetadataTable);
 
   setTimeout(this.queryStaged, STAGED_POLL_MS);
 
@@ -708,70 +710,63 @@ App.prototype.launchHome = function() {
   var start = Date.now();
 
   // Add the stations to the map
-  $.ajax({
-    "cache": false,
-    "url": "/api/stations",
-    "type": "GET",
-    "dataType": "JSON",
-    "success": function(json) {
+  HTTPRequest("/api/stations", function(json) {
 
-      if(!json || json.length === 0) {
-        return;
-      }
+    if(json === null) {
+      return;
+    }
 
-      console.debug("Retrieved " + json.length + " stations from server in " + (Date.now() - start) + "ms.");
+    console.debug("Retrieved " + json.length + " stations from server in " + (Date.now() - start) + "ms.");
 
-      // Cache
-      _stationJson = json;
+    // Cache
+    _stationJson = json;
 
-      var markers = new Array();
-      var bounds = new google.maps.LatLngBounds();
+    var markers = new Array();
+    var bounds = new google.maps.LatLngBounds();
 
-      // For each entry create a station marker
-      json.forEach(function(station) {
+    // For each entry create a station marker
+    json.forEach(function(station) {
 
-        bounds.extend(station.position);
+      bounds.extend(station.position);
 
-        var marker = new google.maps.Marker({
-          "map": this.map,
-          "icon": getOperationalStationMarker(station),
-          "title": station.network + "." + station.station,
-          "description": station.description,
-          "station": station.station,
-          "start": station.start,
-          "end": station.end,
-          "network": station.network,
-          "position": station.position,
-        });
+      var marker = new google.maps.Marker({
+        "map": this.map,
+        "icon": getOperationalStationMarker(station),
+        "title": station.network + "." + station.station,
+        "description": station.description,
+        "station": station.station,
+        "start": station.start,
+        "end": station.end,
+        "network": station.network,
+        "position": station.position,
+      });
 
-        // Event listener for clicks
-        marker.addListener("click", function() {
-          this.infowindow.close();
-          this.infowindow.setContent(GoogleMapsInfoWindowContent(marker))
-          this.infowindow.open(this.map, marker);
-        }.bind(this));
-
-        // Make sure to keep a reference
-        markers.push(marker);
-
+      // Event listener for clicks
+      marker.addListener("click", function() {
+        this.infowindow.close();
+        this.infowindow.setContent(GoogleMapsInfoWindowContent(marker))
+        this.infowindow.open(this.map, marker);
       }.bind(this));
 
-      // Fit map bounds around all markers
-      this.map.fitBounds(bounds);
+      // Make sure to keep a reference
+      markers.push(marker);
 
-      // Update metadata
-      Element("map-information").innerHTML = mapInformationString(json.length);
+    }.bind(this));
 
-      // Bind the markers to the change event
-      Element("map-display").addEventListener("change", changeMapLegend.bind(this, markers));
-      changeMapLegend(markers);
+    // Fit map bounds around all markers
+    this.map.fitBounds(bounds);
 
-      // Proceed with generation of the table
-      this.generateStationTable();
+    // Update metadata
+    Element("map-information").innerHTML = mapInformationString(json.length);
 
-    }.bind(this)
+    // Bind the markers to the change event
+    Element("map-display").addEventListener("change", changeMapLegend.bind(this, markers));
+    changeMapLegend(markers);
 
-  });
+    // Proceed with generation of the table
+    this.generateStationTable();
+
+  }.bind(this));
 
 }
 
@@ -839,59 +834,54 @@ App.prototype.getStationDetails = function() {
    * Updates content with detailed station information
    */
 
-  $.ajax({
-    "url": "/api/channels" + window.location.search,
-    "type": "GET",
-    "dataType": "JSON",
-    "success": function(json) {
+  HTTPRequest("/api/channels" + window.location.search, function(json) {
 
-      if(json.length === 0) {
-        return map.setCenter({"lat": 52.10165, "lng": 5.1783});
-      }
+console.log(json)
+    if(json === null) {
+      return map.setCenter({"lat": 52.10165, "lng": 5.1783});
+    }
 
-      // Cache
-      _channelJson = json;
+    // Cache
+    _channelJson = json;
 
-      // Proceed getting latency information
-      this.getStationLatencies();
+    // Proceed getting latency information
+    this.getStationLatencies();
 
-      // Generate the channel list accordion
+    // Generate the channel list accordion
+    Element("channel-information").innerHTML = generateAccordion(_channelJson);
+
+    // When a change is requested, regenerate the accordion
+    Element("hide-channels").addEventListener("change", function() {
       Element("channel-information").innerHTML = generateAccordion(_channelJson);
+    });
 
-      // When a change is requested, regenerate the accordion
-      Element("hide-channels").addEventListener("change", function() {
-        Element("channel-information").innerHTML = generateAccordion(_channelJson);
-      });
+    var station = json[0];
 
-      var station = json[0];
+    // Add a single marker for the station
+    var marker = new google.maps.Marker({
+      "map": this.map,
+      "icon": isStationActive(station) ? STATION_MARKER_GREEN : STATION_MARKER_ORANGE,
+      "title": [station.network, station.station].join("."),
+      "position": station.position
+    });
 
-      // Add a single marker for the station
-      var marker = new google.maps.Marker({
-        "map": this.map,
-        "icon": isStationActive(station) ? STATION_MARKER_GREEN : STATION_MARKER_ORANGE,
-        "title": [station.network, station.station].join("."),
-        "position": station.position
-      });
+    // Update the final crumb with the station name
+    updateCrumbTitle(marker.title);
 
-      // Update the final crumb with the station name
-      updateCrumbTitle(marker.title);
+    Element("channel-information-header").innerHTML = getIcon("signal", "muted") + " " + marker.title;
+    Element("map-information").innerHTML = "Map showing station <b>" + marker.title + "</b> with <b>" + json.filter(isStationActive).length + "</b> open channels.";
 
-      Element("channel-information-header").innerHTML = getIcon("signal", "muted") + " " + marker.title;
-      Element("map-information").innerHTML = "Map showing station <b>" + marker.title + "</b> with <b>" + json.filter(isStationActive).length + "</b> open channels.";
+    // Event listener for clicks
+    marker.addListener("click", function() {
+      this.infowindow.close();
+      this.infowindow.setContent("Station " + marker.title)
+      this.infowindow.open(this.map, marker);
+    }.bind(this));
 
-      // Event listener for clicks
-      marker.addListener("click", function() {
-        this.infowindow.close();
-        this.infowindow.setContent("Station " + marker.title)
-        this.infowindow.open(this.map, marker);
-      }.bind(this));
+    // Focus on the station
+    this.map.setCenter(station.position);
 
-      // Focus on the station
-      this.map.setCenter(station.position);
-
-    }.bind(this)
-
-  });
+  }.bind(this));
 
 }
 
@@ -1060,58 +1050,56 @@ App.prototype.addSeedlink = function() {
   ];
 
   // Query the seedlink server API
-  $.ajax({
-    "url": "/api/seedlink",
-    "type": "GET",
-    "dataType": "JSON",
-    "success": function(json) {
- 
-      var tableContent = json.map(function(x) {
+  HTTPRequest("/api/seedlink", function(json) {
 
-        // Host metadata 
-        var icon = " &nbsp; " + (x.connected ? getIcon("check", "success") : getIcon("remove", "danger"));
-        var host = "<span title='" + x.ip + "'>" + x.host + "</span>";
-        var port = x.port;
-
-        // Seedlink server metadata
-        var version = x.version ? x.version.split("::").pop() : "Unknown";
-        var identifier = x.identifier || "Unknown";
-
-        // Could not connect to the remote Seedlink server
-        if(!x.connected) {
-          return [icon, host, port, identifier, version, "<small>Seedlink Server is unreachable</small>"];
-        }
- 
-        if(x.stations === null) {
-          return [icon, host, port, identifier, version, "<small> CAT not available </small>"]; 
-        }
-
-        // No stations were returned
-        if(x.stations.length === 0) {
-          return [icon, host, port, identifier, version, "<small> No stations for network " + USER_NETWORK + "</small>"];
-        }
-
-        var stations = x.stations.map(function(x) {
-          if(_latencyHashMap.hasOwnProperty(x.network + "." + x.station)) {
-            return "<small><a href='/home/station?network=" + x.network + "&station=" + x.station + "'><span class='text-success'>" + x.network + "." + x.station + "</span></a></small>";
-          } else {
-            return "<small><a href='/home/station?network=" + x.network + "&station=" + x.station + "'><span class='text-muted'>" + x.network + "." + x.station + "</span></a></small>";
-          }
-        }).join(" ");
-
-        // Return a row for the table
-        return [icon, host, port, identifier, version, stations];
-
-      });
-
-      new Table({
-        "id": "seedlink-connection-table",
-        "header": SEEDLINK_TABLE_HEADER,
-        "body": tableContent,
-        "search": false
-      });
-
+    if(json === null) {
+      return;
     }
+
+    var tableContent = json.map(function(x) {
+
+      // Host metadata 
+      var icon = " &nbsp; " + (x.connected ? getIcon("check", "success") : getIcon("remove", "danger"));
+      var host = "<span title='" + x.ip + "'>" + x.host + "</span>";
+      var port = x.port;
+
+      // Seedlink server metadata
+      var version = x.version ? x.version.split("::").pop() : "Unknown";
+      var identifier = x.identifier || "Unknown";
+
+      // Could not connect to the remote Seedlink server
+      if(!x.connected) {
+        return [icon, host, port, identifier, version, "<small>Seedlink Server is unreachable</small>"];
+      }
+ 
+      if(x.stations === null) {
+        return [icon, host, port, identifier, version, "<small> CAT not available </small>"]; 
+      }
+
+      // No stations were returned
+      if(x.stations.length === 0) {
+        return [icon, host, port, identifier, version, "<small> No stations for network " + USER_NETWORK + "</small>"];
+      }
+
+      var stations = x.stations.map(function(x) {
+        if(_latencyHashMap.hasOwnProperty(x.network + "." + x.station)) {
+          return "<small><a href='/home/station?network=" + x.network + "&station=" + x.station + "'><span class='text-success'>" + x.network + "." + x.station + "</span></a></small>";
+        } else {
+          return "<small><a href='/home/station?network=" + x.network + "&station=" + x.station + "'><span class='text-muted'>" + x.network + "." + x.station + "</span></a></small>";
+        }
+      }).join(" ");
+
+      // Return a row for the table
+      return [icon, host, port, identifier, version, stations];
+
+    });
+
+    new Table({
+      "id": "seedlink-connection-table",
+      "header": SEEDLINK_TABLE_HEADER,
+      "body": tableContent,
+      "search": false
+    });
 
   });
 
@@ -1267,14 +1255,8 @@ App.prototype.getNetworkDOI = function() {
      * Queries ORFEUS API for DOI information beloning to network
      */
   
-    // Query the ORFEUS API for the network DOI
-    $.ajax({
-      "url": DOI_URL + "?network=" + network,
-      "method": "GET",
-      "dataType": "JSON",
-      "success": callback
-    });
-  
+    HTTPRequest(DOI_URL + "?network=" + network, callback);
+
   }
 
   function getFormattedDOILink(element) {
@@ -1298,7 +1280,7 @@ App.prototype.getNetworkDOI = function() {
   getDOI(this.network, function(json) {
 
     // When nothing returned just put the network
-    if(!json) {
+    if(json === null) {
       return doiElement.innerHTML = "<span class='fa fa-globe'></span> " + this.network
     }
 
@@ -1690,7 +1672,7 @@ App.prototype.generateStationTable = function() {
     
     }
 
-    if(latencies !== undefined) {
+    if(latencies !== null) {
       console.debug("Received " + latencies.length + " channel latencies from server in " + (Date.now() - start) + " ms.");
 
       // Create a hash map of the latencies for quick look-up
@@ -1708,12 +1690,7 @@ App.prototype.generateStationTable = function() {
   var start = Date.now();
 
   // Asynchronous request to get the latency information
-  $.ajax({
-    "url": "/api/latency?network=" + this.network,
-    "type": "GET",
-    "dataType": "JSON",
-    "success": generateStationLatencyTable.bind(this)
-  });
+  HTTPRequest("/api/latency?network=" + this.network, generateStationLatencyTable.bind(this)); 
 
 }
 
