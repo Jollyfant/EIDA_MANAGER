@@ -29,10 +29,12 @@ COPY package*.json ./
 RUN npm install
 
 # Set some environment variables
-ENV INSTALL_DIR /usr/src/app/seiscomp3
-ENV PATH $PATH:$INSTALL_DIR/bin:$INSTALL_DIR/sbin
-ENV LD_LIBRARY_PATH $LD_LIBRARY_PATH:$INSTALL_DIR/lib
-ENV PYTHONPATH $PYTHONPATH:$INSTALL_DIR/lib/python
+ENV INSTALL_DIR="/usr/src/app/seiscomp3" \
+    PATH="${PATH}:${INSTALL_DIR}/bin:${INSTALL_DIR}/sbin" \
+    LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${INSTALL_DIR}/lib" \
+    PYTHONPATH="${PYTHONPATH}:${INSTALL_DIR}/lib/python" \
+    SERVICE_HOST="" \
+    SERVICE_PORT=""
 
 # Copy rest of the source
 COPY . .

@@ -24,14 +24,14 @@ const querystring = require("querystring");
 const multipart = require("./lib/multipart");
 
 // ORFEUS libs
-const database = require("./lib/orfeus-database");
 const { User, Session } = require("./lib/orfeus-session");
-const logger = require("./lib/orfeus-logging");
 const { SHA256 } = require("./lib/orfeus-crypto");
-const OHTTP = require("./lib/orfeus-http");
-const template = require("./lib/orfeus-template");
 const { sum, createDirectory, escapeHTML } = require("./lib/orfeus-util");
 const { splitStationXML } = require("./lib/orfeus-metadata.js");
+const database = require("./lib/orfeus-database");
+const logger = require("./lib/orfeus-logging");
+const ohttp = require("./lib/orfeus-http");
+const template = require("./lib/orfeus-template");
 
 // Static information
 const CONFIG = require("./config");
@@ -46,10 +46,10 @@ function init() {
   // Attempt to connect to the database
   database.connect(function(error) {
   
-    // Could not connect to Mongo: retry in 5 seconds
+    // Could not connect to Mongo: retry in 1 second
     if(error) {
       logger.fatal(error);
-      return setTimeout(init, 5000);
+      return setTimeout(init, 1000);
     }
   
     // Create a new webserver
@@ -157,7 +157,7 @@ WebRequest.prototype.init = function() {
 
   // The service is closed: do not allow log in
   if(CONFIG.__CLOSED__) {
-    return this.HTTPError(OHTTP.E_HTTP_UNAVAILABLE);
+    return this.HTTPError(ohttp.E_HTTP_UNAVAILABLE);
   }
 
   // Static files are always served
@@ -185,23 +185,23 @@ WebRequest.prototype.serveStaticFile = function(resource) {
 
     switch(ext) {
       case ".json":
-        return OHTTP.MIME.JSON;
+        return ohttp.MIME.JSON;
       case ".ico":
-        return OHTTP.MIME.ICON;
+        return ohttp.MIME.ICON;
       case ".css":
-        return OHTTP.MIME.CSS;
+        return ohttp.MIME.CSS;
       case ".png":
-        return OHTTP.MIME.PNG;
+        return ohttp.MIME.PNG;
       case ".js":
-        return OHTTP.MIME.JS;
+        return ohttp.MIME.JS;
       default:
-        return OHTTP.MIME.TEXT;
+        return ohttp.MIME.TEXT;
     }
 
   }
 
   // Write the HTTP header [200] with the appropriate MIME type
-  this.response.writeHead(OHTTP.S_HTTP_OK, getMIMEType(path.extname(resource)));
+  this.response.writeHead(ohttp.S_HTTP_OK, getMIMEType(path.extname(resource)));
 
   return fs.createReadStream(path.join("static", resource)).pipe(this.response);
 
@@ -259,7 +259,7 @@ WebRequest.prototype.getSession = function(callback) {
 
     // Error querying the database
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
     // The session does not exist
@@ -272,7 +272,7 @@ WebRequest.prototype.getSession = function(callback) {
 
       // Error querying the database
       if(error) {
-        return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       }
 
       // No error but no user could be found
@@ -307,7 +307,7 @@ WebRequest.prototype.handleSession = function(session) {
 
   // No running session means unauthorized
   if(session === null) {
-    return this.HTTPError(OHTTP.E_HTTP_UNAUTHORIZED);
+    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED);
   }
 
   // Attach the session
@@ -339,7 +339,7 @@ WebRequest.prototype.handleSession = function(session) {
     case "/home/station":
       return this.HTTPResponse(200, template.generateStationDetails(this.session));
     default:
-      return this.HTTPError(OHTTP.E_HTTP_FILE_NOT_FOUND);
+      return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
   }
 
 }
@@ -355,7 +355,7 @@ WebRequest.prototype.launchLogin = function() {
     return this.redirect("/home");
   }
 
-  return this.HTTPResponse(OHTTP.S_HTTP_OK, template.generateLogin(this.request.url));
+  return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateLogin(this.request.url));
 
 }
 
@@ -367,7 +367,7 @@ WebRequest.prototype.launchAuthentication = function() {
 
   // Only implement the POST request
   if(this.request.method !== "POST") {
-    return this.HTTPError(OHTTP.E_HTTP_NOT_IMPLEMENTED);
+    return this.HTTPError(ohttp.E_HTTP_NOT_IMPLEMENTED);
   }
 
   // Attempt to parse the POST body passed by the HTML form
@@ -384,12 +384,12 @@ WebRequest.prototype.launchUpload = function() {
 
   // Only accept POST requests
   if(this.request.method !== "POST") {
-    return this.HTTPError(OHTTP.E_HTTP_NOT_IMPLEMENTED);
+    return this.HTTPError(ohttp.E_HTTP_NOT_IMPLEMENTED);
   }
 
   // Block requests exceeding the configured limit (default 100MB)
   if(Number(this.request.headers["content-length"]) > CONFIG.MAXIMUM_POST_BYTES) {
-    return this.HTTPError(OHTTP.E_HTTP_PAYLOAD_TOO_LARGE);
+    return this.HTTPError(ohttp.E_HTTP_PAYLOAD_TOO_LARGE);
   }
 
   // Parse the POST body (binary file)
@@ -402,7 +402,7 @@ WebRequest.prototype.launchUpload = function() {
     this.writeMultipleFiles(files, function(error) {
 
       if(error) {
-        return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       }
 
       return this.redirect("/home?S_METADATA_SUCCESS");
@@ -424,7 +424,7 @@ WebRequest.prototype.launchSeedlink = function() {
 
   // Only accept POST requests
   if(this.request.method !== "POST") {
-    return this.HTTPError(OHTTP.E_HTTP_NOT_IMPLEMENTED);
+    return this.HTTPError(ohttp.E_HTTP_NOT_IMPLEMENTED);
   }
 
   this.parseRequestBody("json", function(json) {
@@ -453,7 +453,7 @@ WebRequest.prototype.launchSeedlink = function() {
     database.seedlink().find({"userId": this.session._id, "host": json.host, "port": port}).count(function(error, count) {
 
       if(error) {
-        return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       }
 
       // The server is already in the database
@@ -464,7 +464,7 @@ WebRequest.prototype.launchSeedlink = function() {
       database.seedlink().insertOne(storeObject, function(error, result) {
 
         if(error) {
-          return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+          return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
         }
 
         this.redirect("/home?S_SEEDLINK_SERVER_SUCCESS");
@@ -488,7 +488,7 @@ WebRequest.prototype.launchHome = function() {
     database.users().updateOne({"_id": this.session._id}, {"$set": {"version": CONFIG.__VERSION__, "visited": new Date()}});
   }
 
-  return this.HTTPResponse(OHTTP.S_HTTP_OK, template.generateProfile(this.session));
+  return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateProfile(this.session));
 
 }
 
@@ -530,7 +530,7 @@ WebRequest.prototype.launchSend = function() {
     database.users().find(userQuery).toArray(function(error, users) {
 
       if(error) {
-        return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       }
 
       // Unknown recipient
@@ -553,7 +553,7 @@ WebRequest.prototype.launchSend = function() {
 
         // Error storing messages
         if(error) {
-          return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+          return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
         }
 
         this.redirect("/home/messages/new?success");
@@ -577,7 +577,7 @@ WebRequest.prototype.removeSession = function() {
   database.sessions().deleteOne({"EIDA-MANAGER-ID": this.session.sessionId}, function(error, result) {
   
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
     this.redirect("/login?S_LOGGED_OUT");
@@ -634,7 +634,7 @@ WebRequest.prototype.createSession = function(user, callback) {
   database.sessions().insertOne(storeObject, function(error, result) {
 
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
     callback(session);
@@ -660,7 +660,7 @@ WebRequest.prototype.handleSessionCreation = function(session) {
   }
 
   // Redirect user to home page and set a cookie for this session
-  this.response.writeHead(OHTTP.S_HTTP_REDIRECT, {
+  this.response.writeHead(ohttp.S_HTTP_REDIRECT, {
     "Set-Cookie": cookie(session),
     "Location": "./home?welcome"
   });
@@ -682,7 +682,7 @@ WebRequest.prototype.authenticate = function(credentials, callback) {
 
     // There was an error querying the database
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
     // The username is invalid
@@ -729,7 +729,7 @@ WebRequest.prototype.parseRequestBody = function(type, callback) {
 
     // Limit the maximum number of bytes that can be posted
     if(sum(chunks) > CONFIG.MAXIMUM_POST_BYTES) {
-      return this.HTTPError(OHTTP.E_HTTP_PAYLOAD_TOO_LARGE);
+      return this.HTTPError(ohttp.E_HTTP_PAYLOAD_TOO_LARGE);
     }
 
   }.bind(this));
@@ -752,7 +752,7 @@ WebRequest.prototype.parseRequestBody = function(type, callback) {
       case "json":
         return callback(querystring.parse(fullBuffer.toString()));
       default:
-        return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR);
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
     }
 
   }.bind(this));
@@ -765,7 +765,7 @@ WebRequest.prototype.redirect = function(path) {
    * Redirects the client to another page
    */
 
-  this.response.writeHead(OHTTP.S_HTTP_REDIRECT, {"Location": path});
+  this.response.writeHead(ohttp.S_HTTP_REDIRECT, {"Location": path});
   this.response.end();
 
 }
@@ -777,14 +777,14 @@ WebRequest.prototype.HTTPResponse = function(statusCode, HTML) {
    */
 
   // Handle 204
-  if(statusCode === OHTTP.S_HTTP_NO_CONTENT) {
+  if(statusCode === ohttp.S_HTTP_NO_CONTENT) {
     this.response.writeHead(statusCode);
     this.response.end();
     return;
   }
 
   // Write the HTML response
-  this.response.writeHead(statusCode, OHTTP.MIME.HTML);
+  this.response.writeHead(statusCode, ohttp.MIME.HTML);
   this.response.write(HTML);
   this.response.end();
 
@@ -823,9 +823,20 @@ var Webserver = function() {
     new WebRequest(request, response);
   });
 
+  // Read from env variables or configuration
+  var host = process.env.SERVICE_HOST || CONFIG.HOST;
+  var port = process.env.SERVICE_PORT || CONFIG.PORT;
+
   // Listen to incoming connections
-  this.webserver.listen(CONFIG.PORT, CONFIG.HOST, function() {
-    logger.info("Webserver started at " + CONFIG.HOST + ":" + CONFIG.PORT);
+  this.webserver.listen(port, host, function() {
+    logger.info("EIDA Manager webserver started at " + host + ":" + port);
+  });
+
+  // When the webserver is closed: shut down the database
+  this.webserver.on("close", function() {
+    database.close(function() {
+      process.exit(0);
+    });
   });
 
   // Graceful shutdown of server
@@ -839,11 +850,9 @@ Webserver.prototype.SIGINT = function() {
    * Signal handler for SIGINT
    */
 
-  logger.info("SIGINT received - initializing graceful shutdown of webserver.");
+  logger.info("SIGINT received - initializing graceful shutdown of webserver and database connection.");
 
-  this.webserver.close(function() {
-    logger.info("Webserver was closed."); process.exit(0);
-  }); 
+  this.webserver.close()
 
 }
 
@@ -1091,12 +1100,78 @@ WebRequest.prototype.APIRequest = function() {
         case "DELETE":
           return this.removeSpecificMessage();
         default:
-          return this.HTTPError(OHTTP.E_HTTP_NOT_IMPLEMENTED);
+          return this.HTTPError(ohttp.E_HTTP_NOT_IMPLEMENTED);
       }
     default:
-      return this.HTTPError(OHTTP.E_HTTP_FILE_NOT_FOUND);
+      return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
 
   }
+
+}
+
+WebRequest.prototype.getDNSLookup = function(servers) {
+
+  /* Function WebRequest.getDNSLookup
+   * Does a DNS lookup on Seedlink servers and proceeds with response
+   */
+
+  const SEEDLINK_API_URL = "http://" + CONFIG.STATIONS.HOST + ":" + CONFIG.STATIONS.PORT;
+
+  // Query the DNS records
+  ohttp.getDNS(servers, function(DNSRecords) {
+
+    // Combine all servers and ports
+    var serversAndPorts = DNSRecords.map(x => x.host + ":" + x.port).join(",");
+
+    // Make the request to the internal API
+    ohttp.request(SEEDLINK_API_URL + "?host=" + serversAndPorts, function(seedlinkServers) {
+
+      if(seedlinkServers === null) {
+        return this.writeJSON(DNSRecords);
+      }
+
+      this.attachSeedlinkMetadata(DNSRecords, JSON.parse(seedlinkServers));
+
+    }.bind(this));
+
+  }.bind(this));
+
+}
+
+WebRequest.prototype.attachSeedlinkMetadata = function(DNSRecords, seedlinkServers) {
+
+  /* Function WebRequest.attachSeedlinkMetadata
+   * Attaches seedlink metadata (e.g. version, identifier) to a DNS record
+   */
+
+ // Attach seedlink metadata to each DNS record
+ var results = DNSRecords.map(function(x) {
+
+   // Naively try to match every seedlink server
+   for(var i = 0; i < seedlinkServers.length; i++) {
+
+     var seedlinkServer = seedlinkServers[i];
+
+     // Match: extend metadata
+     if(seedlinkServer.server.host === x.host && seedlinkServer.server.port === x.port) {
+       return {
+         "host": x.host,
+         "ip": x.ip,
+         "port": x.port,
+         "identifier": seedlinkServer.identifier,
+         "connected": seedlinkServer.connected,
+         "version": seedlinkServer.version,
+         "stations": seedlinkServer.error === "CATNOTIMPLEMENTED" ? null : seedlinkServer.stations.filter(station => station.network === this.session.network)
+       }
+     }
+
+   }
+
+   return x;
+
+ }.bind(this));
+
+ this.writeJSON(results);
 
 }
 
@@ -1106,70 +1181,19 @@ WebRequest.prototype.getSeedlinkServers = function() {
    * Returns submitted seedlink servers from the database
    */
 
+  // Query the database for submitted servers
   database.seedlink().find({"userId": this.session._id}).toArray(function(error, results) {
 
-    // There was an error or no results: show nothing
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
     // No servers found in the database
     if(results.length === 0) {
-      return this.HTTPResponse(OHTTP.S_HTTP_NO_CONTENT);
+      return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
     }
 
-    // Extact all the hostnames
-    var servers = results.map(x => x.host);
-
-    // Combine all servers and ports
-    var serversAndPorts = results.map(x => x.host + ":" + x.port);
-
-    // Query the DNS records
-    OHTTP.getDNS(servers, function(DNSRecords) {
-
-      // Create a temporary hashmap for easy look up
-      var hashMap = new Object();
-      DNSRecords.forEach(function(x) {
-        hashMap[x.host] = x.ip;
-      });
-
-      // Make the request to the internal API
-      OHTTP.request("http://" + CONFIG.STATIONS.HOST + ":" + CONFIG.STATIONS.PORT + "?host=" + serversAndPorts, function(data) { 
-
-        if(!data) {
-          return this.writeJSON(results);
-        }
-
-        data = JSON.parse(data);
-
-        // Collect all the results
-        results.forEach(function(x) {
-
-          for(var i = 0; i < data.length; i++) {
-
-            if(data[i].server.url === x.host + ":" + x.port) {
-
-              x.ip = hashMap[x.host] || "Unknown";
-              x.identifier = data[i].identifier;
-              x.connected = data[i].connected;
-              x.version = data[i].version;
-
-              if(data[i].stations === null) {
-                x.stations = "Not Available";
-              } else {
-                x.stations = data[i].stations.filter(station => station.network === this.session.network);
-              }
-
-            }
-          } 
-
-        }.bind(this));
-
-        this.writeJSON(results);
-
-      }.bind(this));
-
-    }.bind(this));
+    this.getDNSLookup(results);
 
   }.bind(this));
 
@@ -1190,7 +1214,7 @@ WebRequest.prototype.removeAllMessagesSent = function() {
   database.messages().updateMany(query, {"$set": {"senderDeleted": true}}, function(error, messages) {
 
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
     this.writeJSON(messages);
@@ -1214,7 +1238,7 @@ WebRequest.prototype.RemoveAllMessages = function() {
   database.messages().updateMany(query, {"$set": {"recipientDeleted": true}}, function(error, messages) {
 
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
     this.writeJSON(messages);
@@ -1249,25 +1273,27 @@ WebRequest.prototype.removeSpecificMessage = function() {
 
     // Could not find message
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
-    if(message.result.nModified === 0) {
-
-      database.messages().updateOne(senderQuery, {"$set": {"senderDeleted": true}}, function(error, message) {
-
-        // Could not find message
-        if(error) {
-          return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
-        }
-
-        this.writeJSON({"status": "deleted"});
-
-      }.bind(this));
-
+    if(message.result.nModified !== 0) {
+      return this.writeJSON({"status": "deleted"});
     }
 
-    this.writeJSON({"status": "deleted"});
+    database.messages().updateOne(senderQuery, {"$set": {"senderDeleted": true}}, function(error, message) {
+
+      // Could not find message
+      if(error) {
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      }
+
+      if(message.result.nModified !== 0) {
+        return this.writeJSON({"status": "deleted"});
+      }
+
+      return this.writeJSON({"status": "error"});
+
+    }.bind(this));
 
   }.bind(this));
 
@@ -1298,7 +1324,11 @@ WebRequest.prototype.getSpecificMessage = function() {
 
     // Could not find message
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
+
+    if(message === null) {
+      return this.writeJSON(null);
     }
 
     // Check if the author of the message is the owner of the session
@@ -1313,7 +1343,7 @@ WebRequest.prototype.getSpecificMessage = function() {
     database.users().findOne({"_id": database.ObjectId(author ? message.recipient : message.sender)}, function(error, user) {
 
       if(error) {
-        return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       }
 
       // Message information
@@ -1349,7 +1379,7 @@ WebRequest.prototype.getNewMessages = function() {
   database.messages().find(query).count(function(error, count) {
 
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
     this.writeJSON({"count": count});
@@ -1380,7 +1410,7 @@ WebRequest.prototype.getMessages = function() {
   database.messages().find(query).sort({"created": DESCENDING}).toArray(function(error, documents) {
 
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
     // Get all messages where the user is either the sender or recipient
@@ -1394,7 +1424,7 @@ WebRequest.prototype.getMessages = function() {
     database.users().find(userQuery).toArray(function(error, users) {
 
       if(error) {
-        return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       }
 
       // Create a temporary hashMap that maps
@@ -1432,7 +1462,7 @@ WebRequest.prototype.getStationLatencies = function() {
    * Returns Seedlink latencies for a network, station
    */
 
-  OHTTP.request("http://" + CONFIG.LATENCY.HOST + ":" + CONFIG.LATENCY.PORT + this.url.search, function(json) {
+  ohttp.request("http://" + CONFIG.LATENCY.HOST + ":" + CONFIG.LATENCY.PORT + this.url.search, function(json) {
     this.writeJSON(JSON.parse(json));
   }.bind(this));
 
@@ -1446,11 +1476,11 @@ WebRequest.prototype.writeJSON = function(json) {
 
   // Null when 204
   if(json === null) {
-    return this.HTTPResponse(OHTTP.S_HTTP_NO_CONTENT);
+    return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
   }
 
   // This is bound to the response
-  this.response.writeHead(OHTTP.S_HTTP_OK, {"Content-Type": "application/json"});
+  this.response.writeHead(ohttp.S_HTTP_OK, {"Content-Type": "application/json"});
   this.response.write(JSON.stringify(json));
   this.response.end();
 
@@ -1471,7 +1501,7 @@ WebRequest.prototype.getFDSNWSChannels = function() {
   // Extend the query string
   queryString += "&" + this.url.query;
 
-  OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
+  ohttp.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
     this.writeJSON(this.parseFDSNWSResponse(json));
   }.bind(this));
 
@@ -1607,7 +1637,7 @@ WebRequest.prototype.getSubmittedFiles = function() {
   database.files().aggregate(pipeline).toArray(function(error, files) {
 
     if(error) {
-      return this.HTTPError(OHTTP.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
     this.writeJSON(files);
@@ -1622,13 +1652,14 @@ WebRequest.prototype.getFDSNWSStations = function() {
    * Returns station information from FDSNWS Station
    */
 
+  // Query information for the session network
   var queryString = querystring.stringify({
     "level": "station",
     "format": "text",
     "network": this.session.network
   })
 
-  OHTTP.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
+  ohttp.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
     this.writeJSON(this.parseFDSNWSResponse(json));
   }.bind(this));
 

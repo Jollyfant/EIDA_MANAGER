@@ -1,12 +1,13 @@
-const MINIMUM_ITEMS_PER_PAGE = 30;
-const MAXIMUM_NUMBER_PAGES = 10;
-
 var Table = function(options) {
 
-  /* class Table
+  /* Class Table
    * Returns table with content including
    * search & pagination functionality
    */
+
+  // Some configuration
+  this.MINIMUM_ITEMS_PER_PAGE = 30;
+  this.MAXIMUM_NUMBER_PAGES = 10;
 
   this.header = options.header;
   this.body = options.body;
@@ -14,6 +15,8 @@ var Table = function(options) {
 
   // Generate the HTML for this table
   var content = new Array();
+
+  // Add search box element
   if(this.search) {
     content = content.concat([ 
       "<div class='input-group'>",
@@ -37,8 +40,8 @@ var Table = function(options) {
 
   // Dynamically set the number of items per page
   this.itemsPerPage = Math.max(
-    MINIMUM_ITEMS_PER_PAGE,
-    Math.ceil(this.body.length / MAXIMUM_NUMBER_PAGES)
+    this.MINIMUM_ITEMS_PER_PAGE,
+    Math.ceil(this.body.length / this.MAXIMUM_NUMBER_PAGES)
   );
 
   // Keep track of the active page through pagination
@@ -51,7 +54,7 @@ var Table = function(options) {
 
 Table.prototype.draw = function() {
 
-  /* Table.draw
+  /* Function Table.draw
    * Redraws the table by creating the HTML
    */
 
@@ -90,7 +93,7 @@ Table.prototype.draw = function() {
 
 Table.prototype.generatePaginationList = function(list) {
 
-  /* Table.generatePaginationList
+  /* Function Table.generatePaginationList
    * Generates all pagination buttons
    */
 
@@ -114,7 +117,7 @@ Table.prototype.generatePaginationList = function(list) {
 
 Table.prototype.paginationItem = function(index) {
 
-  /* Table.paginationItem
+  /* Function Table.paginationItem
    * Returns HTML representation of a pagination button
    */
 
@@ -124,7 +127,7 @@ Table.prototype.paginationItem = function(index) {
 
 Table.prototype.setActiveIndex = function(context) {
 
-  /* Table.setActiveIndex
+  /* Function Table.setActiveIndex
    * Updates the table on click
    */
 
@@ -159,7 +162,7 @@ Table.prototype.generatePagination = function(list) {
    * Generates the pagination for the active table
    */
 
-  if(list.length < MINIMUM_ITEMS_PER_PAGE) {
+  if(list.length < this.MINIMUM_ITEMS_PER_PAGE) {
     return "";
   }
 
@@ -181,6 +184,10 @@ Table.prototype.generatePagination = function(list) {
 
 Table.prototype.generateTableHead = function(header) {
 
+  /* Function generateTableHead
+   * Generates the head row of the table
+   */
+
   return [
     "  <thead>",
     "    <tr>",
@@ -193,9 +200,10 @@ Table.prototype.generateTableHead = function(header) {
 
 Table.prototype.generateTableBodyContent = function(body) {
 
-  /* function generateTableBodyContent
-   * 
+  /* Function generateTableBodyContent
+   * Generates the body of the table
    */
+
   const startSlice = this.itemsPerPage * this.activeIndex;
   const endSlice = startSlice + this.itemsPerPage;
 
@@ -207,11 +215,31 @@ Table.prototype.generateTableBodyContent = function(body) {
 }
 
 Table.prototype.generateTableHeadContent = function(header) {
-  return header.map(AddTagTH).join("\n");
+
+  /* Function generateTableHeadContent 
+   * Generates the actual content of the table header
+   */
+
+  function addTagTH(x) {
+  
+    /* Function addTagTH
+     * Generates a TH HTML element
+     */
+  
+    return addTag("th", x);
+  
+  }
+
+  return header.map(addTagTH).join("\n");
+
 }
 
 
 Table.prototype.generateTableBody = function(body) {
+
+  /* Function generateTableBody
+   * Generates the actual content of the table body
+   */
 
   return [
     "  <tbody>",
@@ -221,16 +249,14 @@ Table.prototype.generateTableBody = function(body) {
 
 }
 
-function AddTag(tag, x) {
+function addTag(tag, x) {
+
+  /* Function addTag
+   * Generate a HTML element
+   */
+
   return "<" + tag + ">" + x + "</" + tag + ">";
-}
 
-function AddTagTD(x) {
-  return AddTag("td", x);
-}
-
-function AddTagTH(x) {
-  return AddTag("th", x);
 }
 
 Table.prototype.generateTableRowContent = function(row) {
@@ -239,6 +265,16 @@ Table.prototype.generateTableRowContent = function(row) {
    * Generates single row content for a table
    */
 
-  return row.map(AddTagTD).join("\n");
+  function addTagTD(x) {
+  
+    /* Function addTagTD
+     * Generates a TD HTML element 
+     */
+  
+    return addTag("td", x);
+  
+  }
+
+  return row.map(addTagTD).join("\n");
 
 }

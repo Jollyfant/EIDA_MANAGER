@@ -239,7 +239,7 @@ App.prototype.getStationLatencies = function() {
    * Queries the API for realtime latency information
    */
 
-  function generateLatencyBody(latencies) {
+   function generateLatencyBody(latencies) {
   
     /* Fuction App.getStationLatencies::generateLatencyBody
      * Generates an array of formatted latency values
@@ -255,7 +255,7 @@ App.prototype.getStationLatencies = function() {
       var value = (1E-3 * x.msLatency).toFixed(1);
   
       return [
-        "<span class='text-" + getLatencyColorClass(x.channel, x.msLatency) + "'>",
+        "<span style='display: block; text-align: right;' class='text-" + getLatencyColorClass(x.channel, x.msLatency) + "'>",
         "  <b>" + value + "</b>",
         "</span>"
       ].join("\n");
@@ -279,7 +279,7 @@ App.prototype.getStationLatencies = function() {
       }
   
       // Return a single table row
-      return [prefix + " " + x.location + "." + x.channel, x.end, generateLatencyText(x)];
+      return [prefix + " " + x.location + "."+ x.channel, x.end, generateLatencyText(x)];
   
     });
   
@@ -329,7 +329,7 @@ App.prototype.launchMessageDetails = function() {
      */
 
     // No message was returned
-    if(message === null) {
+    if(message === undefined) {
       return generateMessageAlert("danger", "Message not found.");
     }
   
@@ -876,7 +876,7 @@ App.prototype.getStationDetails = function() {
       // Update the final crumb with the station name
       updateCrumbTitle(marker.title);
 
-      Element("channel-information-header").innerHTML = getIcon("signal") + " " + marker.title;
+      Element("channel-information-header").innerHTML = getIcon("signal", "muted") + " " + marker.title;
       Element("map-information").innerHTML = "Map showing station <b>" + marker.title + "</b> with <b>" + json.filter(isStationActive).length + "</b> open channels.";
 
       // Event listener for clicks
@@ -1070,7 +1070,7 @@ App.prototype.addSeedlink = function() {
 
         // Host metadata 
         var icon = " &nbsp; " + (x.connected ? getIcon("check", "success") : getIcon("remove", "danger"));
-        var host = x.host + " <small><span class='text-muted'>(" + x.ip + ")</span></small>"
+        var host = "<span title='" + x.ip + "'>" + x.host + "</span>";
         var port = x.port;
 
         // Seedlink server metadata
@@ -1082,22 +1082,21 @@ App.prototype.addSeedlink = function() {
           return [icon, host, port, identifier, version, "<small>Seedlink Server is unreachable</small>"];
         }
  
+        if(x.stations === null) {
+          return [icon, host, port, identifier, version, "<small> CAT not available </small>"]; 
+        }
+
         // No stations were returned
         if(x.stations.length === 0) {
-          return [icon, host, port, identifier, version, "<small> No stations available for network " + USER_NETWORK + "</small>"];
+          return [icon, host, port, identifier, version, "<small> No stations for network " + USER_NETWORK + "</small>"];
         }
 
         var stations = x.stations.map(function(x) {
-          return x.network + "." + x.station;
-        }).map(function(x) {
-
-          // If the value is being acquisited: color green
-          if(_latencyHashMap.hasOwnProperty(x)) {
-            return "<small><span class='text-success'><b>" + x + "</b></span></small>";
+          if(_latencyHashMap.hasOwnProperty(x.network + "." + x.station)) {
+            return "<small><a href='/home/station?network=" + x.network + "&station=" + x.station + "'><span class='text-success'>" + x.network + "." + x.station + "</span></a></small>";
           } else {
-            return "<small><span class='text-muted'><b>" + x + "</b></span></small>";
+            return "<small><a href='/home/station?network=" + x.network + "&station=" + x.station + "'><span class='text-muted'>" + x.network + "." + x.station + "</span></a></small>";
           }
-
         }).join(" ");
 
         // Return a row for the table
@@ -1425,7 +1424,7 @@ function getLatencyStatus(channel, latency) {
   const UNKNOWN = 0;
 
   // Limits
-  const VLOW_RATE = 1E3;
+  const VLOW_RATE = 1E7;
   const LOW_RATE = 1E6;
   const BROAD_RATE = 2.5E4;
   const HIGH_RATE = 1E4;
