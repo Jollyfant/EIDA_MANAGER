@@ -549,6 +549,39 @@ App.prototype.init = function() {
 
 }
 
+function getStatus(status) {
+
+  /* Function App.setupStagedFilePolling::createStagedMetadataTable::getStatus
+   * Maps status integer to string
+   */
+
+  const METADATA_STATUS_REJECTED = -1;
+  const METADATA_STATUS_UNCHANGED = 0;
+  const METADATA_STATUS_PENDING = 1;
+  const METADATA_STATUS_VALIDATED = 2;
+  const METADATA_STATUS_CONVERTED = 3;
+  const METADATA_STATUS_APPROVED = 4;
+  const METADATA_STATUS_AVAILABLE = 5;
+
+  switch(status) {
+    case METADATA_STATUS_REJECTED:
+      return "<span class='text-danger'>" + getIcon("remove") + " Rejected </span>"
+    case METADATA_STATUS_PENDING:
+      return "<span class='text-muted'>" + getIcon("clock-o") + " Pending </span>"
+    case METADATA_STATUS_VALIDATED:
+      return "<span class='text-warning'>" + getIcon("flag") + " Validated </span>"
+    case METADATA_STATUS_CONVERTED:
+      return "<span class='text-info'>" + getIcon("cogs") + " Converted </span>"
+    case METADATA_STATUS_APPROVED:
+      return "<span class='text-success'>" + getIcon("check") + " Approved </span>"
+    case METADATA_STATUS_AVAILABLE:
+      return "<span class='text-success'>" + getIcon("check") + " FDSNWS Available </span>"
+    default:
+      return "<span class='text-muted'>" + getIcon("question") + " Unknown </span>"
+  }
+
+}
+
 App.prototype.setupStagedFilePolling = function() {
 
   /* Function App.setupStagedFilePolling
@@ -561,36 +594,6 @@ App.prototype.setupStagedFilePolling = function() {
      * Create the staged metadata table
      */
 
-    function getStatus(status) {
-  
-      /* Function App.setupStagedFilePolling::createStagedMetadataTable::getStatus
-       * Maps status integer to string
-       */
-  
-      const METADATA_STATUS_REJECTED = -1;
-      const METADATA_STATUS_UNCHANGED = 0;
-      const METADATA_STATUS_PENDING = 1;
-      const METADATA_STATUS_VALIDATED = 2;
-      const METADATA_STATUS_CONVERTED = 3;
-      const METADATA_STATUS_APPROVED = 4;
-  
-      switch(status) {
-        case METADATA_STATUS_REJECTED:
-          return "<span class='text-danger'>" + getIcon("remove") + " Rejected </span>"
-        case METADATA_STATUS_PENDING:
-          return "<span class='text-muted'>" + getIcon("clock-o") + " Pending </span>"
-        case METADATA_STATUS_VALIDATED:
-          return "<span class='text-warning'>" + getIcon("flag") + " Validated </span>"
-        case METADATA_STATUS_CONVERTED:
-          return "<span class='text-info'>" + getIcon("cogs") + " Converted </span>"
-        case METADATA_STATUS_APPROVED:
-          return "<span class='text-success'>" + getIcon("check") + " Approved </span>"
-        default:
-          return "<span class='text-muted'>" + getIcon("question") + " Unknown </span>"
-      }
-  
-    }
-  
     const HTML_TABLE_ID = "table-staged-metadata";
   
     // Sort by the created timestamp
@@ -659,7 +662,7 @@ App.prototype.launchHome = function() {
      * Returns formatted information string below map
      */
   
-    return "Map showing <b>" + nStations + "</b> stations.";
+    return "Map showing <b>" + nStations + "</b> stations from network <b>" + USER_NETWORK + "</b>.";
   
   }
 
@@ -791,6 +794,44 @@ App.prototype.launchStation = function() {
 
   var queryString = parseQuery(window.location.search);
   var exampleSocket;
+
+  Element("history-table-title").innerHTML = queryString.network + "." + queryString.station;
+
+  function formatHistoryTable(x) {
+
+    return [
+      "<code>" + x.sha256.slice(0, 8) + "</code>",
+      x.created,
+      x.type,
+      x.nChannels,
+      x.size,
+      getStatus(x.status),
+      "<a target='_blank' href='/api/history?id=" + x.sha256 + "'><span class='fa fa-download'></span></a>"
+    ];
+
+  }
+
+  $.ajax({
+    "url": "/api/history?network=" + queryString.network + "&station=" + queryString.station,
+    "type": "GET",
+    "dataType": "JSON",
+    "success": function(json) {
+  
+      json.sort(function(a, b) {
+        return Date.parse(b.created) - Date.parse(a.created);
+      });
+
+      var body = json.map(formatHistoryTable);
+
+      new Table({
+        "id": "metadata-history",
+        "header": ["Identifier", "Submitted", "Metadata Type", "Number of Channels", "Size", "Status", ""],
+        "body": body,
+        "search": false
+      });
+    }.bind(this)
+
+  });
 
   // Change event to toggle WS connection
   Element("connect-seedlink").addEventListener("change", function() {

@@ -39,9 +39,6 @@ ENV INSTALL_DIR="/usr/src/app/seiscomp3" \
 # Copy rest of the source
 COPY . .
 
-# Get the network prototypes for EIDA Manager
-RUN sh ./prototypes/prototypes.sh ODC
-
 # Expose port 8088 to the outside
 EXPOSE 8088
 

@@ -50,10 +50,20 @@ curl -s "$FDSNWS_STATION?level=network&format=text" | sed 1d | while read line; 
 
   echo "Downloading network prototype for $networkCode"
 
+  # Fix for networks started at UNIX time
+  if [ "$networkStart" == "1970-01-01T00:00:00" ]; then
+    networkStart="1970-01-01T00:00:01"
+  fi
+
   # Get the FDSN StationXML for this station and convert to SC3ML network prototype
-  curl -s "$FDSNWS_STATION?network=$network&level=network&endtime=$networkStart" | 
-  seiscomp --asroot exec import_inv fdsnxml - - 2>/dev/null |
-  xmllint --format - > "./prototypes/$networkCode.sc3ml"
+  if ! type "seiscomp" > /dev/null 2>&1; then
+    curl -s "$FDSNWS_STATION?network=$network&level=network&endtime=$networkStart&format=sc3ml" | 
+    xmllint --format - > "./prototypes/$networkCode.sc3ml"
+  else
+    curl -s "$FDSNWS_STATION?network=$network&level=network&endtime=$networkStart" | 
+    seiscomp exec import_inv fdsnxml - - 2>/dev/null |
+    xmllint --format - > "./prototypes/$networkCode.sc3ml"
+  fi
 
 done
 

@@ -20,9 +20,6 @@ const url = require("url");
 const fs = require("fs");
 const querystring = require("querystring");
 
-// Third-party libs
-const multipart = require("./lib/multipart");
-
 // ORFEUS libs
 const { User, Session } = require("./lib/orfeus-session");
 const { SHA256 } = require("./lib/orfeus-crypto");
@@ -36,6 +33,8 @@ const template = require("./lib/orfeus-template");
 // Static information
 const CONFIG = require("./config");
 const STATIC_FILES = require("./lib/orfeus-static");
+
+const multiparty = require('multiparty');
 
 function init() {
 
@@ -203,7 +202,18 @@ WebRequest.prototype.serveStaticFile = function(resource) {
   // Write the HTTP header [200] with the appropriate MIME type
   this.response.writeHead(ohttp.S_HTTP_OK, getMIMEType(path.extname(resource)));
 
-  return fs.createReadStream(path.join("static", resource)).pipe(this.response);
+  // Pipe the response
+  this.pipe(path.join("static", resource));
+
+}
+
+WebRequest.prototype.pipe = function(resource) {
+
+  /* function WebRequest.pipe
+   * Pipes a single resource to the response writeable stream
+   */
+
+  fs.createReadStream(resource).pipe(this.response);
 
 }
 
@@ -392,18 +402,13 @@ WebRequest.prototype.launchUpload = function() {
     return this.HTTPError(ohttp.E_HTTP_PAYLOAD_TOO_LARGE);
   }
 
-  // Parse the POST body (binary file)
-  this.parseRequestBody("multiform", function(files) {
+  this.parseRequestMultiform(function(files) {
 
-    // Only accept files with content 
-    var files = files.filter(x => x.data.length !== 0);
-
-    // Write (multiple) files to disk
     this.writeMultipleFiles(files, function(error) {
 
       if(error) {
         return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-      }
+      } 
 
       return this.redirect("/home?S_METADATA_SUCCESS");
 
@@ -702,21 +707,50 @@ WebRequest.prototype.authenticate = function(credentials, callback) {
 
 }
 
+WebRequest.prototype.parseRequestMultiform = function(parsedCallback) {
+
+  /* WebRequest.parseRequestMultiform
+   * Calls multiparty library to handle parsing of multipart data
+   */
+
+  const form = new multiparty.Form();
+
+  var files = new Array();
+
+  // Asynchronously parse all files
+  form.on("part", function(part) {
+
+    var chunks = new Array();
+
+    part.on("data", function(data) {
+      chunks.push(data);
+    });
+
+    part.on("end", function() {
+      files.push({
+        "type": part.filename ? "file" : "parameter",
+        "name": part.name,
+        "data": Buffer.concat(chunks).toString()
+      });
+    });
+
+  }.bind(this));
+
+  // Parsing completed
+  form.on("close", function() {
+    parsedCallback(files);
+  }.bind(this));
+
+  // Start parsing
+  form.parse(this.request);
+
+}
+
 WebRequest.prototype.parseRequestBody = function(type, callback) {
 
   /* Function WebRequest.parseRequestBody
    * Parses a request body received from the client
    */
-
-  function parseMultiform(buffer, headers) {
-  
-    /* Function WebRequest.parseRequestBody::parseMultiform
-     * Parses multiform encoded data
-     */
-  
-    return multipart.Parse(buffer, multipart.getBoundary(headers["content-type"]));
-  
-  }
 
   callback = callback.bind(this);
 
@@ -747,8 +781,6 @@ WebRequest.prototype.parseRequestBody = function(type, callback) {
 
     // Support for different types of data
     switch(type) {
-      case "multiform":
-        return callback(parseMultiform(fullBuffer, this.request.headers));
       case "json":
         return callback(querystring.parse(fullBuffer.toString()));
       default:
@@ -1067,6 +1099,8 @@ WebRequest.prototype.APIRequest = function() {
   switch(this.url.pathname) {
     case "/api/seedlink":
       return this.getSeedlinkServers();
+    case "/api/history":
+      return this.getMetadataHistory();
     case "/api/latency":
       return this.getStationLatencies();
     case "/api/stations":
@@ -1106,6 +1140,59 @@ WebRequest.prototype.APIRequest = function() {
       return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
 
   }
+
+}
+
+WebRequest.prototype.getMetadataFile = function(id) {
+
+  /* Function WebRequest.getMetadataFile
+   * Writes metadata file from disk to user
+   */
+
+  // Find a document that matches the identifier
+  database.files().findOne({"sha256": id}, function(error, result) {
+
+    if(error) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
+
+    if(result === null) {
+      return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+    }
+
+    // Pipe the response
+    this.pipe(result.filepath + ".stationxml");
+
+  }.bind(this));
+
+}
+
+WebRequest.prototype.getMetadataHistory = function() {
+
+  /* Function WebRequest.getMetadataHistory
+   * Queries database for full metadata history of single station
+   */
+
+  // Parse the query string
+  var queryString = querystring.parse(this.url.query);
+
+  if(queryString.id) {
+    return this.getMetadataFile(queryString.id);
+  }
+
+  database.files().find({"network": queryString.network, "station": queryString.station}).toArray(function(error, results) {
+
+    if(error) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
+
+    if(results.length === 0) {
+      return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+    }
+
+    this.writeJSON(results);
+
+  }.bind(this));
 
 }
 
