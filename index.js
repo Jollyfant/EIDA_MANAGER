@@ -1639,8 +1639,11 @@ WebRequest.prototype.parseFDSNWSResponse = function(data) {
         "lat": Number(codes[4]),
         "lng": Number(codes[5])
       },
+      "azimuth": Number(codes[8]),
+      "dip": Number(codes[9]),
       "description": codes[10],
       "gain": Number(codes[11]),
+      "gainFrequency": Number(codes[12]),
       "sensorUnits": codes[13],
       "sampleRate": Number(codes[14]),
       "start": codes[15],

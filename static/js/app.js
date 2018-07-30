@@ -2108,14 +2108,15 @@ function generateAccordion(list) {
       var tableHTML = [
         "<table class='table table-sm table-striped'>",
         "  <thead>",
-        "    <tr><th>Sensor</th><th>Unit</th><th>Sampling Rate</th><th>Gain</th></tr>",
+        "    <tr><th>Sensor</th><th>Unit</th><th>Sampling Rate</th><th>Gain</th><th>Orientation</th></tr>",
         "  </thead>",
         "  <tbody>",
         "    <tr>",
         "      <td>" + channel.description + "</td>",
         "      <td>" + channel.sensorUnits + "</td>",
-        "      <td>" + channel.sampleRate + "</td>",
+        "      <td>" + channel.sampleRate + "Hz</td>",
         "      <td>" + channel.gain + "</td>",
+        "      <td>" + channel.azimuth + "/" + channel.dip + "</td>",
         "    </tr>",
         "  </tbody>",
         "</table>"
