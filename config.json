@@ -22,7 +22,7 @@
       "PATH": "./schema/fdsn-station-1.0.xsd"
     },
     "DAEMON": {
-      "ENABLED": false,
+      "ENABLED": true,
       "SLEEP_INTERVAL_MS": 3600000
     }
   },
@@ -42,16 +42,16 @@
     "TIMEOUT": 3600000
   },
   "LATENCY": {
-    "HOST": "0.0.0.0",
+    "HOST": "seedlink-latencies",
     "PORT": 8087
   },
   "STATIONS": {
-    "HOST": "0.0.0.0",
+    "HOST": "seedlink-stations",
     "PORT": 8086
   },
   "MONGO": {
     "NAME": "orfeus-manager",
-    "HOST": "0.0.0.0",
+    "HOST": "mongo",
     "PORT": 27017
   }
 }

@@ -968,6 +968,10 @@ WebRequest.prototype.writeMultipleFiles = function(files, callback) {
 
   function supersedeDocuments(file, id, callback) {
 
+    /* function supersedeDocuments
+     * Sets old metadata documents to superseded (by a newer version)
+     */
+
     // Update all old files to superseded
     database.files().updateMany({
       "network": file.network,
@@ -1001,6 +1005,7 @@ WebRequest.prototype.writeMultipleFiles = function(files, callback) {
     // Store file information in the database
     var files = metadata.map(function(x) {
       return {
+        "error": null,
         "filename": x.id,
         "modified": null,
         "network": x.network,

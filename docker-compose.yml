@@ -10,8 +10,6 @@ services:
     restart: always
     volumes:
       - ./data/mongo:/data/db
-    ports:
-      - 27017:27017
 
   # EIDA Manager web application
   # Mount log folder and submitted metadata folder

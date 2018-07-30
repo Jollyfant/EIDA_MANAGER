@@ -795,13 +795,15 @@ App.prototype.launchStation = function() {
 
   function formatHistoryTable(x) {
 
+    var title = x.status === -1 ? x.error : "";
+ 
     return [
       "<code title='" + x.sha256 +"'>" + x.sha256.slice(0, 8) + "</code>",
       x.created,
       x.type,
       x.nChannels,
       x.size,
-      "<b>" + getStatus(x.status) + "</b>",
+      "<b title='" + title + "'>" + getStatus(x.status) + "</b>",
       "<a target='_blank' href='/api/history?id=" + x.sha256 + "'><span class='fa fa-download'></span></a>"
     ];
 
