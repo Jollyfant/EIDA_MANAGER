@@ -1,4 +1,6 @@
-/* server.js
+/* 
+ * EIDA Manager
+ * index.js
  * 
  * Main server code handling incoming HTTP requests
  * for the EIDA Manager
@@ -20,6 +22,9 @@ const url = require("url");
 const fs = require("fs");
 const querystring = require("querystring");
 
+// Third-party libs
+const multiparty = require("multiparty");
+
 // ORFEUS libs
 const { User, Session } = require("./lib/orfeus-session");
 const { SHA256 } = require("./lib/orfeus-crypto");
@@ -34,8 +39,6 @@ const template = require("./lib/orfeus-template");
 const CONFIG = require("./config");
 const STATIC_FILES = require("./lib/orfeus-static");
 
-const multiparty = require('multiparty');
-
 function init() {
 
   /* function init
@@ -47,8 +50,7 @@ function init() {
   
     // Could not connect to Mongo: retry in 1 second
     if(error) {
-      logger.fatal(error);
-      return setTimeout(init, 1000);
+      return logger.fatal(error);
     }
   
     // Create a new webserver
@@ -151,7 +153,7 @@ WebRequest.prototype.init = function() {
 
   this._initialized = Date.now();
 
-  // Patch the response
+  // Patch the response object
   this.patchResponse();
 
   // The service is closed: do not allow log in
@@ -159,7 +161,7 @@ WebRequest.prototype.init = function() {
     return this.HTTPError(ohttp.E_HTTP_UNAVAILABLE);
   }
 
-  // Static files are always served
+  // Static files are always served by the webserver
   if(STATIC_FILES.includes(this.url.pathname)) {
     return this.serveStaticFile(this.url.pathname);
   }
@@ -265,7 +267,7 @@ WebRequest.prototype.getSession = function(callback) {
   }
 
   // Query the database
-  database.sessions().findOne({"EIDA-MANAGER-ID": sessionIdentifier}, function(error, session) {
+  database.sessions().findOne({"sessionId": sessionIdentifier}, function(error, session) {
 
     // Error querying the database
     if(error) {
@@ -310,7 +312,7 @@ WebRequest.prototype.handleSession = function(session) {
     case "/":
       return this.redirect("/login");
     case "/login":
-      return this.launchLogin();
+      return this.launchLogin(session);
     case "/authenticate":
       return this.launchAuthentication();
   }
@@ -354,14 +356,14 @@ WebRequest.prototype.handleSession = function(session) {
 
 }
 
-WebRequest.prototype.launchLogin = function() {
+WebRequest.prototype.launchLogin = function(session) {
 
   /* Function WebRequest.launchLogin
    * Launches login page if not signed in
    */
 
   // If the user is already logged in redirect to home page
-  if(this.session !== null) {
+  if(session !== null) {
     return this.redirect("/home");
   }
 
@@ -579,7 +581,7 @@ WebRequest.prototype.removeSession = function() {
 
   logger.debug("Removing session for user " + this.session.username + " with session identifier " + this.session.sessionId);
 
-  database.sessions().deleteOne({"EIDA-MANAGER-ID": this.session.sessionId}, function(error, result) {
+  database.sessions().deleteOne({"sessionId": this.session.sessionId}, function(error, result) {
   
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -630,7 +632,7 @@ WebRequest.prototype.createSession = function(user, callback) {
 
   // Metadata to store in the session collection
   var storeObject = {
-    "EIDA-MANAGER-ID": session.id,
+    "sessionId": session.id,
     "userId": user._id,
     "created": new Date()
   }

@@ -563,6 +563,7 @@ function getStatus(status) {
    * Maps status integer to string
    */
 
+  const METADATA_STATUS_SUPERSEDED = -3;
   const METADATA_STATUS_REJECTED = -1;
   const METADATA_STATUS_UNCHANGED = 0;
   const METADATA_STATUS_PENDING = 1;
@@ -572,18 +573,20 @@ function getStatus(status) {
   const METADATA_STATUS_AVAILABLE = 5;
 
   switch(status) {
+    case METADATA_STATUS_SUPERSEDED:
+      return "<span class='text-muted'>" + getIcon("ban") + " Superseded </span>"
     case METADATA_STATUS_REJECTED:
       return "<span class='text-danger'>" + getIcon("remove") + " Rejected </span>"
     case METADATA_STATUS_PENDING:
-      return "<span class='text-muted'>" + getIcon("clock-o") + " Pending </span>"
+      return "<span class='text-warning'>" + getIcon("clock-o") + " Pending </span>"
     case METADATA_STATUS_VALIDATED:
-      return "<span class='text-warning'>" + getIcon("flag") + " Validated </span>"
+      return "<span class='text-info'>" + getIcon("cogs") + " Validated </span>"
     case METADATA_STATUS_CONVERTED:
       return "<span class='text-info'>" + getIcon("cogs") + " Converted </span>"
     case METADATA_STATUS_APPROVED:
       return "<span class='text-success'>" + getIcon("check") + " Approved </span>"
     case METADATA_STATUS_AVAILABLE:
-      return "<span class='text-success'>" + getIcon("check") + " FDSNWS Available </span>"
+      return "<span class='text-success'>" + getIcon("rocket") + " Available </span>"
     default:
       return "<span class='text-muted'>" + getIcon("question") + " Unknown </span>"
   }
@@ -795,36 +798,31 @@ App.prototype.launchStation = function() {
   function formatHistoryTable(x) {
 
     return [
-      "<code>" + x.sha256.slice(0, 8) + "</code>",
+      "<code title='" + x.sha256 +"'>" + x.sha256.slice(0, 8) + "</code>",
       x.created,
       x.type,
       x.nChannels,
       x.size,
-      getStatus(x.status),
+      "<b>" + getStatus(x.status) + "</b>",
       "<a target='_blank' href='/api/history?id=" + x.sha256 + "'><span class='fa fa-download'></span></a>"
     ];
 
   }
 
-  $.ajax({
-    "url": "/api/history?network=" + queryString.network + "&station=" + queryString.station,
-    "type": "GET",
-    "dataType": "JSON",
-    "success": function(json) {
+  HTTPRequest("/api/history?network=" + queryString.network + "&station=" + queryString.station, function(json) {
   
-      json.sort(function(a, b) {
-        return Date.parse(b.created) - Date.parse(a.created);
-      });
+    json.sort(function(a, b) {
+      return Date.parse(b.created) - Date.parse(a.created);
+    });
 
-      var body = json.map(formatHistoryTable);
+    var body = json.map(formatHistoryTable);
 
-      new Table({
-        "id": "metadata-history",
-        "header": ["Identifier", "Submitted", "Metadata Type", "Number of Channels", "Size", "Status", ""],
-        "body": body,
-        "search": false
-      });
-    }.bind(this)
+    new Table({
+      "id": "metadata-history",
+      "header": ["Identifier", "Submitted", "Metadata Type", "Number of Channels", "Size", "Status", ""],
+      "body": body,
+      "search": false
+    });
 
   });
 
@@ -877,7 +875,6 @@ App.prototype.getStationDetails = function() {
 
   HTTPRequest("/api/channels" + window.location.search, function(json) {
 
-console.log(json)
     if(json === null) {
       return map.setCenter({"lat": 52.10165, "lng": 5.1783});
     }

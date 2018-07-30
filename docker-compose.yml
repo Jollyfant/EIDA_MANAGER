@@ -17,6 +17,8 @@ services:
   eida-manager:
     image: eida-manager:1.0
     restart: always
+    depends_on:
+      - mongo
     volumes:
       - ./logs:/usr/src/app/logs
       - ./data/metadata:/usr/src/app/metadata
