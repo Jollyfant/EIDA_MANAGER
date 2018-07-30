@@ -104,8 +104,8 @@ WebRequest.prototype.logHTTPRequest = function() {
   }
 
   // Extract the clientIP and User Agent
-  const clientIP = getClientIP(this.request);
-  const userAgent = getUserAgent(this.request);
+  var clientIP = getClientIP(this.request);
+  var userAgent = getUserAgent(this.request);
 
   // Mimic HTTPD access log 
   logger.access([
@@ -1759,6 +1759,9 @@ WebRequest.prototype.getSubmittedFiles = function() {
       },
       "modified": {
         "$last": "$modified"
+      },
+      "error": {
+        "$last": "$error"
       }
     }
   }, {

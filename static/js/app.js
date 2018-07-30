@@ -614,13 +614,16 @@ App.prototype.setupStagedFilePolling = function() {
   
     // Set up the body for the table
     var stagedTable = json.map(function(file) {
+
+      var title = x.status === -1 ? x.error : "";
+
       return [
         "<b><a href='/home/station?network=" + file._id.network + "&station=" + file._id.station + "'>" + file._id.network + "." + file._id.station +" </a></b>" + (file.new ? "&nbsp;<span class='fa fa-star text-warning'></span>" : ""),
         file.nChannels,
         file.size,
         file.created,
         file.modified || file.created,
-        "<b>" + getStatus(file.status) + "</b>"
+        "<b title='" + title + "'>" + getStatus(file.status) + "</b>"
       ];
     });
   
