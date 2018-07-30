@@ -50,6 +50,7 @@ function init() {
   
     // Could not connect to Mongo: retry in 1 second
     if(error) {
+      setTimeout(init, 1000);
       return logger.fatal(error);
     }
   
@@ -965,6 +966,32 @@ WebRequest.prototype.writeMultipleFiles = function(files, callback) {
   
   }
 
+  function supersedeDocuments(file, id, callback) {
+
+    // Update all old files to superseded
+    database.files().updateMany({
+      "network": file.network,
+      "station": file.station,
+      "_id": {
+        "$ne": database.ObjectId(id)
+      }
+    }, {
+      "$set": {
+        "status": database.METADATA_STATUS_SUPERSEDED
+      }
+    }, function(error, result) {
+
+      if(error) {
+        logger.error("Could not supersede documents for " + file.filename);
+      } else {
+        logger.info("Superseded " + result.result.nModified + " old metadata documents for " + file.filename);
+      }
+
+      callback();
+
+    });
+
+  }
   function saveFileObjects(metadata, sessionId) {
   
     /* function saveFileObjects
@@ -989,19 +1016,37 @@ WebRequest.prototype.writeMultipleFiles = function(files, callback) {
       }
     });
   
-    // Asynchronously store all file objects
-    database.files().insertMany(files, function(error) {
+    var storeFileObject, file;
 
-      if(error) {
-        return files.forEach(function(x) {
-          logger.error(new Error("Could not add file object " + x.filename + " to the database."));
-        });
+    (storeFileObject = function() {
+
+      if(!files.length) {
+        return;
       }
 
-      logger.info("Stored " + files.length + " new file objects in the database.");
+      // Get the next queued file
+      var file = files.pop();
 
-    });
-  
+      database.files().insertOne(file, function(error, document) {
+
+        if(error) {
+          logger.error("Could not insert new file object for " + file.filename);
+        } else {
+          logger.info("Inserted new metadata for " + file.filename);
+        }
+
+        // Skip superseding of old documents
+        if(error) {
+          return storeFileObject();
+        }
+
+        // Supersede previous metadata documents (outdated)
+        supersedeDocuments(file, document.insertedId, storeFileObject);
+
+      });
+
+    })();
+
   }
 
   var XMLDocuments;

@@ -615,8 +615,7 @@ App.prototype.setupStagedFilePolling = function() {
     // Set up the body for the table
     var stagedTable = json.map(function(file) {
       return [
-        file._id.network,
-        file._id.station + (file.new ? "&nbsp; <span class='fa fa-star text-warning'></span>" : ""),
+        "<b><a href='/home/station?network=" + file._id.network + "&station=" + file._id.station + "'>" + file._id.network + "." + file._id.station +" </a></b>" + (file.new ? "&nbsp;<span class='fa fa-star text-warning'></span>" : ""),
         file.nChannels,
         file.size,
         file.created,
@@ -628,7 +627,6 @@ App.prototype.setupStagedFilePolling = function() {
     Element("table-staged-legend").style.display = 'inline-block';
   
     const STAGED_METADATA_TABLE_HEADER = [
-      "Network",
       "Station",
       "Number of Channels",
       "Size",
