@@ -1,0 +1,24 @@
+// Create an index for the identifier
+db.files.createIndex({
+  "sha256": 1
+});
+
+// For finding history per network, station
+db.files.createIndex({
+  "network": 1,
+  "station": 1
+});
+
+// Index the session identifiers
+db.sessions.createIndex({
+  "sessionId": 1
+});
+
+// Message indices for recipients and senders
+db.messages.createIndex({
+  "recipient": 1
+});
+
+db.messages.createIndex({
+  "sender": 1
+});

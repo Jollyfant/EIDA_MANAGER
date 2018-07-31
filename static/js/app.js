@@ -360,7 +360,7 @@ App.prototype.launchMessageDetails = function() {
     return [
       "<div class='card'>",
       "  <div class='card-header'>",
-      "    <small style='float: right;'>Sent at " + getIcon("clock-o") + " " + message.created + "</small>",
+      "    <small style='float: right;'>Sent at " + getIcon("clock") + " " + message.created + "</small>",
       "    <h5><b><span class='fa fa-envelope-o'></span> " + message.subject + "</b></h5>",
       "  </div>",
       "  <div class='card-block'>",
@@ -400,7 +400,7 @@ function generateMessageAlert(type, message) {
 
     switch(type) {
       case "danger":
-        return getIcon("remove", "danger");
+        return getIcon("times", "danger");
       case "warning":
         return getIcon("question", "warning");
       case "success":
@@ -576,9 +576,9 @@ function getStatus(status) {
     case METADATA_STATUS_SUPERSEDED:
       return "<span class='text-muted'>" + getIcon("ban") + " Superseded </span>"
     case METADATA_STATUS_REJECTED:
-      return "<span class='text-danger'>" + getIcon("remove") + " Rejected </span>"
+      return "<span class='text-danger'>" + getIcon("times") + " Rejected </span>"
     case METADATA_STATUS_PENDING:
-      return "<span class='text-warning'>" + getIcon("clock-o") + " Pending </span>"
+      return "<span class='text-warning'>" + getIcon("clock") + " Pending </span>"
     case METADATA_STATUS_VALIDATED:
       return "<span class='text-info'>" + getIcon("cogs") + " Validated </span>"
     case METADATA_STATUS_CONVERTED:
@@ -619,11 +619,11 @@ App.prototype.setupStagedFilePolling = function() {
 
       return [
         "<b><a href='/home/station?network=" + file._id.network + "&station=" + file._id.station + "'>" + file._id.network + "." + file._id.station +" </a></b>" + (file.new ? "&nbsp;<span class='fa fa-star text-warning'></span>" : ""),
-        "<a target='_blank' href='/api/history?id=" + file.sha256 + "'><code title='" + file.sha256 +"'>" + file.sha256.slice(0, 8) + "…</code></a>",
+        "<a target='_blank' href='/api/history?id=" + file.sha256 + "'><code data-toggle='tooltip' data-placement='right' data-html='true' title='<span class=\"fas fa-fingerprint\"></span> " + file.sha256 +"'>" + file.sha256.slice(0, 8) + "…</code></a>",
         file.nChannels,
-        file.size,
         file.created,
         file.modified || file.created,
+        (1E-3 * file.size).toFixed(1) + "KB",
         "<b title='" + title + "'>" + getStatus(file.status) + "</b>"
       ];
     });
@@ -634,9 +634,9 @@ App.prototype.setupStagedFilePolling = function() {
       "Station",
       "Identifier",
       "Number of Channels",
-      "Size",
       "Submitted",
       "Modified",
+      "Inventory Size",
       "Current Status"
     ];
   
@@ -803,11 +803,11 @@ App.prototype.launchStation = function() {
     var title = x.status === -1 ? x.error : "";
  
     return [
-      "<a target='_blank' href='/api/history?id=" + x.sha256 + "'><code title='" + x.sha256 +"'>" + x.sha256.slice(0, 8) + "…</code></a>",
+        "<a target='_blank' href='/api/history?id=" + x.sha256 + "'><code data-toggle='tooltip' data-placement='right' data-html='true' title='<span class=\"fas fa-fingerprint\"></span> " + x.sha256 +"'>" + x.sha256.slice(0, 8) + "…</code></a>",
       x.created,
       x.type,
       x.nChannels,
-      x.size,
+      (1E-3 * x.size).toFixed(1) + "KB",
       "<b title='" + title + "'>" + getStatus(x.status) + "</b>"
     ];
 
@@ -815,16 +815,17 @@ App.prototype.launchStation = function() {
 
   HTTPRequest("/api/history?network=" + queryString.network + "&station=" + queryString.station, function(json) {
   
-    json.sort(function(a, b) {
-      return Date.parse(b.created) - Date.parse(a.created);
-    });
+    if(json === null) {
+      return Element("metadata-history").innerHTML = "<span class='text-muted'>No metadata history is available.</span>";
+    }
 
-    var body = json.map(formatHistoryTable);
+    // Sort by ascending date
+    json.sort((a, b) => Date.parse(b.created) - Date.parse(a.created));
 
     new Table({
       "id": "metadata-history",
-      "header": ["Identifier", "Submitted", "Metadata Type", "Number of Channels", "Size", "Status"],
-      "body": body,
+      "header": ["Identifier", "Submitted", "Metadata Type", "Number of Channels", "Inventory Size", "Status"],
+      "body": json.map(formatHistoryTable),
       "search": false
     });
 
@@ -916,7 +917,7 @@ App.prototype.getStationDetails = function() {
     // Event listener for clicks
     marker.addListener("click", function() {
       this.infowindow.close();
-      this.infowindow.setContent("Station " + marker.title)
+      this.infowindow.setContent("Station <b>" + marker.title + "</b>")
       this.infowindow.open(this.map, marker);
     }.bind(this));
 
@@ -1101,7 +1102,7 @@ App.prototype.addSeedlink = function() {
     var tableContent = json.map(function(x) {
 
       // Host metadata 
-      var icon = " &nbsp; " + (x.connected ? getIcon("check", "success") : getIcon("remove", "danger"));
+      var icon = " &nbsp; " + (x.connected ? getIcon("check", "success") : getIcon("times", "danger"));
       var host = "<span title='" + x.ip + "'>" + x.host + "</span>";
       var port = x.port;
 
@@ -1256,7 +1257,7 @@ function getIcon(icon, color) {
    * Returns font-awesome icon with a particular color
    */
 
-  return "<span class='fa fa-" + icon + " text-" + color + "'></span>";
+  return "<span class='fas fa fa-" + icon + " text-" + color + "'></span>";
 
 }
 
@@ -1783,7 +1784,7 @@ function isActive(station) {
   }
 
   // Station is closed
-  return getIcon("remove", "danger");
+  return getIcon("times", "danger");
 
 }
 
@@ -2112,7 +2113,7 @@ function generateAccordion(list) {
       var tableHTML = [
         "<table class='table table-sm table-striped'>",
         "  <thead>",
-        "    <tr><th>Sensor</th><th>Unit</th><th>Sampling Rate</th><th>Gain</th><th>Orientation</th></tr>",
+        "    <tr><th>Sensor</th><th>Unit</th><th>Sampling Rate</th><th title='Sensor gain factor at " + channel.gainFrequency + "Hz'>Gain</th><th title='Given as azimuth/dip'>Orientation</th></tr>",
         "  </thead>",
         "  <tbody>",
         "    <tr>",
@@ -2317,7 +2318,7 @@ App.prototype.AddMetadataUpload = function() {
       try {
         var stagedStations = validateFiles(files);
       } catch(exception) {
-        return Element("file-help").innerHTML = "<b>" + getIcon("remove", "danger") + "</span> " + exception;
+        return Element("file-help").innerHTML = "<b>" + getIcon("times", "danger") + "</span> " + exception;
       }
 
       // Allow metadata submission
@@ -2410,3 +2411,7 @@ function parseQuery(queryString) {
 }
 
 new App();
+
+$(function () {
+  $('[data-toggle="tooltip"]').tooltip()
+})

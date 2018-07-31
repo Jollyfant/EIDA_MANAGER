@@ -408,7 +408,7 @@ WebRequest.prototype.launchUpload = function() {
   // Parse the request multiform
   this.parseRequestMultiform(function(files) {
 
-    this.writeMultipleFiles(files, function(error) {
+    this.handleFileUpload(files, function(error) {
 
       if(error) {
         return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -893,9 +893,9 @@ Webserver.prototype.SIGINT = function() {
 
 }
 
-WebRequest.prototype.writeMultipleFiles = function(files, callback) {
+WebRequest.prototype.handleFileUpload = function(files, callback) {
 
-  /* Function WebRequest.writeMultipleFiles
+  /* Function WebRequest.handleFileUpload
    * Writes multiple (split) StationXML files to disk
    */
 
@@ -932,62 +932,43 @@ WebRequest.prototype.messageAdministrators = function(filenames) {
   * Queries the database for all administrators
   */
 
-
-  function getAdministrators(callback) {
-
-    /* function getAdministrators
-     * Returns documents for all administrators
-     */
-
-    database.users().find({"role": "admin"}).toArray(function(error, administrators) {
-
-      if(error) {
-        return logger.error(error);
-      }
-
-      callback(administrators);
-
-    });
-
-  }
-
   // No files were uploaded
   if(filenames.length === 0) {
     return;
   }
 
   // Get all ORFEUS administrators
-  getAdministrators(function(administrators) {
+  database.getAdministrators(function(error, administrators) {
 
-    // No administrators?
-    if(administrators.length === 0) {
-      return;
+    if(error) {
+      return logger.error(error);
     }
 
-    // Get a string of filenames submitted
-    filenames = filenames.map(escapeHTML).join(", ");
+    // No administrators
+    if(administrators.length === 0) {
+      return logger.info("No administrators could be found");
+    }
 
-    // Message each administrator
-    // Skip message to self
+    // Message each administrator but skip messaging self
     var messages = administrators.filter(x => x._id.toString() !== this.session._id.toString()).map(function(administrator) {
 
       return Message(
         administrator._id,
         this.session._id,
-        "Metadata Added",
-        "New metadata has been submitted for station(s): " + filenames
+        "New Metadata Uploaded",
+        "New metadata has been submitted for station(s): " + filenames.map(escapeHTML).join(", ")
       );
 
     }.bind(this));
 
-    // Store messages
-    database.messages().insertMany(messages, function(error, result) {
+    // Store the messages
+    database.storeMessages(messages, function(error, result) {
 
       if(error) {
-        return logger.error(error);
+        logger.error(error);
+      } else {
+        logger.info("Messaged " + administrators.length + " adminstrators about " + filenames.length + " file(s) uploaded.");
       }
-
-      logger.info("Messaged " + administrators.length + " adminstrators about " + filenames.length + " file(s) uploaded.");
 
     });
 
@@ -1037,8 +1018,13 @@ WebRequest.prototype.writeSubmittedFiles = function(XMLDocuments, callback) {
 
     // Finished writing all documents
     if(!XMLDocuments.length) {
+
+      // Write a private message to each administrator
       this.messageAdministrators(submittedFiles);
+
+      // Fire callback without an error
       return callback(null);
+
     }
 
     // Get the next queued file

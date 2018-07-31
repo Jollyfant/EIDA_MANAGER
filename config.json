@@ -42,11 +42,11 @@
     "TIMEOUT": 3600000
   },
   "LATENCY": {
-    "HOST": "seedlink-latencies",
+    "HOST": "0.0.0.0",
     "PORT": 8087
   },
   "STATIONS": {
-    "HOST": "seedlink-stations",
+    "HOST": "0.0.0.0",
     "PORT": 8086
   },
   "MONGO": {
