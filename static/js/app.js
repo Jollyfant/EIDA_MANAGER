@@ -615,10 +615,11 @@ App.prototype.setupStagedFilePolling = function() {
     // Set up the body for the table
     var stagedTable = json.map(function(file) {
 
-      var title = x.status === -1 ? x.error : "";
+      var title = file.status === -1 ? file.error : "";
 
       return [
         "<b><a href='/home/station?network=" + file._id.network + "&station=" + file._id.station + "'>" + file._id.network + "." + file._id.station +" </a></b>" + (file.new ? "&nbsp;<span class='fa fa-star text-warning'></span>" : ""),
+        "<a target='_blank' href='/api/history?id=" + file.sha256 + "'><code title='" + file.sha256 +"'>" + file.sha256.slice(0, 8) + "…</code></a>",
         file.nChannels,
         file.size,
         file.created,
@@ -631,6 +632,7 @@ App.prototype.setupStagedFilePolling = function() {
   
     const STAGED_METADATA_TABLE_HEADER = [
       "Station",
+      "Identifier",
       "Number of Channels",
       "Size",
       "Submitted",
@@ -801,13 +803,12 @@ App.prototype.launchStation = function() {
     var title = x.status === -1 ? x.error : "";
  
     return [
-      "<code title='" + x.sha256 +"'>" + x.sha256.slice(0, 8) + "</code>",
+      "<a target='_blank' href='/api/history?id=" + x.sha256 + "'><code title='" + x.sha256 +"'>" + x.sha256.slice(0, 8) + "…</code></a>",
       x.created,
       x.type,
       x.nChannels,
       x.size,
-      "<b title='" + title + "'>" + getStatus(x.status) + "</b>",
-      "<a target='_blank' href='/api/history?id=" + x.sha256 + "'><span class='fa fa-download'></span></a>"
+      "<b title='" + title + "'>" + getStatus(x.status) + "</b>"
     ];
 
   }
@@ -822,7 +823,7 @@ App.prototype.launchStation = function() {
 
     new Table({
       "id": "metadata-history",
-      "header": ["Identifier", "Submitted", "Metadata Type", "Number of Channels", "Size", "Status", ""],
+      "header": ["Identifier", "Submitted", "Metadata Type", "Number of Channels", "Size", "Status"],
       "body": body,
       "search": false
     });

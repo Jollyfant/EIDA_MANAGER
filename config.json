@@ -22,7 +22,7 @@
       "PATH": "./schema/fdsn-station-1.0.xsd"
     },
     "DAEMON": {
-      "ENABLED": true,
+      "ENABLED": false,
       "SLEEP_INTERVAL_MS": 3600000
     }
   },
@@ -51,7 +51,7 @@
   },
   "MONGO": {
     "NAME": "orfeus-manager",
-    "HOST": "mongo",
+    "HOST": "0.0.0.0",
     "PORT": 27017
   }
 }

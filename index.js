@@ -405,6 +405,7 @@ WebRequest.prototype.launchUpload = function() {
     return this.HTTPError(ohttp.E_HTTP_PAYLOAD_TOO_LARGE);
   }
 
+  // Parse the request multiform
   this.parseRequestMultiform(function(files) {
 
     this.writeMultipleFiles(files, function(error) {
@@ -885,6 +886,7 @@ Webserver.prototype.SIGINT = function() {
    * Signal handler for SIGINT
    */
 
+  process.exit(0);
   logger.info("SIGINT received - initializing graceful shutdown of webserver and database connection.");
 
   this.webserver.close()
@@ -897,78 +899,107 @@ WebRequest.prototype.writeMultipleFiles = function(files, callback) {
    * Writes multiple (split) StationXML files to disk
    */
 
-  function messageAdministrators(metadata, sessionId) {
-  
-    /* function messageAdministrators
-     * Queries the database for all administrators
-     */
-  
+  var XMLDocuments;
 
-    function getAdministrators(callback) {
-    
-      /* function getAdministrators
-       * Returns documents for all administrators
-       */
-    
-      database.users().find({"role": "admin"}).toArray(function(error, administrators) {
-    
-        if(error) {
-          return logger.error(error);
-        }
-    
-        callback(administrators);
-    
-      });
-    
+  // We split any submitted StationXML files
+  try {
+    XMLDocuments = splitStationXML(files);
+  } catch(exception) {
+    return callback(exception);
+  }
+
+  // Confirm user is manager of the network
+  for(var i = 0; i < XMLDocuments.length; i++) {
+    if(this.session.role !== "admin" && this.session.network !== XMLDocuments[i].metadata.network) {
+      return callback(new Error("User does not own network rights.")); 
     }
+  }
 
-    // No files were uploaded
-    if(metadata.length === 0) {
+  if(XMLDocuments.length === 0) {
+    return callback(new Error("No metadata was submitted."));
+  }
+
+  // Assert that directories exist for the submitted files
+  XMLDocuments.forEach(x => createDirectory(x.metadata.filepath));
+
+  this.writeSubmittedFiles(XMLDocuments, callback);
+
+}
+
+WebRequest.prototype.messageAdministrators = function(filenames) {
+
+ /* function messageAdministrators
+  * Queries the database for all administrators
+  */
+
+
+  function getAdministrators(callback) {
+
+    /* function getAdministrators
+     * Returns documents for all administrators
+     */
+
+    database.users().find({"role": "admin"}).toArray(function(error, administrators) {
+
+      if(error) {
+        return logger.error(error);
+      }
+
+      callback(administrators);
+
+    });
+
+  }
+
+  // No files were uploaded
+  if(filenames.length === 0) {
+    return;
+  }
+
+  // Get all ORFEUS administrators
+  getAdministrators(function(administrators) {
+
+    // No administrators?
+    if(administrators.length === 0) {
       return;
     }
-  
-    // Get all ORFEUS administrators
-    getAdministrators(function(administrators) {
-  
-      // No administrators?
-      if(administrators.length === 0) {
-        return;
+
+    // Get a string of filenames submitted
+    filenames = filenames.map(escapeHTML).join(", ");
+
+    // Message each administrator
+    // Skip message to self
+    var messages = administrators.filter(x => x._id.toString() !== this.session._id.toString()).map(function(administrator) {
+
+      return Message(
+        administrator._id,
+        this.session._id,
+        "Metadata Added",
+        "New metadata has been submitted for station(s): " + filenames
+      );
+
+    }.bind(this));
+
+    // Store messages
+    database.messages().insertMany(messages, function(error, result) {
+
+      if(error) {
+        return logger.error(error);
       }
-  
-      // Get a string of filenames submitted
-      var filenames = metadata.map(x => escapeHTML(x.id)).join(", ");
 
-      // Message each administrator
-      // Skip message to self
-      var messages = administrators.filter(x => x._id.toString() !== sessionId.toString()).map(function(administrator) {
-  
-        return Message(
-          administrator._id,
-          sessionId,
-          "Metadata Added",
-          "New metadata has been submitted for station(s): " + filenames
-        );
+      logger.info("Messaged " + administrators.length + " adminstrators about " + filenames.length + " file(s) uploaded.");
 
-      });
-  
-      // Store messages
-      database.messages().insertMany(messages, function(error, result) {
-  
-        if(error) {
-          return logger.error(error);
-        }
-  
-        logger.info("Messaged " + administrators.length + " adminstrators about " + metadata.length + " file(s) uploaded.");
-  
-      });
-  
     });
-  
-  }
+
+  }.bind(this));
+
+}
+
+WebRequest.prototype.writeSubmittedFiles = function(XMLDocuments, callback) {
 
   function supersedeDocuments(file, id, callback) {
 
-    /* function supersedeDocuments
+    /* Function supersedeDocuments
      * Sets old metadata documents to superseded (by a newer version)
      */
 
@@ -996,125 +1027,101 @@ WebRequest.prototype.writeMultipleFiles = function(files, callback) {
     });
 
   }
-  function saveFileObjects(metadata, sessionId) {
-  
-    /* function saveFileObjects
-     * writes new file objects to the database
-     */
-    
-    // Store file information in the database
-    var files = metadata.map(function(x) {
-      return {
-        "error": null,
-        "filename": x.id,
-        "modified": null,
-        "network": x.network,
-        "station": x.station,
-        "nChannels": x.nChannels,
-        "filepath": path.join(x.filepath, x.sha256),
-        "type": "FDSNStationXML",
-        "size": x.size,
-        "status": database.METADATA_STATUS_PENDING,
-        "userId": sessionId,
-        "created": new Date(),
-        "sha256": x.sha256
-      }
-    });
-  
-    var storeFileObject, file;
 
-    (storeFileObject = function() {
+  var writeNextFile;
+  var submittedFiles = new Array();
 
-      if(!files.length) {
-        return;
-      }
+  // Asynchronous writing for multiple files to disk and
+  // adding metadata to the database
+  (writeNextFile = function() {
 
-      // Get the next queued file
-      var file = files.pop();
-
-      database.files().insertOne(file, function(error, document) {
-
-        if(error) {
-          logger.error("Could not insert new file object for " + file.filename);
-        } else {
-          logger.info("Inserted new metadata for " + file.filename);
-        }
-
-        // Skip superseding of old documents
-        if(error) {
-          return storeFileObject();
-        }
-
-        // Supersede previous metadata documents (outdated)
-        supersedeDocuments(file, document.insertedId, storeFileObject);
-
-      });
-
-    })();
-
-  }
-
-  var XMLDocuments;
-
-  // We split any submitted StationXML files
-  try {
-    XMLDocuments = splitStationXML(files);
-  } catch(exception) {
-    return callback(exception);
-  }
-
-  // Confirm user is manager of the network
-  for(var i = 0; i < XMLDocuments.length; i++) {
-    if(this.session.role !== "admin" && this.session.network !== XMLDocuments[i].metadata.network) {
-      return callback(new Error("User does not own network rights.")); 
+    // Finished writing all documents
+    if(!XMLDocuments.length) {
+      this.messageAdministrators(submittedFiles);
+      return callback(null);
     }
-  }
 
-  // Create a copy of all metadata
-  var XMLMetadata = XMLDocuments.map(x => x.metadata);
-
-  // Create directories
-  XMLMetadata.forEach(x => createDirectory(x.filepath));
-
-  // Write a message to the administrators
-  messageAdministrators(XMLMetadata, this.session._id);
-
-  // Write file metadata to the database
-  saveFileObjects(XMLMetadata, this.session._id);
-
-  if(XMLDocuments.length === 0) {
-    return callback(new Error("No metadata was submitted."));
-  }
-
-  var writeFile;
-
-  // Asynchronous writing for multiple files to disk
-  (writeFile = function() {
-
+    // Get the next queued file
     var file = XMLDocuments.pop();
-    var STATUS_MESSAGE = "Writing file " + file.metadata.sha256 + " (" + file.metadata.id + ") to disk";
 
-    // NodeJS std lib for writing file
-    fs.writeFile(path.join(file.metadata.filepath, file.metadata.sha256 + ".stationXML"), file.data, function(error) {
+    // Extact metadata for the file
+    var metadata = {
+      "error": null,
+      "filename": file.metadata.id,
+      "modified": null,
+      "network": file.metadata.network,
+      "station": file.metadata.station,
+      "nChannels": file.metadata.nChannels,
+      "filepath": path.join(file.metadata.filepath, file.metadata.sha256),
+      "type": "FDSNStationXML",
+      "size": file.metadata.size,
+      "status": database.METADATA_STATUS_PENDING,
+      "userId": this.session._id,
+      "created": new Date(),
+      "sha256": file.metadata.sha256
+    }
 
-      // Write to log
-      error ? logger.error(error) : logger.info(STATUS_MESSAGE);
+    // Check if the file (sha256) is already in the database
+    // Since it is pointless to store multiple objects for the same file
+    database.files().findOneAndDelete({"sha256": metadata.sha256}, function(error, result) {
 
       if(error) {
         return callback(error);
       }
 
-      // Done writing files
-      if(XMLDocuments.length === 0) {
-        return callback(null)
+      // Hash is already in the database
+      // Check if file is active (i.e. not superseded)
+      // Then copy the current status since no metadaemon processing required
+      if(result.value !== null) {
+        if(result.value.status !== database.METADATA_STATUS_SUPERSEDED) {
+          metadata.status = result.value.status;
+        }
       }
 
-      // More files to write
-      writeFile();
-      
+      // Insert the new (or updated) metadata document
+      database.files().insertOne(metadata, function(error, document) {
+
+        if(error) {
+          logger.error("Could not insert new metadata object for " + metadata.filename);
+        } else {
+          logger.info("Inserted new metadata object for " + metadata.filename);
+        }
+
+        if(error) {
+          return callback(error);
+        }
+
+        // Supersede previous metadata documents (outdated metadata)
+        supersedeDocuments(metadata, document.insertedId, function() {
+
+          // NodeJS stdlib for writing file
+          fs.writeFile(path.join(metadata.filepath + ".stationXML"), file.data, function(error) {
+
+            if(error) {
+              logger.error("Could not write file " + metadata.filename + " to disk (" + metadata.sha256 + ")");
+            } else {
+              logger.info("Writing file for " + metadata.filename + " to disk (" + metadata.sha256 + ")");
+            }
+
+            if(error) {
+              return callback(error);
+            }
+
+            // Save the written filename for a message sent to the administrators
+            submittedFiles.push(metadata.filename);
+
+            // More files to write
+            writeNextFile();
+
+          });
+
+        });
+
+      });
+
     });
 
-  })();
+  }.bind(this))();
 
 }
 
@@ -1762,6 +1769,9 @@ WebRequest.prototype.getSubmittedFiles = function() {
       },
       "error": {
         "$last": "$error"
+      },
+      "sha256": {
+        "$last": "$sha256"
       }
     }
   }, {
