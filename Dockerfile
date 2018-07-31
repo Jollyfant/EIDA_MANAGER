@@ -1,5 +1,5 @@
-# Dockerfile for building EIDA manager image
-# Make sure to include seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz in this directory
+# Dockerfile for building the EIDA-Manager image
+# Make sure to include "seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz" in this directory
 #
 # $ docker build -t eida-manager:1.0 .
 

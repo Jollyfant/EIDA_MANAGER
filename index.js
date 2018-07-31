@@ -114,7 +114,7 @@ WebRequest.prototype.logHTTPRequest = function() {
     this.request.method,
     this.response.statusCode,
     this.response.bytesWritten,
-    userAgent
+    "\"" + userAgent + "\""
   ].join(" "));
 
 }
@@ -348,7 +348,7 @@ WebRequest.prototype.handleSession = function(session) {
     case "/home/messages/details":
       return this.HTTPResponse(200, template.generateMessageDetails(this.session));
     case "/home/messages/new":
-      return this.HTTPResponse(200, template.generateNewMessagetemplate(this.request.url, this.session));
+      return this.HTTPResponse(200, template.generateNewMessageTemplate(this.request.url, this.session));
     case "/home/station":
       return this.HTTPResponse(200, template.generateStationDetails(this.session));
     default:

@@ -61,7 +61,7 @@ curl -s "$FDSNWS_STATION?level=network&format=text" | sed 1d | while read line; 
     xmllint --format - > "./prototypes/$networkCode.sc3ml"
   else
     curl -s "$FDSNWS_STATION?network=$network&level=network&endtime=$networkStart" | 
-    seiscomp exec import_inv fdsnxml - - 2>/dev/null |
+    seiscomp --asroot exec import_inv fdsnxml - - 2>/dev/null |
     xmllint --format - > "./prototypes/$networkCode.sc3ml"
   fi
 

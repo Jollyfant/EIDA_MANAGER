@@ -89,6 +89,9 @@ Table.prototype.draw = function() {
     x.addEventListener("click", this.setActiveIndex.bind(this, x));
   }.bind(this));
 
+  // Enable tooltips
+  $('[data-toggle="tooltip"]').tooltip()
+
 }
 
 Table.prototype.generatePaginationList = function(list) {

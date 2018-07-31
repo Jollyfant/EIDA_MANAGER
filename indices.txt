@@ -1,3 +1,4 @@
+// These indices to be applied to the Mongo database
 // Create an index for the identifier
 db.files.createIndex({
   "sha256": 1

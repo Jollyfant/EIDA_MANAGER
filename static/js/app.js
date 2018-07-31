@@ -244,9 +244,18 @@ App.prototype.setupNotificationPolling = function() {
 
   // Make a request to get the number of new messages
   HTTPRequest("/api/messages?new", function(json) {
+
     console.debug("Retrieved " + json.count + " new message(s) from server in " + (Date.now() - start) + " ms.");
+
+    // Show modal that user has new messages
+    if(json.count > 0 && this.uri.search === "?welcome") {
+      Element("modal-content").innerHTML = generateMessageAlert("success", "You have " + json.count + " unread message(s).");
+      $("#modal-alert").modal();
+    }
+
     Element("number-messages").innerHTML = generateNotificationMessage(json.count);
-  });
+
+  }.bind(this));
 
   // Set next refresh for notification poll
   setTimeout(this.setupNotificationPolling, NOTIFICATION_POLL_MS);
@@ -1651,7 +1660,7 @@ App.prototype.generateStationTable = function() {
         // Generate HTML
         return [
           "<span title='" + channelCodeToDescription(code, average) + "' class='fa fa-exclamation-circle text-" + getLatencyColorClass(code, average) + "'>",
-            "<small style='font-family: monospace;'><b>" + code + "</b></small>",
+            "<span style='font-family: monospace;'><b>" + code + "</b></span>",
           "</span>",
         ].join("\n");
       
@@ -2411,7 +2420,3 @@ function parseQuery(queryString) {
 }
 
 new App();
-
-$(function () {
-  $('[data-toggle="tooltip"]').tooltip()
-})
