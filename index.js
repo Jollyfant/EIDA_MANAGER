@@ -268,7 +268,7 @@ WebRequest.prototype.getSession = function(callback) {
   }
 
   // Query the database
-  database.sessions().findOne({"sessionId": sessionIdentifier}, function(error, session) {
+  database.getSession(sessionIdentifier, function(error, session) {
 
     // Error querying the database
     if(error) {
@@ -281,7 +281,7 @@ WebRequest.prototype.getSession = function(callback) {
     }
 
     // Get the user that belongs to the session
-    database.users().findOne({"_id": session.userId}, function(error, user) {
+    database.getUserById(session.userId, function(error, user) {
 
       // Error querying the database
       if(error) {
@@ -510,7 +510,7 @@ WebRequest.prototype.launchSend = function() {
   function getRecipientQuery(session, recipient) {
 
     /* Function WebRequest.launchSend::getRecipientQuery
-     * Returns query to find the recipieint
+     * Returns query to find the recipient
      */
 
     if(session.role === "admin" && recipient === "broadcast") {
@@ -533,6 +533,7 @@ WebRequest.prototype.launchSend = function() {
       return this.redirect("/home/messages/new?self");
     }
 
+    // Get the correct query depending on the recipient field
     var userQuery = getRecipientQuery(this.session, postBody.recipient);
 
     // Query the user database for the recipient name
@@ -687,7 +688,7 @@ WebRequest.prototype.authenticate = function(credentials, callback) {
 
   callback = callback.bind(this);
 
-  database.users().findOne({"username": credentials.username}, function(error, result) {
+  database.getUserByName(credentials.username, function(error, result) {
 
     // There was an error querying the database
     if(error) {
@@ -1195,7 +1196,7 @@ WebRequest.prototype.getMetadataFile = function(id) {
    */
 
   // Find a document that matches the identifier
-  database.files().findOne({"sha256": id}, function(error, result) {
+  database.getFileByHash(id, function(error, result) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1225,7 +1226,8 @@ WebRequest.prototype.getMetadataHistory = function() {
     return this.getMetadataFile(queryString.id);
   }
 
-  database.files().find({"network": queryString.network, "station": queryString.station}).toArray(function(error, results) {
+  // Get the file by network and station identifier
+  database.getFileByStation(queryString.network, queryString.station, function(error, results) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1439,20 +1441,8 @@ WebRequest.prototype.getSpecificMessage = function() {
 
   var queryString = querystring.parse(this.url.query);
 
-  // Get messages as sender or recipient (undeleted)
-  var query = {
-    "_id": database.ObjectId(queryString.id),
-    "$or": [{
-      "recipient": database.ObjectId(this.session._id),
-      "recipientDeleted": false
-    }, {
-      "sender": database.ObjectId(this.session._id),
-      "senderDeleted": false
-    }]
-  }
-
   // Get specific message from the database
-  database.messages().findOne(query, function(error, message) {
+  database.getMessageById(this.session._id, queryString.id, function(error, message) {
 
     // Could not find message
     if(error) {
@@ -1467,12 +1457,14 @@ WebRequest.prototype.getSpecificMessage = function() {
     var author = message.sender.toString() === this.session._id.toString();
 
     // If requestee is not the author: set message to read
-    if(!author) {
-      database.messages().updateOne(query, {"$set": {"read": true}});
+    if(!author && !message.read) {
+      database.messages().updateOne({"_id": message._id}, {"$set": {"read": true}});
     }
 
+    var userIdentifier = author ? message.recipient : message.sender;
+
     // Find the username for the message sender 
-    database.users().findOne({"_id": database.ObjectId(author ? message.recipient : message.sender)}, function(error, user) {
+    database.getUserById(userIdentifier, function(error, user) {
 
       if(error) {
         return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1502,13 +1494,7 @@ WebRequest.prototype.getNewMessages = function() {
    * Return the number of new messages 
    */
 
-  var query = {
-    "recipient": database.ObjectId(this.session._id),
-    "read": false,
-    "recipientDeleted": false
-  }
-
-  database.messages().find(query).count(function(error, count) {
+  database.getNewMessageCount(this.session._id, function(error, count) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1526,34 +1512,16 @@ WebRequest.prototype.getMessages = function() {
    * Returns all messages that belong to a user in a session
    */
 
-  const DESCENDING = -1;
-
-  const query = {
-    "$or": [{
-      "recipient": database.ObjectId(this.session._id),
-      "recipientDeleted": false
-    }, {
-      "sender": database.ObjectId(this.session._id),
-      "senderDeleted": false
-    }]
-  }
-
-  // Query the database for all messages
-  database.messages().find(query).sort({"created": DESCENDING}).toArray(function(error, documents) {
+  database.getMessages(this.session._id, function(error, documents) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
-    // Get all messages where the user is either the sender or recipient
-    const userQuery = {
-      "_id": {
-        "$in": documents.map(x => database.ObjectId(x.sender)).concat(documents.map(x => database.ObjectId(x.recipient)))
-      }
-    }
+    var userIdentifiers = documents.map(x => database.ObjectId(x.sender)).concat(documents.map(x => database.ObjectId(x.recipient)));
 
     // Get usernames from user identifiers
-    database.users().find(userQuery).toArray(function(error, users) {
+    database.getUsersById(userIdentifiers, function(error, users) {
 
       if(error) {
         return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
