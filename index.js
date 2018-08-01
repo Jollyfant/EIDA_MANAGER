@@ -333,7 +333,7 @@ WebRequest.prototype.handleSession = function(session) {
     return this.APIRequest();
   }
 
-  // Forwards RPCs
+  // Forward RPCs
   if(this.url.pathname.startsWith("/rpc")) {
     return this.RPC();
   }
@@ -350,7 +350,7 @@ WebRequest.prototype.handleSession = function(session) {
       return this.launchUpload();
     case "/seedlink":
       return this.launchSeedlink();
-    case "/admin":
+    case "/home/admin":
       return this.launchAdmin();
     case "/home/messages":
       return this.HTTPResponse(200, template.generateMessages(this.session));

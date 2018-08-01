@@ -104,9 +104,14 @@ function HTTPRequest(url, callback) {
         return callback(JSON.parse(xhr.response));
       case "text/plain":
       case "text/html; charset=UTF-8":
+      case "text/plain; charset=utf-8":
         return callback(xhr.response);
     }
 
+  }
+
+  xhr.onerror = function(error) {
+    callback(null);
   }
 
   // Open and finish the request
@@ -616,9 +621,53 @@ App.prototype.init = function() {
       return this.launchMessages();
     case "/home/station":
       return this.launchStation();
+    case "/home/admin":
+      return this.launchAdmin();
     case "/home":
      return this.launchHome();
   }
+
+}
+
+App.prototype.launchAdmin = function() {
+
+  /* App.launchAdmin
+   * Launches some client-side code for the admin console
+   */
+
+  const SERVICES = [{
+    "name": "station",
+    "url": "https://www.orfeus-eu.org/fdsnws/station/1/version"
+  }, {
+    "name": "dataselect",
+    "url": "https://www.orfeus-eu.org/fdsnws/dataselect/1/version"
+  }, {
+    "name": "wfcatalog",
+    "url": "https://www.orfeus-eu.org/eidaws/wfcatalog/1/version"
+  }, {
+    "name": "routing",
+    "url": "https://www.orfeus-eu.org/eidaws/routing/1/version"
+  }];
+
+  SERVICES.forEach(function(service) {
+
+    // Time the request
+    var start = Date.now();
+
+    HTTPRequest(service.url, function(json) {
+
+      if(json === null) {
+        Element("card-" + service.name).className = "card text-white bg-danger";
+        Element("card-" + service.name + "-text").innerHTML = "Could not get version";
+        return;
+      }
+
+      Element("card-" + service.name).className = "card text-white bg-success";
+      Element("card-" + service.name + "-text").innerHTML = "version " + json + " - " + (Date.now() - start) + "<small>ms</small>";
+
+    });
+
+  });
 
 }
 
@@ -1408,7 +1457,7 @@ App.prototype.getNetworkDOI = function() {
 
   // Do not show all DOIs for an administrator
   if(this.network === "*") {
-    return doiElement.innerHTML = "<small>Administrator</small>";
+    return doiElement.innerHTML = "<small><a href='/home/admin'>Administrator</a></small>";
   }
 
   // Asynchronous call to get the DOI
@@ -1774,7 +1823,7 @@ App.prototype.generateStationTable = function() {
         x.position.lng,
         x.elevation,
         isActive(x),
-        "<a href='./home/station?network=" + x.network + "&station=" + x.station + "'>View & Manage</a>"
+        "<a href='./home/station?network=" + x.network + "&station=" + x.station + "'>View</a>"
       ];
 
     }
@@ -1794,7 +1843,7 @@ App.prototype.generateStationTable = function() {
         "Longitude",
         "Elevation",
         "Open",
-        "Station Details"
+        "Details"
       ];
     
       // Get the list (filtered)
