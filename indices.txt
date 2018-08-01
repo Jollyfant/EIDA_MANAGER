@@ -23,3 +23,9 @@ db.messages.createIndex({
 db.messages.createIndex({
   "sender": 1
 });
+
+db.files.createIndex({
+  "created": 1,
+  "network": 1,
+  "station": 1
+})

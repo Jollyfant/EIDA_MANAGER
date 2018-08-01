@@ -62,7 +62,11 @@ function validateFiles(files) {
         }
 
         // Detailed sanization check on station metadata
-        validateStationMetadata(station);
+        try {
+          validateStationMetadata(station);
+        } catch(exception) {
+          throw(exception + " for station " + networkCode + "." + stationCode + "."); 
+        }
 
         stagedStations.push({
           "network": networkCode,

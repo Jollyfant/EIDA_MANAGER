@@ -1,10 +1,19 @@
+/* App.js
+ *
+ * Client-side JavaScript code for EIDA Manager
+ * 
+ * Copyright: ORFEUS Data Center, 2018
+ * Author: Mathijs Koymans
+ * License: MIT
+ *
+ */
+
 const __DEBUG__ = true;
 
 const STATION_MARKER_GREEN = "/images/station-green.png";
 const STATION_MARKER_ORANGE = "/images/station-orange.png";
 const STATION_MARKER_GREY = "/images/station-grey.png";
 const STATION_MARKER_RED = "/images/station-red.png";
-const NODE_MARKER = "/images/node.png";
 
 const SOCKET_URL = "ws://0.0.0.0:8089"
 const DOI_URL = "http://0.0.0.0:8090";
@@ -22,6 +31,8 @@ var App = function() {
 
   // Set the session network
   this.network = USER_NETWORK;
+
+  this.queryString = parseQuery(window.location.search);
 
   // Initialize the map
   this.init();
@@ -98,7 +109,7 @@ function HTTPRequest(url, callback) {
 
   }
 
-  // Close the request
+  // Open and finish the request
   xhr.open("GET", url);
   xhr.send();
 
@@ -152,35 +163,80 @@ App.prototype.AddMap = function() {
       "lat": 52.10165,
       "lng": 5.1783
     }
+  }, {
+    "name": "Helmholz-Zentrum Potsdam",
+    "id": "GFZ",
+    "position": {
+      "lat": 52.383,
+      "lng": 13.066
+    }
+  }, {
+    "name": "Reseau Sismologique & Geodesique Francais",
+    "id": "RESIF",
+    "position": {
+      "lat": 45.1942,
+      "lng": 5.7704
+    }
+  }, {
+    "name": "Instituto Nazionale di Geofisica e Vulcanologia",
+    "id": "INGV",
+    "position": {
+      "lat": 41.848,
+      "lng": 12.5151
+    }
+  }, {
+    "name": "ETH Zurich Schweizerischer Erdbebendienst",
+    "id": "SED",
+    "position": {
+      "lat": 47.3788,
+      "lng": 8.5472
+    }
+  }, {
+    "name": "Bundensanstalt fur Geowissenschaften und Rohstoffe",
+    "id": "BGR",
+    "position": {
+      "lat": 52.4048,
+      "lng": 9.8214
+    }
   }];
 
   // Add the EIDA nodes
-  NODES.forEach(function(node) {
+  NODES.forEach(this.addNode.bind(this));
 
-    var marker = new google.maps.Marker({
-      "map": this.map,
-      "position": node.position,
-      "id": node.id,
-      "title": "ORFEUS Data Center",
-      "icon": NODE_MARKER,
-      "zIndex": 100
-    });
+  console.debug("Map has been initialized in " + (Date.now() - start) + " ms.");
 
-    // Add listener to the EIDA nodes
-    marker.addListener("click", function() {
+}
 
-      this.infowindow.close();
+App.prototype.addNode = function(node) {
 
-      this.getFDSNWSStatus(function(responseTimes) {
-        this.infowindow.setContent(generateNodeInfoWindow(marker, responseTimes));
-        this.infowindow.open(this.map, marker);
-      }.bind(this));
+  /* function App.addNode
+   * Adds a single EIDA node to the map
+   */
 
+  const NODE_MARKER = "/images/node.png";
+  const NODE_ZINDEX = 100;
+
+  var marker = new google.maps.Marker({
+    "map": this.map,
+    "position": node.position,
+    "id": node.id,
+    "title": node.name, 
+    "icon": NODE_MARKER,
+    "zIndex": NODE_ZINDEX
+  });
+
+  // Add listener to the EIDA nodes
+  marker.addListener("click", function() {
+
+    this.infowindow.close();
+
+    // Get the webservice response times
+    this.getFDSNWSStatus(function(responseTimes) {
+      this.infowindow.setContent(generateNodeInfoWindow(marker, responseTimes));
+      this.infowindow.open(this.map, marker);
     }.bind(this));
 
   }.bind(this));
-
-  console.debug("Map has been initialized in " + (Date.now() - start) + " ms.");
 
 }
 
@@ -802,10 +858,9 @@ App.prototype.launchStation = function() {
   // Set the zoom level for the individual station
   this.map.setZoom(MAP_STATION_ZOOM_LEVEL);
 
-  var queryString = parseQuery(window.location.search);
   var exampleSocket;
 
-  Element("history-table-title").innerHTML = queryString.network + "." + queryString.station;
+  Element("history-table-title").innerHTML = this.queryString.network + "." + this.queryString.station;
 
   function formatHistoryTable(x) {
 
@@ -822,7 +877,7 @@ App.prototype.launchStation = function() {
 
   }
 
-  HTTPRequest("/api/history?network=" + queryString.network + "&station=" + queryString.station, function(json) {
+  HTTPRequest("/api/history?network=" + this.queryString.network + "&station=" + this.queryString.station, function(json) {
   
     if(json === null) {
       return Element("metadata-history").innerHTML = "<span class='text-muted'>No metadata history is available.</span>";
@@ -837,6 +892,11 @@ App.prototype.launchStation = function() {
       "body": json.map(formatHistoryTable),
       "search": false
     });
+
+    // Add option to supersede the most recent metadata
+    if(json[0].status !== -3) {
+      Element("metadata-history").innerHTML += "<button class='btn btn-danger btn-sm' onclick='deleteMetadata(\"" + json[0].sha256 + "\")'>Supersede Metadata</button>";
+    }
 
   });
 
@@ -853,7 +913,7 @@ App.prototype.launchStation = function() {
 
     // Even when connection is made
     exampleSocket.onopen = function(event) {
-      exampleSocket.send(JSON.stringify({"subscribe": queryString.network + "." + queryString.station}));
+      exampleSocket.send(JSON.stringify({"subscribe": this.queryString.network + "." + this.queryString.station}));
     }
 
     // When a record is received from Seedlink
@@ -889,8 +949,11 @@ App.prototype.getStationDetails = function() {
 
   HTTPRequest("/api/channels" + window.location.search, function(json) {
 
+    Element("channel-information-header").innerHTML = getIcon("signal", "muted") + " " + this.queryString.network + "." + this.queryString.station;
+
     if(json === null) {
-      return map.setCenter({"lat": 52.10165, "lng": 5.1783});
+      Element("channel-information").innerHTML = "<span class='text-muted'>Station information is unavailable from FDSNWS.</span>";
+      return this.map.setCenter({"lat": 52.10165, "lng": 5.1783});
     }
 
     // Cache
@@ -920,7 +983,6 @@ App.prototype.getStationDetails = function() {
     // Update the final crumb with the station name
     updateCrumbTitle(marker.title);
 
-    Element("channel-information-header").innerHTML = getIcon("signal", "muted") + " " + marker.title;
     Element("map-information").innerHTML = "Map showing station <b>" + marker.title + "</b> with <b>" + json.filter(isStationActive).length + "</b> open channels.";
 
     // Event listener for clicks
@@ -1177,6 +1239,27 @@ function updateCrumbTitle(subject) {
 
 }
 
+function deleteMetadata(hash) {
+
+  // Make sure this is not a mistake
+  if(!confirm("Are you sure you want to supersede the metadata?")) {
+    return;
+  }
+
+  console.debug("Superseding document with identifier " + hash);
+
+  // Instead of "read" we pass "delete" to the API with the same message identifier
+  $.ajax({
+    "url": "/api/history?id=" + hash,
+    "type": "DELETE",
+    "dataType": "JSON",
+    "success": function() {
+      window.location.reload();
+    }
+  });
+
+}
+
 function deleteAllMessages(type) {
 
   /* Function deleteAllMessages
@@ -1317,7 +1400,7 @@ App.prototype.getNetworkDOI = function() {
      * Returns formatted DOI link to show on page
      */
 
-    return "<a title='" + element.doi + "' href='https://doi.org/" + element.doi + "'><span class='fa fa-globe'></span> " + element.network + "</a>";
+    return "<a title='" + element.doi + "' href='https://doi.org/" + element.doi + "'><span class='fas fa-globe-americas'></span> " + element.network + "</a>";
 
   }
 
@@ -1761,7 +1844,7 @@ function Sum(array) {
 
 function getAverage(array) {
 
-  /* Function getAverage
+  /* function getAverage
    * returns the average of an array
    */
 
@@ -1911,27 +1994,26 @@ function getInstrumentResponse(query) {
   
   }
 
-  network = query.split(".")[0];
-  station = query.split(".")[1];
-  loc = query.split(".")[2] || "--";
-  channel = query.split(".")[3];
-  units = query.split(".")[4];
+  // Extract the parameters
+  var network = query.split(".")[0];
+  var station = query.split(".")[1];
+  var loc = query.split(".")[2] || "--";
+  var channel = query.split(".")[3];
+  var units = query.split(".")[4];
 
   var API = "https://orfeus-eu.org/api/response/" + network + "/" + station + "/" + loc + "/" + channel + "?units=" + mapUnit(units);
 
-  document.getElementById("response-loading-bar").style.display = "block";
+  Element("response-loading-bar").style.display = "block";
 
-  $.ajax({
-    "url": API, 
-    "type": "GET",
-    "dataType": "JSON",
-    "success": function(json) {
-      responseAmplitudeChart(json);
-      responsePhaseChart(json);
-    },
-    "complete": function() {
-      document.getElementById("response-loading-bar").style.display = "none";
-    }
+  HTTPRequest(API, function(json) {
+
+    // Create the charts
+    responseAmplitudeChart(json);
+    responsePhaseChart(json);
+
+    // Hide the loading bar
+    Element("response-loading-bar").style.display = "none";
+
   });
 
 }
@@ -2276,12 +2358,9 @@ function downloadAsCSV() {
    */
 
   const MIME_TYPE = "data:text/csv;charset=utf-8";
-
   const CSV_HEADER = ["Network", "Station", "Description", "Latitude", "Longitude", "Elevation", "Start"].join(",");
 
-  var payload = _stationJson.map(function(x) {
-    return [x.network, x.station, x.description, x.position.lat, x.position.lng, x.elevation, x.start].join(",");
-  });
+  var payload = _stationJson.map(x => [x.network, x.station, x.description, x.position.lat, x.position.lng, x.elevation, x.start].join(","));
 
   // Add the header
   payload.unshift(CSV_HEADER);
@@ -2353,11 +2432,18 @@ function readMultipleFiles(files, callback) {
    * a callback with its contents
    */
 
+  var readFile
   var fileContents = new Array();
 
   // IIFE to read multiple files
-  (read = function(file) {
+  (readFile = function(file) {
 
+    // All files were read
+    if(!files.length) {
+      return callback(fileContents);
+    }
+
+    var file = files.pop();
     var reader = new FileReader();
 
     // XML should be readable as text
@@ -2374,17 +2460,12 @@ function readMultipleFiles(files, callback) {
         "size": file.size
       });
 
-      // Last file has been read
-      if(!files.length) {
-        return callback(fileContents);
-      }
-
       // More files to read: continue
-      read(files.pop());
+      readFile();
 
     }
 
-  })(files.pop());
+  })();
 
 }
 

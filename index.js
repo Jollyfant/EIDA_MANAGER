@@ -15,6 +15,8 @@
 // Make require relative to the root directory
 require("./require");
 
+const childProcess = require("child_process");
+
 // Native includes
 const { createServer } = require("http");
 const path = require("path");
@@ -331,6 +333,11 @@ WebRequest.prototype.handleSession = function(session) {
     return this.APIRequest();
   }
 
+  // Forwards RPCs
+  if(this.url.pathname.startsWith("/rpc")) {
+    return this.RPC();
+  }
+
   // Serve the different pages
   switch(this.url.pathname) {
     case "/logout":
@@ -343,6 +350,8 @@ WebRequest.prototype.handleSession = function(session) {
       return this.launchUpload();
     case "/seedlink":
       return this.launchSeedlink();
+    case "/admin":
+      return this.launchAdmin();
     case "/home/messages":
       return this.HTTPResponse(200, template.generateMessages(this.session));
     case "/home/messages/details":
@@ -357,6 +366,87 @@ WebRequest.prototype.handleSession = function(session) {
 
 }
 
+WebRequest.prototype.RPC = function() {
+
+  /* WebRequest.RPC
+   * Handler for remote procedure calls for
+   * service administrators
+   */
+
+  if(this.session.role !== "admin") {
+    return this.HTTPError(ohttp.E_HTTP_FORBIDDEN); 
+  }
+
+  switch(this.url.pathname) {
+    case "/rpc/inventory":
+      return this.RPCInventory();
+    default:
+      return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
+  }
+
+}
+
+WebRequest.prototype.RPCInventory = function() {
+
+  /* Function RPCInventory
+   * Call to merge the entire inventory based on the most recent
+   * ACCEPTED or COMPLETED metadata
+   */
+
+  const FILENAME = "inventory.sc3ml";
+
+  logger.info("RPC for full inventory received.");
+
+  // Query the database for all accepted files
+  database.getAcceptedInventory(function(error, documents) {
+
+    if(error) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
+
+    if(documents.length === 0) {
+      return this.HTTPError(ohttp.S_HTTP_NO_CONTENT);
+    }
+
+    logger.info("RPC is merging " + documents.length + " inventory files.");
+
+    // Get the SC3ML filenames and add them to the CMDline
+    var SEISCOMP_COMMAND = [
+      "--asroot",
+      "exec",
+      "scinv",
+      "merge"
+    ].concat(documents.map(x => x.filepath + ".sc3ml"));
+
+    // Spawn the SeisComP3 subprocess
+    const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
+
+    // ENOENT SeisComP3
+    convertor.on("error", function(error) {
+      this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }.bind(this));
+
+    // Set the HTTP header for the request
+    convertor.stdout.once("data", function() {
+      this.response.writeHead(ohttp.S_HTTP_OK, {"Content-Disposition": "attachment;filename=" + FILENAME});
+    }.bind(this));
+
+    // Pipe stdout of SeisComP3 to the response
+    convertor.stdout.pipe(this.response);
+
+    // NOOP but required..
+    convertor.stderr.on("data", function() { });
+
+    // Child process has closed
+    convertor.on("close", function(code) {
+      logger.info("RPC merged full inventory of " + documents.length + " files. Exited with status code " + code + ".");
+    });
+
+  }.bind(this));
+
+}
+
+
 WebRequest.prototype.launchLogin = function(session) {
 
   /* Function WebRequest.launchLogin
@@ -369,6 +459,16 @@ WebRequest.prototype.launchLogin = function(session) {
   }
 
   return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateLogin(this.request.url));
+
+}
+
+WebRequest.prototype.launchAdmin = function() {
+
+  if(this.session.role !== "admin") {
+    return this.HTTPError(ohttp.E_HTTP_FORBIDDEN);
+  }
+
+  return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateAdmin(this.session));
 
 }
 
@@ -1189,10 +1289,29 @@ WebRequest.prototype.APIRequest = function() {
 
 }
 
-WebRequest.prototype.getMetadataFile = function(id) {
+WebRequest.prototype.removeMetadata = function(id) {
 
-  /* Function WebRequest.getMetadataFile
+  /* Function WebRequest.removeMetadata
    * Writes metadata file from disk to user
+   */
+
+  // Pass the identifier and network
+  database.supersedeFileByHash(this.session.network, id, function(error, result) {
+
+    if(error) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
+
+    return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+
+  }.bind(this));
+
+}
+
+WebRequest.prototype.pipeMetadata = function(id) {
+
+  /* WebRequest.pipeMetadata
+   * Pipes a metadata file from disk to user
    */
 
   // Find a document that matches the identifier
@@ -1213,6 +1332,23 @@ WebRequest.prototype.getMetadataFile = function(id) {
 
 }
 
+WebRequest.prototype.getMetadataFile = function(id) {
+
+  /* Function WebRequest.getMetadataFile
+   * Writes metadata file from disk to user
+   */
+
+  switch(this.request.method) {
+    case "DELETE":
+      return this.removeMetadata(id);
+    case "GET":
+      return this.pipeMetadata(id);
+    default:
+      return this.HTTPError(ohttp.E_HTTP_NOT_IMPLEMENTED);
+  }
+
+}
+
 WebRequest.prototype.getMetadataHistory = function() {
 
   /* Function WebRequest.getMetadataHistory
@@ -1222,12 +1358,13 @@ WebRequest.prototype.getMetadataHistory = function() {
   // Parse the query string
   var queryString = querystring.parse(this.url.query);
 
+  // If an id parameter was passed
   if(queryString.id) {
     return this.getMetadataFile(queryString.id);
   }
 
   // Get the file by network and station identifier
-  database.getFileByStation(queryString.network, queryString.station, function(error, results) {
+  database.getFilesByStation(queryString.network, queryString.station, function(error, results) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1357,7 +1494,7 @@ WebRequest.prototype.removeAllMessagesSent = function() {
 
 }
 
-WebRequest.prototype.RemoveAllMessages = function() {
+WebRequest.prototype.removeAllMessages = function() {
 
   /* Function WebRequest.RemoveAllMessages
    * Sets all messages for user to deleted
@@ -1694,11 +1831,17 @@ WebRequest.prototype.getSubmittedFiles = function() {
    * and concatenate the result
    */
 
+  var network = this.session.network;
+
+  if(network === "*") {
+    network = new RegExp(/.*/);
+  }
+
   // Stages:
   // Pending -> Accepted | Rejected
   var pipeline = [{
     "$match": {
-      "userId": database.ObjectId(this.session._id),
+      "network": network
     }  
   }, {
     "$group": {
