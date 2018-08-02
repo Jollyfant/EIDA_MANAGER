@@ -1,6 +1,6 @@
 {
   "__STDOUT__": false,
-  "__DEBUG__": false,
+  "__DEBUG__": true,
   "__VERSION__": "1.0.0",
   "__CLOSED__": false,
   "PORT": 8088,
@@ -17,12 +17,13 @@
   },
   "MAXIMUM_POST_BYTES": 1E8,
   "METADATA": {
+    "PURGE": true,
     "PATH": "./metadata",
     "SCHEMA": {
       "PATH": "./schema/fdsn-station-1.0.xsd"
     },
     "DAEMON": {
-      "ENABLED": false,
+      "ENABLED": true,
       "SLEEP_INTERVAL_MS": 60000
     }
   },
@@ -51,7 +52,7 @@
   },
   "MONGO": {
     "NAME": "orfeus-manager",
-    "HOST": "0.0.0.0",
+    "HOST": "mongo",
     "PORT": 27017
   }
 }

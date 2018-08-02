@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<seiscomp xmlns="http://geofon.gfz-potsdam.de/ns/seiscomp3-schema/0.10" version="0.10">
+  <Inventory>
+    <network publicID="NET/Z3/20180731122733.139145.9" code="Z3">
+      <start>2015-01-01T00:00:00.0000Z</start>
+      <end>2020-07-01T00:00:00.0000Z</end>
+      <description>AlpArray Seismic Network (AASN) temporary component</description>
+      <restricted>true</restricted>
+      <shared>true</shared>
+    </network>
+  </Inventory>
+</seiscomp>

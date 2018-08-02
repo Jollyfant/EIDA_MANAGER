@@ -20,7 +20,6 @@ services:
     volumes:
       - ./logs:/usr/src/app/logs
       - ./data/metadata:/usr/src/app/metadata
-      - ./prototypes:/usr/src/app/prototypes
     ports:
       - 8088:8088
 

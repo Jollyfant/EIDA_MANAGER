@@ -198,6 +198,8 @@ WebRequest.prototype.serveStaticFile = function(resource) {
         return ohttp.MIME.PNG;
       case ".js":
         return ohttp.MIME.JS;
+      case ".sc3ml":
+        return ohttp.MIME.XML;
       default:
         return ohttp.MIME.TEXT;
     }
@@ -1086,7 +1088,7 @@ WebRequest.prototype.writeSubmittedFiles = function(XMLDocuments, callback) {
      */
 
     // Update all old files to superseded
-    database.files().updateMany({
+    database.files().updateOne({
       "network": file.network,
       "station": file.station,
       "_id": {
@@ -1134,6 +1136,7 @@ WebRequest.prototype.writeSubmittedFiles = function(XMLDocuments, callback) {
     // Extact metadata for the file
     var metadata = {
       "error": null,
+      "available": null,
       "filename": file.metadata.id,
       "modified": null,
       "network": file.metadata.network,
@@ -1150,19 +1153,15 @@ WebRequest.prototype.writeSubmittedFiles = function(XMLDocuments, callback) {
 
     // Check if the file (sha256) is already in the database
     // Since it is pointless to store multiple objects for the same file
-    database.files().findOneAndDelete({"sha256": metadata.sha256}, function(error, result) {
+    // Superseded files ALWAYS stay in the database to keep a history
+    database.files().findOne({"sha256": metadata.sha256, "status": {"$ne": database.METADATA_STATUS_SUPERSEDED}}, function(error, document) {
 
       if(error) {
         return callback(error);
       }
 
-      // Hash is already in the database
-      // Check if file is active (i.e. not superseded)
-      // Then copy the current status since no metadaemon processing required
-      if(result.value !== null) {
-        if(result.value.status !== database.METADATA_STATUS_SUPERSEDED) {
-          metadata.status = result.value.status;
-        }
+      if(document !== null) {
+        return writeNextFile();
       }
 
       // Insert the new (or updated) metadata document
@@ -1178,17 +1177,21 @@ WebRequest.prototype.writeSubmittedFiles = function(XMLDocuments, callback) {
           return callback(error);
         }
 
-        // Supersede previous metadata documents (outdated metadata)
-        supersedeDocuments(metadata, document.insertedId, function() {
+        // NodeJS stdlib for writing file
+        fs.writeFile(path.join(metadata.filepath + ".stationXML"), file.data, function(error) {
 
-          // NodeJS stdlib for writing file
-          fs.writeFile(path.join(metadata.filepath + ".stationXML"), file.data, function(error) {
+          if(error) {
+            logger.error("Could not write file " + metadata.filename + " to disk (" + metadata.sha256 + ")");
+          } else {
+            logger.info("Writing file for " + metadata.filename + " to disk (" + metadata.sha256 + ")");
+          }
 
-            if(error) {
-              logger.error("Could not write file " + metadata.filename + " to disk (" + metadata.sha256 + ")");
-            } else {
-              logger.info("Writing file for " + metadata.filename + " to disk (" + metadata.sha256 + ")");
-            }
+          if(error) {
+            return callback(error);
+          }
+
+          // Supersede previous metadata documents (outdated metadata)
+          database.supersedeFileByStation(document.insertedId, metadata, function(error) {
 
             if(error) {
               return callback(error);
@@ -1296,7 +1299,7 @@ WebRequest.prototype.removeMetadata = function(id) {
    */
 
   // Pass the identifier and network
-  database.supersedeFileByHash(this.session.network, id, function(error, result) {
+  database.supersedeFileByHash(this.session.network, id, function(error) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);

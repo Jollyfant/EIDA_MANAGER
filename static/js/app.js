@@ -678,6 +678,7 @@ function getStatus(status) {
    */
 
   const METADATA_STATUS_SUPERSEDED = -3;
+  const METADATA_STATUS_DELETED = -2;
   const METADATA_STATUS_REJECTED = -1;
   const METADATA_STATUS_UNCHANGED = 0;
   const METADATA_STATUS_PENDING = 1;
@@ -701,6 +702,8 @@ function getStatus(status) {
       return "<span class='text-success'>" + getIcon("check") + " Approved </span>"
     case METADATA_STATUS_AVAILABLE:
       return "<span class='text-success'>" + getIcon("rocket") + " Available </span>"
+    case METADATA_STATUS_DELETED:
+      return "<span class='text-danger'>" + getIcon("ban") + " Terminated </span>"
     default:
       return "<span class='text-muted'>" + getIcon("question") + " Unknown </span>"
   }
@@ -730,6 +733,7 @@ App.prototype.setupStagedFilePolling = function() {
     var stagedTable = json.map(function(file) {
 
       var title = file.status === -1 ? file.error : "";
+      var statusInformation = "<b title='" + title + "'>" + getStatus(file.status) + "</b>";
 
       return [
         "<b><a href='/home/station?network=" + file._id.network + "&station=" + file._id.station + "'>" + file._id.network + "." + file._id.station +" </a></b>" + (file.new ? "&nbsp;<span class='fa fa-star text-warning'></span>" : ""),
@@ -738,7 +742,7 @@ App.prototype.setupStagedFilePolling = function() {
         file.created,
         file.modified || file.created,
         (1E-3 * file.size).toFixed(1) + "KB",
-        "<b title='" + title + "'>" + getStatus(file.status) + "</b>"
+        statusInformation
       ];
     });
   
@@ -1457,7 +1461,7 @@ App.prototype.getNetworkDOI = function() {
 
   // Do not show all DOIs for an administrator
   if(this.network === "*") {
-    return doiElement.innerHTML = "<small><a href='/home/admin'>Administrator</a></small>";
+    return doiElement.innerHTML = "<small><a href='/home/admin'>Administrator Panel</a></small>";
   }
 
   // Asynchronous call to get the DOI
