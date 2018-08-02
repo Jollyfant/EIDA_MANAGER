@@ -310,7 +310,7 @@ App.prototype.setupNotificationPolling = function() {
 
     // Show modal that user has new messages
     if(json.count > 0 && this.uri.search === "?welcome") {
-      Element("modal-content").innerHTML = generateMessageAlert("success", "You have " + json.count + " unread message(s).");
+      Element("modal-content").innerHTML = generateMessageAlert("success", "You have <b>" + json.count + "</b> unread message(s).");
       $("#modal-alert").modal();
     }
 
@@ -689,23 +689,23 @@ function getStatus(status) {
 
   switch(status) {
     case METADATA_STATUS_SUPERSEDED:
-      return "<span class='text-muted'>" + getIcon("ban") + " Superseded </span>"
+      return "<span title='Metadata is superseded or expired' class='text-muted'>" + getIcon("ban") + " Superseded </span>"
     case METADATA_STATUS_REJECTED:
       return "<span class='text-danger'>" + getIcon("times") + " Rejected </span>"
     case METADATA_STATUS_PENDING:
-      return "<span class='text-warning'>" + getIcon("clock") + " Pending </span>"
+      return "<span title='Metadata is awaiting validation' class='text-warning'>" + getIcon("clock") + " Pending </span>"
     case METADATA_STATUS_VALIDATED:
-      return "<span class='text-info'>" + getIcon("cogs") + " Validated </span>"
+      return "<span title='Metadata is semantically validated' class='text-info'>" + getIcon("cogs") + " Validated </span>"
     case METADATA_STATUS_CONVERTED:
-      return "<span class='text-info'>" + getIcon("cogs") + " Converted </span>"
+      return "<span title='Metadata is converted to SC3ML' class='text-info'>" + getIcon("cogs") + " Converted </span>"
     case METADATA_STATUS_APPROVED:
-      return "<span class='text-success'>" + getIcon("check") + " Approved </span>"
+      return "<span title='Metadata is approved by the system' class='text-success'>" + getIcon("check") + " Approved </span>"
     case METADATA_STATUS_AVAILABLE:
-      return "<span class='text-success'>" + getIcon("rocket") + " Available </span>"
+      return "<span title='Metadata is available through FDSNWS' class='text-success'>" + getIcon("rocket") + " Available </span>"
     case METADATA_STATUS_DELETED:
-      return "<span class='text-danger'>" + getIcon("ban") + " Terminated </span>"
+      return "<span title='Metadata processing is terminated' class='text-danger'>" + getIcon("ban") + " Terminated </span>"
     default:
-      return "<span class='text-muted'>" + getIcon("question") + " Unknown </span>"
+      return "<span title='Metadata has an unknown status' class='text-muted'>" + getIcon("question") + " Unknown </span>"
   }
 
 }
@@ -946,9 +946,17 @@ App.prototype.launchStation = function() {
       "search": false
     });
 
+    var topElement = json[0];
+
     // Add option to supersede the most recent metadata
-    if(json[0].status !== -3) {
-      Element("metadata-history").innerHTML += "<button class='btn btn-danger btn-sm' onclick='deleteMetadata(\"" + json[0].sha256 + "\")'>Supersede Metadata</button>";
+    switch(topElement.status) {
+      case 5:
+        return Element("metadata-history").innerHTML += "<button class='btn btn-danger btn-sm' onclick='deleteMetadata(\"" + topElement.sha256 + "\")'>Supersede Metadata</button>";
+      case -2:
+      case -3:
+        return;
+      default:
+        return Element("metadata-history").innerHTML += "<button class='btn btn-danger btn-sm' onclick='deleteMetadata(\"" + topElement.sha256 + "\")'>Terminate Processing</button>";
     }
 
   });
@@ -1301,7 +1309,7 @@ function deleteMetadata(hash) {
 
   console.debug("Superseding document with identifier " + hash);
 
-  // Instead of "read" we pass "delete" to the API with the same message identifier
+  // Instead of "GET" we pass "DELETE" to the HTTP API with the same message identifier
   $.ajax({
     "url": "/api/history?id=" + hash,
     "type": "DELETE",

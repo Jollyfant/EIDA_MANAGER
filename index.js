@@ -395,7 +395,7 @@ WebRequest.prototype.RPCInventory = function() {
    * ACCEPTED or COMPLETED metadata
    */
 
-  const FILENAME = "inventory.sc3ml";
+  const FILENAME = CONFIG.NODE.ID + "-sc3ml-full-inventory";
 
   logger.info("RPC for full inventory received.");
 

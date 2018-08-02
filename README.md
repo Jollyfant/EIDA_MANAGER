@@ -31,9 +31,11 @@ The prototype files (sc3ml) must be downloaded in advance and are placed in the 
 
 Metadata is submitted through the EIDA Manager user interface. All metadata is validated (e.g. schema; sanity checks) by the client and server. Metadata is split to a station level and written to disk, and an entry in the database is made. This triggers the automatic metadata processing pipeline (pending -> validated -> converted -> merged -> approved). When new metadata is submitted, the old metadata is superseded but never removed. The newer metadata is saved under a different name and subject to the same processing pipeline until it is approved for inclusion by the system.
 
-Network operators can follow their metadata through the system by the interface. If metadata is rejected for a reason, the operator can identify the problem and re-submit corrected metadata.
+Network operators can follow their metadata through the system by the interface. If metadata is rejected for a reason, the operator can identify the problem and submit corrected metadata.
 
 A daemon process (metadaemon) runs periodically and processes metadata. Occasionally it merges the most up-to-date inventory to a full inventory that can be manually supplied to SeisComP3 to expose the most recent metadata through FDSNWS webservices.
+
+The system manages the complete history of all metadata submitted. Files that are not important (e.g. rejected files, or files that were never published through FDSNWS are purged from the system). This feature greatly increases the data provenance.
 
 Processing Pipeline terminology:
 
@@ -44,6 +46,7 @@ Processing Pipeline terminology:
   - Approved - Valid SC3ML waiting idle to be combined to a full inventory by the metadaemon
 
   - Rejected - Metadata was rejected by the system
+  - Terminated - Metadata processing was terminated
   - Available - Metadata is presently available through the FDSNWS Webservice
 
 ## Configuration
