@@ -23,6 +23,7 @@ Without Docker, a manual installation of `MongoDB` and `SeisComP3` are required.
 
 ## Network prototypes
 
+** Information is outdated ** 
 Network prototypes are metadata definitions on a network level (e.g. start time, description). All submitted metadata is compared to its respective network prototype. This is a requirement put in place by SeisComP3 when merging inventories where all top-level network attributes must be identical. Because metadata is sourced from multiple sources, we must define a prototype that all stations from a single network must adhere to (step: merged in processing pipeline)
 
 The prototype files (sc3ml) must be downloaded in advance and are placed in the prototype directory.
@@ -53,6 +54,7 @@ Processing Pipeline terminology:
 
 Configuration parameters are:
 
+  - `__ACCESS__` Write HTTPD styled access log to logfile
   - `__STDOUT__` Write logged information to stdout instead of file.
   - `__DEBUG__` Sets application in debug mode.
   - `__VERSION__` Application version.

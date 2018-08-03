@@ -429,10 +429,11 @@ WebRequest.prototype.handlePrototype = function(buffer, callback) {
           return callback(error);
         }
 
-        logger.info("Inserted new network prototype for (" + JSON.stringify(parsedPrototype.network.start) + ")");
+        logger.info("Inserted new network prototype for (" + JSON.stringify(parsedPrototype.network) + ")");
 
-        // A new network prototype was submitted (or changed)
-        // We must supersede all metadata from this network
+        // A new network prototype was submitted (or changed) and we are required to supersede all metadata from this network
+        // Note: it is highly unrecommended to change an existing network prototype once it is defined
+        // the consequence is that network operators must specify new station metadata that matches the new prototype
         database.supersedeNetwork(parsedPrototype.network, function(error) {
 
           if(error) {
@@ -466,6 +467,7 @@ WebRequest.prototype.readPrototypeDirectory = function(callback) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
+    // Collect .xml files and add filepath to filenames
     callback(files.filter(x => x.endsWith(".xml")).map(x => path.join(PROTOTYPE_DIR, x)));
 
   }.bind(this));
