@@ -736,7 +736,7 @@ App.prototype.setupStagedFilePolling = function() {
       var statusInformation = "<b title='" + title + "'>" + getStatus(file.status) + "</b>";
 
       return [
-        "<b><a href='/home/station?network=" + file._id.network + "&station=" + file._id.station + "'>" + file._id.network + "." + file._id.station +" </a></b>" + (file.new ? "&nbsp;<span class='fa fa-star text-warning'></span>" : ""),
+        "<b><a href='/home/station?network=" + file._id.network.code + "&station=" + file._id.station + "'>" + file._id.network.code + "." + file._id.station +" </a></b>" + (file.new ? "&nbsp;<span class='fa fa-star text-warning'></span>" : ""),
         "<a target='_blank' href='/api/history?id=" + file.sha256 + "'><code data-toggle='tooltip' data-placement='right' data-html='true' title='<span class=\"fas fa-fingerprint\"></span> " + file.sha256 +"'>" + file.sha256.slice(0, 8) + "…</code></a>",
         file.nChannels,
         file.created,
@@ -788,7 +788,7 @@ App.prototype.launchHome = function() {
      * Returns formatted information string below map
      */
   
-    return "Map showing <b>" + nStations + "</b> stations from network <b>" + USER_NETWORK + "</b>.";
+    return "Map showing <b>" + nStations + "</b> stations from network <b>" + USER_NETWORK.code + "</b>.";
   
   }
 
@@ -1253,7 +1253,7 @@ App.prototype.addSeedlink = function() {
 
       // No stations were returned
       if(x.stations.length === 0) {
-        return [icon, host, port, identifier, version, "<small> No stations for network " + USER_NETWORK + "</small>"];
+        return [icon, host, port, identifier, version, "<small> No stations for network " + USER_NETWORK.code + "</small>"];
       }
 
       var stations = x.stations.map(function(x) {
@@ -1468,16 +1468,16 @@ App.prototype.getNetworkDOI = function() {
   var doiElement = Element("doi-link");
 
   // Do not show all DOIs for an administrator
-  if(this.network === "*") {
+  if(this.network.code === "*") {
     return doiElement.innerHTML = "<small><a href='/home/admin'>Administrator Panel</a></small>";
   }
 
   // Asynchronous call to get the DOI
-  getDOI(this.network, function(json) {
+  getDOI(this.network.code, function(json) {
 
     // When nothing returned just put the network
     if(json === null) {
-      return doiElement.innerHTML = "<span class='fa fa-globe'></span> " + this.network
+      return doiElement.innerHTML = "<span class='fa fa-globe'></span> " + this.network.code
     }
 
     var element = json.pop();
@@ -1886,7 +1886,7 @@ App.prototype.generateStationTable = function() {
   var start = Date.now();
 
   // Asynchronous request to get the latency information
-  HTTPRequest("/api/latency?network=" + this.network, generateStationLatencyTable.bind(this)); 
+  HTTPRequest("/api/latency?network=" + this.network.code, generateStationLatencyTable.bind(this)); 
 
 }
 

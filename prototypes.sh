@@ -43,7 +43,7 @@ curl -s "$FDSNWS_STATION?level=network&format=text" | sed 1d | while read line; 
 
   # Extend the network code with the start year if temporary
   if [ -n "$networkEnd" ]; then
-    networkCode=$(echo $network#$year)
+    networkCode=$(echo $network-$year)
   else
     networkCode=$(echo $network)
   fi
@@ -56,14 +56,8 @@ curl -s "$FDSNWS_STATION?level=network&format=text" | sed 1d | while read line; 
   fi
 
   # Get the FDSN StationXML for this station and convert to SC3ML network prototype
-  if ! type "seiscomp" > /dev/null 2>&1; then
-    curl -s "$FDSNWS_STATION?network=$network&level=network&endtime=$networkStart&format=sc3ml" | 
-    xmllint --format - > "./prototypes/$networkCode.sc3ml"
-  else
-    curl -s "$FDSNWS_STATION?network=$network&level=network&endtime=$networkStart" | 
-    seiscomp --asroot exec import_inv fdsnxml - - 2>/dev/null |
-    xmllint --format - > "./prototypes/$networkCode.sc3ml"
-  fi
+  curl -s "$FDSNWS_STATION?network=$network&level=network&endtime=$networkStart" | 
+  xmllint --format - > "./prototypes/$networkCode.xml"
 
 done
 

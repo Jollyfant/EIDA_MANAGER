@@ -1,6 +1,6 @@
-/* fdsn-station-xml-validator.js
+/* EIDA Manager - module fdsn-station-xml-validator.js
  *
- * JavaScript module for validating StationXML
+ * JavaScript module for client-side validation ofStationXML
  *
  * Copyright ORFEUS Data Center, 2018
  * 
@@ -10,33 +10,46 @@
  *
  */
 
-const FDSN_STATION_XML_HEADER = "FDSNStationXML";
-const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
-const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
-const XML_MIME_TYPE = "text/xml";
-
-const GAIN_TOLERNACE_PERCENT = 0.001;
-const FIR_TOLERANCE = 0.02;
-
 function validateFiles(files) {
+
+  function convertISO(date) {
+  
+    /* function convertISO
+     * Converts a ISO string missing "Z" to a proper one
+     */
+  
+    if(date === null) {
+      return null;
+    }
+  
+    // Isodate
+    if(!date.endsWith("Z")) {
+      date += "Z";
+    }
+  
+    return new Date(date).toISOString();
+  
+  }
 
   /* function validateFiles
    * validates uploaded StationXML files
    * throws an exception on formatting error
    */
 
+  const FDSN_STATION_XML_HEADER = "FDSNStationXML";
+  const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
+  const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
+
   var stagedStations = new Array();
 
   // Map of stations included by FDSN webservice
-  var stationsMap = _stationJson.map(function(x) {
-    return x.station;
-  });
+  var stationsMap = _stationJson.map(x => x.station);
 
   // Validate each file
   files.forEach(function(file) {
 
     // Parse the XML using the native DOMParser
-    var XML = new DOMParser().parseFromString(file.data, XML_MIME_TYPE);
+    var XML = new DOMParser().parseFromString(file.data, "text/xml");
 
     // Confirm that XML owns the FDSNStationXML namespace
     if(XML.documentElement.nodeName !== FDSN_STATION_XML_HEADER) {
@@ -46,11 +59,22 @@ function validateFiles(files) {
     // Go over all networks and collect station names
     Array.from(XML.getElementsByTagName("Network")).forEach(function(network) {
 
+      // Extract network core properties
       var networkCode = network.getAttribute("code");
+      var networkStart = convertISO(network.getAttribute("startDate"));
+      var networkEnd = convertISO(network.getAttribute("endDate"));
 
       // Confirm network regex & user must own network (allow administrators)
-      if(!NETWORK_REGEXP.test(networkCode) || (USER_NETWORK !== "*" && USER_NETWORK !== networkCode)) {
+      if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK.code !== networkCode) {
         throw("Invalid network code: " + networkCode);
+      }
+
+      if(USER_NETWORK.start !== networkStart) {
+        throw("Invalid network start time: " + networkStart);
+      }
+
+      if(USER_NETWORK.end !== networkEnd) {
+        throw("Invalid network end time: " + networkEnd);
       }
 
       Array.from(network.getElementsByTagName("Station")).forEach(function(station) {
@@ -89,6 +113,8 @@ function validateStationMetadata(station) {
   /* function validateMetadata
    * Validates common StationXML issues for a single station
    */
+
+  const GAIN_TOLERNACE_PERCENT = 0.001;
 
   // Confirm station spatial coordinates
   var stationLatitude = Number(station.getElementsByTagName("Latitude").item(0).innerHTML);
@@ -187,6 +213,8 @@ function validateFIRStage(FIRStage) {
   /* function validateFIRStage
    * Validates the properties of a FIR response stage
    */
+
+  const FIR_TOLERANCE = 0.02;
 
   // Confirm FIR Stage input units as COUNTS
   if(FIRStage.getElementsByTagName("InputUnits").item(0).getElementsByTagName("Name").item(0).innerHTML !== "COUNTS") {

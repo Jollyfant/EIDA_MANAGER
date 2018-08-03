@@ -31,7 +31,7 @@ const multiparty = require("multiparty");
 const { User, Session } = require("./lib/orfeus-session");
 const { SHA256 } = require("./lib/orfeus-crypto");
 const { sum, createDirectory, escapeHTML } = require("./lib/orfeus-util");
-const { splitStationXML } = require("./lib/orfeus-metadata.js");
+const { parsePrototype, splitStationXML } = require("./lib/orfeus-metadata.js");
 const database = require("./lib/orfeus-database");
 const logger = require("./lib/orfeus-logging");
 const ohttp = require("./lib/orfeus-http");
@@ -382,9 +382,137 @@ WebRequest.prototype.RPC = function() {
   switch(this.url.pathname) {
     case "/rpc/inventory":
       return this.RPCInventory();
+    case "/rpc/prototypes":
+      return this.RPCPrototypes();
     default:
       return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
   }
+
+}
+
+WebRequest.prototype.handlePrototype = function(buffer, callback) {
+
+  /* WebRequest.handlePrototypes
+   * Updates the network prototype definitions to the database
+   */
+
+  // Try parsing the prototype files
+  try {
+    var parsedPrototype = parsePrototype(buffer);
+  } catch(exception) {
+    return callback(exception)
+  }
+
+  // Check if the prototype already exists in the database
+  database.prototypes().findOne({"sha256": parsedPrototype.sha256}, function(error, document) {
+
+    if(error) { 
+      return callback(error);
+    } 
+
+    // Hash is in the database: skip!
+    if(document !== null) {
+      return callback(null);
+    }
+
+    // Write the prototype to disk
+    fs.writeFile(path.join("./metadata/prototypes", parsedPrototype.sha256 + ".stationXML"), buffer, function(error) {
+
+      if(error) {
+        return callback(error);
+      }
+
+      // Insert the new (modified) prototype
+      database.prototypes().insertOne(parsedPrototype, function(error, result) {
+
+        if(error) {
+          return callback(error);
+        }
+
+        logger.info("Inserted new network prototype for (" + JSON.stringify(parsedPrototype.network.start) + ")");
+
+        // A new network prototype was submitted (or changed)
+        // We must supersede all metadata from this network
+        database.supersedeNetwork(parsedPrototype.network, function(error) {
+
+          if(error) {
+            return callback(error);
+          }
+
+          callback(null);
+         
+        });
+
+      }.bind(this));
+
+    }.bind(this));
+
+  }.bind(this));
+
+}
+
+WebRequest.prototype.readPrototypeDirectory = function(callback) {
+
+  /* WebRequest.readPrototypeDirectory
+   * Reads the contents of the prototype directory
+   */
+
+  const PROTOTYPE_DIR = "./prototypes";
+
+  // Read all prototypes from the directory
+  fs.readdir(PROTOTYPE_DIR, function(error, files) {
+
+    if(error) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
+
+    callback(files.filter(x => x.endsWith(".xml")).map(x => path.join(PROTOTYPE_DIR, x)));
+
+  }.bind(this));
+
+}
+
+WebRequest.prototype.RPCPrototypes = function() {
+
+  /* WebRequest.RPCPrototypes
+   * Updates new network prototype definitions to the database
+   */
+
+  this.readPrototypeDirectory(function(files) {
+
+    var readPrototypeFile;
+
+    // Async but concurrent
+    (readPrototypeFile = function() {
+
+      // All buffers were read and available
+      if(!files.length) {
+        return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+      }
+
+      var filename = files.pop();
+
+      fs.readFile(filename, function(error, data) {
+
+        if(error) {
+          return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+        }
+
+        this.handlePrototype(data, function(error) {
+     
+          if(error) { 
+            return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+          }
+
+          readPrototypeFile();
+
+        }.bind(this));
+
+      }.bind(this));
+
+    }.bind(this))();
+
+  }.bind(this));
 
 }
 
@@ -1013,7 +1141,7 @@ WebRequest.prototype.handleFileUpload = function(files, callback) {
 
   // Confirm user is manager of the network
   for(var i = 0; i < XMLDocuments.length; i++) {
-    if(this.session.role !== "admin" && this.session.network !== XMLDocuments[i].metadata.network) {
+    if(this.session.role !== "admin" && JSON.stringify(this.session.network) !== JSON.stringify(XMLDocuments[i].metadata.network)) {
       return callback(new Error("User does not own network rights.")); 
     }
   }
@@ -1064,6 +1192,10 @@ WebRequest.prototype.messageAdministrators = function(filenames) {
 
     }.bind(this));
 
+    if(messages.length === 0) {
+      return;
+    }
+
     // Store the messages
     database.storeMessages(messages, function(error, result) {
 
@@ -1080,37 +1212,6 @@ WebRequest.prototype.messageAdministrators = function(filenames) {
 }
 
 WebRequest.prototype.writeSubmittedFiles = function(XMLDocuments, callback) {
-
-  function supersedeDocuments(file, id, callback) {
-
-    /* Function supersedeDocuments
-     * Sets old metadata documents to superseded (by a newer version)
-     */
-
-    // Update all old files to superseded
-    database.files().updateOne({
-      "network": file.network,
-      "station": file.station,
-      "_id": {
-        "$ne": database.ObjectId(id)
-      }
-    }, {
-      "$set": {
-        "status": database.METADATA_STATUS_SUPERSEDED
-      }
-    }, function(error, result) {
-
-      if(error) {
-        logger.error("Could not supersede documents for " + file.filename);
-      } else {
-        logger.info("Superseded " + result.result.nModified + " old metadata documents for " + file.filename);
-      }
-
-      callback();
-
-    });
-
-  }
 
   var writeNextFile;
   var submittedFiles = new Array();
@@ -1299,7 +1400,7 @@ WebRequest.prototype.removeMetadata = function(id) {
    */
 
   // Pass the identifier and network
-  database.supersedeFileByHash(this.session.network, id, function(error) {
+  database.supersedeFileByHash(this.session, id, function(error) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1367,7 +1468,7 @@ WebRequest.prototype.getMetadataHistory = function() {
   }
 
   // Get the file by network and station identifier
-  database.getFilesByStation(queryString.network, queryString.station, function(error, results) {
+  database.getFilesByStation(this.session.network, queryString.station, function(error, results) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1738,6 +1839,11 @@ WebRequest.prototype.getFDSNWSChannels = function() {
     "format": "text",
   });
 
+  // If a network end is specified only show channels from before the network end time
+  if(this.session.network.end !== null) {
+    queryString.endtime = this.session.network.end.toISOString();
+  }
+
   // Extend the query string
   queryString += "&" + this.url.query;
 
@@ -1749,14 +1855,14 @@ WebRequest.prototype.getFDSNWSChannels = function() {
 
 WebRequest.prototype.parseFDSNWSResponse = function(data) {
 
-  /* Function WebRequest.ParseFDSNWSResponse
+  /* function WebRequest.ParseFDSNWSResponse
    * Returns parsed JSON response from FDSNWS Station Webservice
    * for varying levels of information
    */
 
   function stationObject(codes) {
 
-    /* Function WebRequest.ParseFDSNWSResponse::stationObject
+    /* function WebRequest.ParseFDSNWSResponse::stationObject
      * Returns a station object from | delimited parameters
      */
 
@@ -1777,7 +1883,7 @@ WebRequest.prototype.parseFDSNWSResponse = function(data) {
 
   function channelObject(codes) {
 
-    /* Function WebRequest.ParseFDSNWSResponse::channelObject
+    /* function WebRequest.ParseFDSNWSResponse::channelObject
      * Returns a channel object from | delimited parameters
      */
 
@@ -1834,18 +1940,23 @@ WebRequest.prototype.getSubmittedFiles = function() {
    * and concatenate the result
    */
 
-  var network = this.session.network;
+  var networkQuery;
 
-  if(network === "*") {
-    network = new RegExp(/.*/);
+  // Submitted files with metadata
+  if(this.session.role === "admin") {
+    networkQuery = {"network.code": new RegExp(/.*/)}
+  } else {
+    networkQuery = {
+      "network.code": this.session.network.code,
+      "network.start": this.session.network.start,
+      "network.end": this.session.network.end
+    }
   }
 
   // Stages:
   // Pending -> Accepted | Rejected
   var pipeline = [{
-    "$match": {
-      "network": network
-    }  
+    "$match": networkQuery
   }, {
     "$group": {
       "_id": {
@@ -1911,8 +2022,13 @@ WebRequest.prototype.getFDSNWSStations = function() {
   var queryString = querystring.stringify({
     "level": "station",
     "format": "text",
-    "network": this.session.network
+    "network": this.session.network.code
   })
+
+  // If the network end is specified only show stations from before the network end
+  if(this.session.network.end !== null) {
+    queryString.endtime = this.session.network.end.toISOString()
+  }
 
   ohttp.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
     this.writeJSON(this.parseFDSNWSResponse(json));

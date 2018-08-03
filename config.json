@@ -1,4 +1,5 @@
 {
+  "__ACCESS__": false,
   "__STDOUT__": false,
   "__DEBUG__": true,
   "__VERSION__": "1.0.0",
@@ -24,7 +25,7 @@
     },
     "DAEMON": {
       "ENABLED": true,
-      "SLEEP_INTERVAL_MS": 60000
+      "SLEEP_INTERVAL_MS": 6000
     }
   },
   "FDSNWS": {
