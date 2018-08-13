@@ -65,16 +65,20 @@ function validateFiles(files) {
       var networkEnd = convertISO(network.getAttribute("endDate"));
 
       // Confirm network regex & user must own network (allow administrators)
-      if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK.code !== networkCode) {
-        throw("Invalid network code: " + networkCode);
-      }
+      if(USER_NETWORK.code !== "*") {
 
-      if(USER_NETWORK.start !== networkStart) {
-        throw("Invalid network start time: " + networkStart);
-      }
+        if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK.code !== networkCode) {
+          throw("Invalid network code: " + networkCode);
+        }
 
-      if(USER_NETWORK.end !== networkEnd) {
-        throw("Invalid network end time: " + networkEnd);
+        if(USER_NETWORK.start !== networkStart) {
+          throw("Invalid network start time: " + networkStart);
+        }
+
+        if(USER_NETWORK.end !== networkEnd) {
+          throw("Invalid network end time: " + networkEnd);
+        }
+
       }
 
       Array.from(network.getElementsByTagName("Station")).forEach(function(station) {

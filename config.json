@@ -25,7 +25,7 @@
     },
     "DAEMON": {
       "ENABLED": true,
-      "SLEEP_INTERVAL_MS": 6000
+      "SLEEP_INTERVAL_MS": 60000
     }
   },
   "FDSNWS": {

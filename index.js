@@ -1349,6 +1349,8 @@ WebRequest.prototype.APIRequest = function() {
 
   // Register new routes here
   switch(this.url.pathname) {
+    case "/api/prototype":
+      return this.getNetworkPrototype();
     case "/api/seedlink":
       return this.getSeedlinkServers();
     case "/api/history":
@@ -1392,6 +1394,33 @@ WebRequest.prototype.APIRequest = function() {
       return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
 
   }
+
+}
+
+WebRequest.prototype.getNetworkPrototype = function() {
+
+  /* WebRequest.getNetworkPrototype
+   * Returns the active network prototype for this session
+   */
+
+  function getPrototypeFile(document) {
+    return path.join("metadata", "prototypes", document.sha256 + ".stationxml");
+  }
+
+  database.prototypes().find({"network": this.session.network}).sort({"created": database.DESCENDING}).limit(1).toArray(function(error, documents) {
+    
+    if(error) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
+
+    if(documents.length === 0) {
+      return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+    }
+
+    // Pipe the prototype file to the user
+    this.pipe(getPrototypeFile(documents.pop()));
+
+  }.bind(this));
 
 }
 
@@ -1470,7 +1499,7 @@ WebRequest.prototype.getMetadataHistory = function() {
   }
 
   // Get the file by network and station identifier
-  database.getFilesByStation(this.session.network, queryString.station, function(error, results) {
+  database.getFilesByStation(this.session, queryString, function(error, results) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1538,7 +1567,7 @@ WebRequest.prototype.attachSeedlinkMetadata = function(DNSRecords, seedlinkServe
          "identifier": seedlinkServer.identifier,
          "connected": seedlinkServer.connected,
          "version": seedlinkServer.version,
-         "stations": seedlinkServer.error === "CATNOTIMPLEMENTED" ? null : seedlinkServer.stations.filter(station => station.network === this.session.network)
+         "stations": seedlinkServer.error === "CATNOTIMPLEMENTED" ? null : seedlinkServer.stations.filter(station => station.network === this.session.network.code)
        }
      }
 

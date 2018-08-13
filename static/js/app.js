@@ -39,6 +39,16 @@ var App = function() {
 
 }
 
+function handleLogout() {
+
+  if(!confirm("Are you sure you want to log out?")) {
+    return;
+  }
+
+  window.location = "/logout";
+
+}
+
 function getCountryFlag(archive) {
 
   /* function getCountryFlag
@@ -788,7 +798,7 @@ App.prototype.launchHome = function() {
      * Returns formatted information string below map
      */
   
-    return "Map showing <b>" + nStations + "</b> stations from network <b>" + USER_NETWORK.code + "</b>.";
+    return "<small>Map showing <b>" + nStations + "</b> stations from network <b>" + USER_NETWORK.code + "</b> as available from FDSNWS.</small>";
   
   }
 
@@ -911,8 +921,6 @@ App.prototype.launchStation = function() {
   // Set the zoom level for the individual station
   this.map.setZoom(MAP_STATION_ZOOM_LEVEL);
 
-  var exampleSocket;
-
   Element("history-table-title").innerHTML = this.queryString.network + "." + this.queryString.station;
 
   function formatHistoryTable(x) {
@@ -961,6 +969,9 @@ App.prototype.launchStation = function() {
 
   });
 
+  var exampleSocket;
+  var queryStringPointer = this.queryString;
+
   // Change event to toggle WS connection
   Element("connect-seedlink").addEventListener("change", function() {
 
@@ -974,7 +985,7 @@ App.prototype.launchStation = function() {
 
     // Even when connection is made
     exampleSocket.onopen = function(event) {
-      exampleSocket.send(JSON.stringify({"subscribe": this.queryString.network + "." + this.queryString.station}));
+      exampleSocket.send(JSON.stringify({"subscribe": queryStringPointer.network + "." + queryStringPointer.station}));
     }
 
     // When a record is received from Seedlink
@@ -1847,14 +1858,14 @@ App.prototype.generateStationTable = function() {
        */
     
       const TABLE_HEADER = [
-        "Channel Status",
+        "Status",
         "Network",
         "Station",
         "Description",
         "Latitude",
         "Longitude",
         "Elevation",
-        "Open",
+        "Operational",
         "Details"
       ];
     
@@ -1865,6 +1876,8 @@ App.prototype.generateStationTable = function() {
         "header": TABLE_HEADER,
         "body": _stationJson.map(createTableBody)
       });
+
+      Element("table-information").innerHTML = "<small>Table showing <b>" + _stationJson.length + "</b> stations from network <b>" + USER_NETWORK.code + "</b> as available from FDSNWS.</small>";
     
     }
 
@@ -2347,6 +2360,49 @@ function generateAccordion(list) {
 
 }
 
+function downloadAsGeoJSON() {
+
+  /* function downloadAsGeoJSON
+   * Exports station information as GeoJSON
+   */
+
+  function getFeature(station) {
+
+    /* function downloadAsGeoJSON::getFeature
+     * Returns GeoJSON representation of station as GeoJSON Feature
+     */
+
+    return {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [station.position.lng, station.position.lat]
+      },
+      "properties": {
+        "network": station.network,
+        "description": station.description,
+        "station": station.station,
+        "elevation": station.elevation,
+        "start": station.start,
+        "end": station.end
+      }
+    }
+
+  }
+
+  const MIME_TYPE = "data:application/vnd.geo+json;charset=utf-8";
+
+  // Encode the GeoJSON
+  var payload = JSON.stringify({
+    "type": "FeatureCollection",
+    "features": _stationJson.map(getFeature)
+  });
+
+  // Download file
+  downloadURIComponent("stations.geojson", MIME_TYPE + "," + payload);
+
+}
+
 function downloadAsKML() {
 
   /* function downloadAsKML
@@ -2439,7 +2495,7 @@ function downloadAsJSON() {
    * Generates JSON representation of station table
    */
 
-  const MIME_TYPE = "data:text/json;charset=utf-8";
+  const MIME_TYPE = "data:application/json;charset=utf-8";
 
   var payload = encodeURIComponent(JSON.stringify(_stationJson));
 

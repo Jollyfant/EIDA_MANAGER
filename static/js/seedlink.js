@@ -70,7 +70,7 @@ SeedlinkChannel.prototype.Update = function(data) {
   var heartbeatElement = Element("heartbeat-" + data.location + "-" + data.channel);
 
   if(heartbeatElement !== null) {
-    heartbeatElement.innerHTML = getIcon("heart-o", "success") + " <span class='text-success'><b>Heartbeat</b></span>";
+    heartbeatElement.innerHTML = getIcon("heart", "success") + " <span class='text-success'><b>Heartbeat</b></span>";
     $(heartbeatElement).show()
     $(heartbeatElement).fadeOut(1500)
   }
@@ -125,7 +125,6 @@ SeedlinkChannel.prototype.plot = function() {
         "lineWidth": 1,
         "shadow": true,
         "turboThreshold": 0,
-        "lineColor": "#C03",
         "animation": false,
         "marker": {
           "enabled": false
