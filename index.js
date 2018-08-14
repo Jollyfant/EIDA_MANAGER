@@ -31,7 +31,7 @@ const multiparty = require("multiparty");
 const { User, Session } = require("./lib/orfeus-session");
 const { SHA256 } = require("./lib/orfeus-crypto");
 const { sum, createDirectory, escapeHTML } = require("./lib/orfeus-util");
-const { parsePrototype, splitStationXML } = require("./lib/orfeus-metadata.js");
+const { updateStationXML, parsePrototype, splitStationXML } = require("./lib/orfeus-metadata.js");
 const database = require("./lib/orfeus-database");
 const logger = require("./lib/orfeus-logging");
 const ohttp = require("./lib/orfeus-http");
@@ -404,15 +404,16 @@ WebRequest.prototype.handlePrototype = function(buffer, callback) {
   }
 
   // Check if the prototype already exists in the database
-  database.prototypes().findOne({"sha256": parsedPrototype.sha256}, function(error, document) {
+  database.prototypes().find({"network": parsedPrototype.network}).sort({"created": database.DESCENDING}).limit(1).toArray(function(error, documents) {
 
     if(error) { 
       return callback(error);
     } 
 
-    // Hash is in the database: skip!
-    if(document !== null) {
-      return callback(null);
+    if(documents.length !== 0) {
+      if(parsedPrototype.sha256 === documents.pop().sha256) {
+        return callback(null);
+      }
     }
 
     // Write the prototype to disk
@@ -429,20 +430,26 @@ WebRequest.prototype.handlePrototype = function(buffer, callback) {
           return callback(error);
         }
 
-        logger.info("Inserted new network prototype for (" + JSON.stringify(parsedPrototype.network) + ")");
+        logger.info("Inserted new network prototype for " + JSON.stringify(parsedPrototype.network));
 
         // A new network prototype was submitted (or changed) and we are required to supersede all metadata from this network
-        // Note: it is highly unrecommended to change an existing network prototype once it is defined
-        // the consequence is that network operators must specify new station metadata that matches the new prototype
-        database.supersedeNetwork(parsedPrototype.network, function(error) {
+        database.updateNetwork(parsedPrototype.network, function(error, files) {
 
           if(error) {
             return callback(error);
           }
 
-          callback(null);
+          if(files.length === 0) {
+            return callback(null);
+          }
+
+          // Synchronous update all submitted StationXML to match the prototype definition
+          var XMLDocuments = updateStationXML(parsedPrototype, files);
+
+          // Call routine to write all updated files
+          this.writeSubmittedFiles(XMLDocuments, callback);
          
-        });
+        }.bind(this));
 
       }.bind(this));
 
@@ -1132,11 +1139,25 @@ WebRequest.prototype.handleFileUpload = function(files, callback) {
    * Writes multiple (split) StationXML files to disk
    */
 
+  function getProperties(files) {
+
+    /* Function WebRequest.handleFileUpload::getProperties
+     * Extracts properties passed through MultiParty form
+     */
+
+    return {
+      "restricted": {"value": files.filter(x => x.name === "restricted" && x.data === "on").length !== 0}
+    }
+
+  }
+
   var XMLDocuments;
+  var properties = getProperties(files);
+  var files = files.filter(x => x.type === "file");
 
   // We split any submitted StationXML files
   try {
-    XMLDocuments = splitStationXML(files);
+    XMLDocuments = splitStationXML(files, properties);
   } catch(exception) {
     return callback(exception);
   }
@@ -1349,6 +1370,8 @@ WebRequest.prototype.APIRequest = function() {
 
   // Register new routes here
   switch(this.url.pathname) {
+    case "/api/prototypes":
+      return this.getNetworkPrototypes();
     case "/api/prototype":
       return this.getNetworkPrototype();
     case "/api/seedlink":
@@ -1394,6 +1417,28 @@ WebRequest.prototype.APIRequest = function() {
       return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
 
   }
+
+}
+
+WebRequest.prototype.getNetworkPrototypes = function() {
+
+  if(this.session.role !== "admin") {
+    return this.HTTPError(ohttp.E_HTTP_FORBIDDEN);
+  }
+
+  database.prototypes().find().toArray(function(error, documents) {
+
+    if(error) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
+
+    if(documents.length === 0) {
+      return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+    }
+
+    this.writeJSON(documents);
+
+  }.bind(this));
 
 }
 

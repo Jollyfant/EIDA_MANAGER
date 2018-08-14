@@ -39,16 +39,6 @@ var App = function() {
 
 }
 
-function handleLogout() {
-
-  if(!confirm("Are you sure you want to log out?")) {
-    return;
-  }
-
-  window.location = "/logout";
-
-}
-
 function getCountryFlag(archive) {
 
   /* function getCountryFlag
@@ -675,6 +665,35 @@ App.prototype.launchAdmin = function() {
       Element("card-" + service.name).className = "card text-white bg-success";
       Element("card-" + service.name + "-text").innerHTML = "version " + json + " - " + (Date.now() - start) + "<small>ms</small>";
 
+    });
+
+  });
+
+  function fn(x) {
+
+    return [
+      "<b><code data-toggle='tooltip' data-placement='right' data-html='true' title='<span class=\"fas fa-fingerprint\"></span> " + x.sha256 +"'>" + x.sha256.slice(0, 8) + "…</code></b>",
+      x.network.code,
+      x.network.start ? new Date(x.network.start).getFullYear() : "",
+      x.network.end ? new Date(x.network.end).getFullYear() : "",
+      "<small>" + x.description + "</small>",
+      x.restricted,
+      x.created
+    ];
+
+  }
+
+  function fn2(a, b) {
+    return (new Date(b.created) - new Date(a.created));
+  }
+
+  HTTPRequest("/api/prototypes", function(json) {
+
+    new Table({
+      "id": "prototype-table",
+      "search": true,
+      "header": ["Identifier", "Code", "Start", "End", "Description", "Restricted", "Created"],
+      "body": json.sort(fn2).map(fn)
     });
 
   });
@@ -1437,14 +1456,18 @@ function GoogleMapsInfoWindowContent(marker) {
      * Returns formatted HTML link to station detail page
      */
 
-    return "<a href='/home/station?network=" + marker.network + "&station=" + marker.station + "'>View Instrument Details</a>";
+    return "<a href='/home/station?network=" + marker.network + "&station=" + marker.station + "'>" + getIcon("cogs") + " View Instrument Details</a>";
 
   }
 
   return [
     "<h5>Station " + marker.title + "</h5>",
+    "<hr>",
     marker.description,
-    "<p>" + markerDetailLink(marker)
+    "<p>Operational from <b>" + marker.start + "</b> - <b>" + (marker.end || "present") + "</b>",
+    "<br>",
+    "<br>",
+    "<div style='text-align: center;'>" + markerDetailLink(marker) + "</div>"
   ].join(""); 
 
 }
@@ -2177,7 +2200,7 @@ function responsePhaseChart(result) {
         "shadow": false
       }
     },
-    "series": result.payload.filter(function(x) { return x.typo === "phase"}),
+    "series": result.payload.filter(function(x) { return x.typo === "phase" }),
   });
 
 }

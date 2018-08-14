@@ -23,10 +23,9 @@ Without Docker, a manual installation of `MongoDB` and `SeisComP3` are required.
 
 ## Network prototypes
 
-** Information is outdated ** 
-Network prototypes are metadata definitions on a network level (e.g. start time, description). All submitted metadata is compared to its respective network prototype. This is a requirement put in place by SeisComP3 when merging inventories where all top-level network attributes must be identical. Because metadata is sourced from multiple sources, we must define a prototype that all stations from a single network must adhere to (step: merged in processing pipeline)
+Network prototypes are metadata definitions on a network level (e.g. code, start, end, description). All submitted metadata from a network (identified by a code, start & end) is compared to its respective network prototype. This is a requirement put in place by SeisComP3 when merging inventories where all top-level network attributes *must* be identical. Because metadata is sourced from multiple users, we must define a prototype that all stations from a single network must be based on.
 
-The prototype files (sc3ml) must be downloaded in advance and are placed in the prototype directory.
+The prototype files (stationXML) must be downloaded outside of the application and put in the `/prototype` directory. Administrators may invoke an RPC that updates the network prototypes to the database. It is highly unrecommended to update existing prototypes -- as this will supersede all station metadata that was previously submitted. Adding new prototypes for new networks follows the usual business.
 
 ## EIDA Manager Metadata handling
 
