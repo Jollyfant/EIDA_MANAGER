@@ -669,10 +669,14 @@ App.prototype.launchAdmin = function() {
 
   });
 
-  function fn(x) {
+  function formatPrototypeTable(x) {
+
+    /* function formatPrototypeTable
+     * Sorts documents by the created property
+     */
 
     return [
-      "<b><code data-toggle='tooltip' data-placement='right' data-html='true' title='<span class=\"fas fa-fingerprint\"></span> " + x.sha256 +"'>" + x.sha256.slice(0, 8) + "…</code></b>",
+      "<a target='_blank' href='/api/prototype?id=" + x.sha256 + "'><code data-toggle='tooltip' data-placement='right' data-html='true' title='<span class=\"fas fa-fingerprint\"></span> " + x.sha256 +"'>" + x.sha256.slice(0, 8) + "…</code></a>",
       x.network.code,
       x.network.start ? new Date(x.network.start).getFullYear() : "",
       x.network.end ? new Date(x.network.end).getFullYear() : "",
@@ -683,20 +687,34 @@ App.prototype.launchAdmin = function() {
 
   }
 
-  function fn2(a, b) {
-    return (new Date(b.created) - new Date(a.created));
+  function sortCreated(x, y) {
+
+    /* function sortCreated
+     * Sorts documents by the created property
+     */
+
+    return (new Date(y.created) - new Date(x.created));
+
   }
 
+  // Collect all network prototypes from the API
   HTTPRequest("/api/prototypes", function(json) {
+
+    if(json === null) {
+      return Element("prototype-table").innerHTML = "<span class='text-muted'>No prototypes available.</span>";
+    }
 
     new Table({
       "id": "prototype-table",
       "search": true,
       "header": ["Identifier", "Code", "Start", "End", "Description", "Restricted", "Created"],
-      "body": json.sort(fn2).map(fn)
+      "body": json.sort(sortCreated).map(formatPrototypeTable)
     });
 
   });
+
+  // Set the last breadcrum title
+  updateCrumbTitle("Administrator Panel");
 
 }
 

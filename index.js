@@ -396,7 +396,7 @@ WebRequest.prototype.handlePrototype = function(buffer, callback) {
    * Updates the network prototype definitions to the database
    */
 
-  // Try parsing the prototype files
+  // Try parsing the prototype files and extracting attributes (e.g. restrictedStatus, start, end, description)
   try {
     var parsedPrototype = parsePrototype(buffer);
   } catch(exception) {
@@ -410,20 +410,22 @@ WebRequest.prototype.handlePrototype = function(buffer, callback) {
       return callback(error);
     } 
 
-    if(documents.length !== 0) {
-      if(parsedPrototype.sha256 === documents.pop().sha256) {
-        return callback(null);
-      }
+    // If the active prototype was resubmitted: stop 
+    if(documents.length !== 0 && parsedPrototype.sha256 === documents.pop().sha256) {
+      return callback(null);
     }
 
-    // Write the prototype to disk
+    // Synchronously make sure the directory exists but blocks thread 
+    createDirectory("./metadata/prototypes");
+
+    // Otherwise proceed to write the prototype to disk
     fs.writeFile(path.join("./metadata/prototypes", parsedPrototype.sha256 + ".stationXML"), buffer, function(error) {
 
       if(error) {
         return callback(error);
       }
 
-      // Insert the new (modified) prototype
+      // Insert the new (or modified) prototype
       database.prototypes().insertOne(parsedPrototype, function(error, result) {
 
         if(error) {
@@ -433,17 +435,19 @@ WebRequest.prototype.handlePrototype = function(buffer, callback) {
         logger.info("Inserted new network prototype for " + JSON.stringify(parsedPrototype.network));
 
         // A new network prototype was submitted (or changed) and we are required to supersede all metadata from this network
+        // In this case, all stations from the network will be updated to match the new prototype and have their descriptions, restrictedStatus changed
         database.updateNetwork(parsedPrototype.network, function(error, files) {
 
           if(error) {
             return callback(error);
           }
 
+          // Nothing to do
           if(files.length === 0) {
             return callback(null);
           }
 
-          // Synchronous update all submitted StationXML to match the prototype definition
+          // Update all submitted StationXML to match the prototype definition
           var XMLDocuments = updateStationXML(parsedPrototype, files);
 
           // Call routine to write all updated files
@@ -487,11 +491,11 @@ WebRequest.prototype.RPCPrototypes = function() {
    * Updates new network prototype definitions to the database
    */
 
+  // Collect all files from the prototype directory
   this.readPrototypeDirectory(function(files) {
 
+    // Async but concurrently read all files
     var readPrototypeFile;
-
-    // Async but concurrent
     (readPrototypeFile = function() {
 
       // All buffers were read and available
@@ -499,20 +503,21 @@ WebRequest.prototype.RPCPrototypes = function() {
         return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
       }
 
-      var filename = files.pop();
-
-      fs.readFile(filename, function(error, data) {
+      // Read the file
+      fs.readFile(files.pop(), function(error, data) {
 
         if(error) {
           return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
         }
 
+        // Delegate handling of prototype
         this.handlePrototype(data, function(error) {
      
           if(error) { 
             return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
           }
 
+          // Next
           readPrototypeFile();
 
         }.bind(this));
@@ -1236,6 +1241,10 @@ WebRequest.prototype.messageAdministrators = function(filenames) {
 
 WebRequest.prototype.writeSubmittedFiles = function(XMLDocuments, callback) {
 
+  /* WebRequest.writeSubmittedFiles
+   * Concurrently writes all submitted XMLDocuments to disk and metadata to the database
+   */
+
   var writeNextFile;
   var submittedFiles = new Array();
 
@@ -1259,31 +1268,32 @@ WebRequest.prototype.writeSubmittedFiles = function(XMLDocuments, callback) {
 
     // Extact metadata for the file
     var metadata = {
-      "error": null,
-      "available": null,
+      "userId": this.session._id,
+      "status": database.METADATA_STATUS_PENDING,
+      "type": "FDSNStationXML",
       "filename": file.metadata.id,
-      "modified": null,
       "network": file.metadata.network,
       "station": file.metadata.station,
       "nChannels": file.metadata.nChannels,
       "filepath": path.join(file.metadata.filepath, file.metadata.sha256),
-      "type": "FDSNStationXML",
       "size": file.metadata.size,
-      "status": database.METADATA_STATUS_PENDING,
-      "userId": this.session._id,
-      "created": new Date(),
-      "sha256": file.metadata.sha256
+      "sha256": file.metadata.sha256,
+      "error": null,
+      "available": null,
+      "modified": null,
+      "created": new Date()
     }
 
     // Check if the file (sha256) is already in the database
     // Since it is pointless to store multiple objects for the same file
-    // Superseded files ALWAYS stay in the database to keep a history
+    // Superseded files ALWAYS stay in the database to keep the history complete
     database.files().findOne({"sha256": metadata.sha256, "status": {"$ne": database.METADATA_STATUS_SUPERSEDED}}, function(error, document) {
 
       if(error) {
         return callback(error);
       }
 
+      // Document is in database: continue next
       if(document !== null) {
         return writeNextFile();
       }
@@ -1422,10 +1432,16 @@ WebRequest.prototype.APIRequest = function() {
 
 WebRequest.prototype.getNetworkPrototypes = function() {
 
+  /* WebRequest.prototype.getNetworkPrototypes
+   * API that returns a list of the network prototypes defined in the database
+   */
+
+  // Only for administrators
   if(this.session.role !== "admin") {
     return this.HTTPError(ohttp.E_HTTP_FORBIDDEN);
   }
 
+  // Get all prototypes
   database.prototypes().find().toArray(function(error, documents) {
 
     if(error) {
@@ -1449,10 +1465,20 @@ WebRequest.prototype.getNetworkPrototype = function() {
    */
 
   function getPrototypeFile(document) {
-    return path.join("metadata", "prototypes", document.sha256 + ".stationxml");
+    return path.join("metadata", "prototypes", document.sha256 + ".stationXML");
   }
 
-  database.prototypes().find({"network": this.session.network}).sort({"created": database.DESCENDING}).limit(1).toArray(function(error, documents) {
+  // Parse the query string
+  var queryString = querystring.parse(this.url.query);
+
+  // If an id parameter was passed
+  if(queryString.id) {
+    var findQuery = {"sha256": queryString.id}
+  } else {
+    var findQuery = {"network": this.session.network}
+  }
+
+  database.prototypes().find(findQuery).sort({"created": database.DESCENDING}).limit(1).toArray(function(error, documents) {
     
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
