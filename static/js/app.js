@@ -430,7 +430,7 @@ App.prototype.launchMessageDetails = function() {
     return [
       "<div class='card'>",
       "  <div class='card-header'>",
-      "    <small style='float: right;'>Sent at " + getIcon("clock") + " " + message.created + "</small>",
+      "    <small style='float: right;'>Sent @ <b>" + message.created + "</b></small>",
       "    <h5><b><span class='fa fa-envelope-o'></span> " + message.subject + "</b></h5>",
       "  </div>",
       "  <div class='card-block'>",
@@ -679,7 +679,7 @@ App.prototype.launchAdmin = function() {
       "<a target='_blank' href='/api/prototype?id=" + x.sha256 + "'><code data-toggle='tooltip' data-placement='right' data-html='true' title='<span class=\"fas fa-fingerprint\"></span> " + x.sha256 +"'>" + x.sha256.slice(0, 8) + "…</code></a>",
       x.network.code,
       x.network.start ? new Date(x.network.start).getFullYear() : "",
-      x.network.end ? new Date(x.network.end).getFullYear() : "",
+      x.end ? new Date(x.end).getFullYear() : "",
       "<small>" + x.description + "</small>",
       x.restricted,
       x.created
@@ -879,7 +879,9 @@ App.prototype.launchHome = function() {
   this.setupStagedFilePolling();
 
   // Adds possibility to upload metadata
-  this.AddMetadataUpload();
+  if(USER_NETWORK.code !== '*') {
+    this.AddMetadataUpload();
+  }
 
   var start = Date.now();
 
@@ -2549,6 +2551,8 @@ App.prototype.AddMetadataUpload = function() {
   /* function AddMetadataUpload
    * Adds event to metadata uploading
    */
+
+  Element("metadata-submission").style.display = "block";
 
   // Add event handler when files are selected 
   Element("file-stage").addEventListener("change", function(event) {

@@ -297,8 +297,27 @@ WebRequest.prototype.getSession = function(callback) {
         return callback(null);
       }
 
-      // Callback with the authenticated user
-      callback(new User(user, sessionIdentifier)); 
+      database.getActivePrototype(user.network, function(error, documents) {
+
+        // Error querying the database
+        if(error) {
+          return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+        }
+
+        // Administrators can go without a prototype
+        if(user.role === "admin") {
+          return callback(new User(user, sessionIdentifier, null));
+        }
+
+        // No error but no prototype could be found: disable user
+        if(documents.length === 0) {
+          return callback(null);
+        }
+
+        // Callback with the authenticated user
+        callback(new User(user, sessionIdentifier, documents.pop())); 
+ 
+      }.bind(this));
 
     }.bind(this));
 
@@ -390,72 +409,96 @@ WebRequest.prototype.RPC = function() {
 
 }
 
-WebRequest.prototype.handlePrototype = function(buffer, callback) {
+WebRequest.prototype.writePrototype = function(parsedPrototype, buffer, callback) {
 
-  /* WebRequest.handlePrototypes
-   * Updates the network prototype definitions to the database
+  /* function WebRequest.writePrototype
+   * Writes the newly submitted network prototype to disk
    */
 
-  // Try parsing the prototype files and extracting attributes (e.g. restrictedStatus, start, end, description)
-  try {
-    var parsedPrototype = parsePrototype(buffer);
-  } catch(exception) {
-    return callback(exception)
-  }
+  // Otherwise proceed to write the prototype to disk
+  fs.writeFile(parsedPrototype.filepath, buffer, function(error) {
 
-  // Check if the prototype already exists in the database
-  database.prototypes().find({"network": parsedPrototype.network}).sort({"created": database.DESCENDING}).limit(1).toArray(function(error, documents) {
-
-    if(error) { 
+    // Propogate error
+    if(error) {
       return callback(error);
-    } 
-
-    // If the active prototype was resubmitted: stop 
-    if(documents.length !== 0 && parsedPrototype.sha256 === documents.pop().sha256) {
-      return callback(null);
     }
 
-    // Synchronously make sure the directory exists but blocks thread 
-    createDirectory("./metadata/prototypes");
+    database.addPrototype(parsedPrototype, function(error, result) {
 
-    // Otherwise proceed to write the prototype to disk
-    fs.writeFile(path.join("./metadata/prototypes", parsedPrototype.sha256 + ".stationXML"), buffer, function(error) {
-
+      // Propogate error
       if(error) {
         return callback(error);
       }
 
-      // Insert the new (or modified) prototype
-      database.prototypes().insertOne(parsedPrototype, function(error, result) {
+      logger.info("Inserted new network prototype for " + JSON.stringify(parsedPrototype.network));
 
+      // A new network prototype was submitted (or changed) and we are required to supersede all metadata from this network
+      // In this case, all stations from the network will be updated to match the new prototype and have their descriptions, restrictedStatus changed
+      database.updateNetwork(parsedPrototype.network, function(error, files) {
+
+        // Propogate error
         if(error) {
           return callback(error);
         }
 
-        logger.info("Inserted new network prototype for " + JSON.stringify(parsedPrototype.network));
+        // Nothing to do
+        if(files.length === 0) {
+          return callback(null);
+        }
 
-        // A new network prototype was submitted (or changed) and we are required to supersede all metadata from this network
-        // In this case, all stations from the network will be updated to match the new prototype and have their descriptions, restrictedStatus changed
-        database.updateNetwork(parsedPrototype.network, function(error, files) {
+        // Update all submitted StationXML to match the prototype definition
+        var XMLDocuments = updateStationXML(parsedPrototype, files);
 
-          if(error) {
-            return callback(error);
-          }
-
-          // Nothing to do
-          if(files.length === 0) {
-            return callback(null);
-          }
-
-          // Update all submitted StationXML to match the prototype definition
-          var XMLDocuments = updateStationXML(parsedPrototype, files);
-
-          // Call routine to write all updated files
-          this.writeSubmittedFiles(XMLDocuments, callback);
-         
-        }.bind(this));
+        // Call routine to write all updated files
+        this.writeSubmittedFiles(XMLDocuments, callback);
 
       }.bind(this));
+
+    }.bind(this));
+
+  }.bind(this));
+
+}
+
+WebRequest.prototype.handlePrototypeUpdate = function(file, callback) {
+
+  /* WebRequest.handlePrototypeUpdates
+   * Updates the network prototype definitions to the database
+   */
+
+  fs.readFile(file, function(error, buffer) {
+
+    // Propogate error
+    if(error) {
+      return callback(error);
+    }
+
+    // Try parsing the prototype files and extracting attributes
+    // (e.g. restrictedStatus, start, end, description)
+    try {
+      var parsedPrototype = parsePrototype(buffer);
+    } catch(exception) {
+      return callback(exception)
+    }
+
+    // Get the currently active prototype
+    database.getActivePrototype(parsedPrototype.network, function(error, documents) {
+
+      // Propogate error
+      if(error) { 
+        return callback(error);
+      } 
+
+      // Do nothing if the active prototype was resubmitted 
+      if(documents.length !== 0 && parsedPrototype.sha256 === documents.pop().sha256) {
+        return callback(null);
+      }
+
+      // Synchronously make sure the directory exists (blocks thread)
+      createDirectory("./metadata/prototypes");
+
+      // Write the prototype to disk
+      this.writePrototype(parsedPrototype, buffer, callback);
 
     }.bind(this));
 
@@ -488,7 +531,7 @@ WebRequest.prototype.readPrototypeDirectory = function(callback) {
 WebRequest.prototype.RPCPrototypes = function() {
 
   /* WebRequest.RPCPrototypes
-   * Updates new network prototype definitions to the database
+   * Updates the network prototype definitions to the database
    */
 
   // Collect all files from the prototype directory
@@ -498,29 +541,20 @@ WebRequest.prototype.RPCPrototypes = function() {
     var readPrototypeFile;
     (readPrototypeFile = function() {
 
-      // All buffers were read and available
+      // All buffers were read and available: send 204 (pretend OK??)
       if(!files.length) {
         return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
       }
 
-      // Read the file
-      fs.readFile(files.pop(), function(error, data) {
-
-        if(error) {
+      // Delegate handling of prototype update
+      this.handlePrototypeUpdate(files.pop(), function(error) {
+     
+        if(error) { 
           return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
         }
 
-        // Delegate handling of prototype
-        this.handlePrototype(data, function(error) {
-     
-          if(error) { 
-            return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-          }
-
-          // Next
-          readPrototypeFile();
-
-        }.bind(this));
+        // Next
+        readPrototypeFile();
 
       }.bind(this));
 
@@ -608,6 +642,10 @@ WebRequest.prototype.launchLogin = function(session) {
 
 WebRequest.prototype.launchAdmin = function() {
 
+  /* Function WebRequest.launchAdmin
+   * Launches login page if not signed in
+   */
+
   if(this.session.role !== "admin") {
     return this.HTTPError(ohttp.E_HTTP_FORBIDDEN);
   }
@@ -650,7 +688,7 @@ WebRequest.prototype.launchUpload = function() {
   }
 
   // Parse the request multiform
-  this.parseRequestMultiform(function(files) {
+  this.parseRequestMultiform(function(error, files) {
 
     this.handleFileUpload(files, function(error) {
 
@@ -987,8 +1025,13 @@ WebRequest.prototype.parseRequestMultiform = function(parsedCallback) {
 
   // Parsing completed
   form.on("close", function() {
-    parsedCallback(files);
+    parsedCallback(null, files);
   }.bind(this));
+
+  // When an error occurs
+  form.on("error", function(error) {
+    parsedCallback(error);
+  });
 
   // Start parsing
   form.parse(this.request);
@@ -1095,6 +1138,7 @@ var Webserver = function() {
    */
 
   // Launch the metaDaemon if enabled
+  // TODO This should go in a seperate docker container
   if(CONFIG.METADATA.DAEMON.ENABLED) {
     require("./lib/orfeus-metadaemon");
   }
@@ -1138,47 +1182,69 @@ Webserver.prototype.SIGINT = function() {
 
 }
 
-WebRequest.prototype.handleFileUpload = function(files, callback) {
+WebRequest.prototype.handleFileUpload = function(objects, callback) {
 
   /* Function WebRequest.handleFileUpload
    * Writes multiple (split) StationXML files to disk
    */
 
-  function getProperties(files) {
+  function ownsNetwork(network, metadata) {
 
-    /* Function WebRequest.handleFileUpload::getProperties
-     * Extracts properties passed through MultiParty form
+    /* function WebRequest.handleFileUpload::ownsNetwork
+     * Compares the user network prototype to the metadata
      */
 
-    return {
-      "restricted": {"value": files.filter(x => x.name === "restricted" && x.data === "on").length !== 0}
-    }
+    return (network.code === metadata.code && network.start === metdata.start);
 
   }
 
-  var XMLDocuments;
-  var properties = getProperties(files);
-  var files = files.filter(x => x.type === "file");
+  function getNetworkProperties(objects, prototype) {
+
+    /* Function WebRequest.handleFileUpload::getNetworkProperties
+     * Extracts properties passed through MultiParty form
+     */
+
+    var propertyObject = {
+      "restricted": (objects.filter(x => x.name === "restricted" && x.data === "on").length !== 0),
+      "description": prototype.description,
+      "netRestricted": prototype.restricted,
+      "end": prototype.end
+    }
+
+    // Network prototype is restricted: must propogate to stations
+    if(propertyObject.netRestricted) {
+      propertyObject.restricted = true;
+    }
+
+    return propertyObject;
+
+  }
+
+  // Get properties from the network
+  var properties = getNetworkProperties(objects, this.session.prototype);
+
+  // Explicitly get only submtited files (ref: MultiParty lib)
+  var files = objects.filter(x => x.type === "file");
+
+  if(files.length === 0) {
+    return this.HTTPResponse(ohttp.E_HTTP_BAD_REQUEST); 
+  }
 
   // We split any submitted StationXML files
   try {
-    XMLDocuments = splitStationXML(files, properties);
+    var XMLDocuments = splitStationXML(files, properties);
   } catch(exception) {
     return callback(exception);
   }
 
   // Confirm user is manager of the network
   for(var i = 0; i < XMLDocuments.length; i++) {
-    if(this.session.role !== "admin" && JSON.stringify(this.session.network) !== JSON.stringify(XMLDocuments[i].metadata.network)) {
-      return callback(new Error("User does not own network rights.")); 
+    if(!ownsNetwork(this.session.prototype.network, XMLDocuments[i].metadata.network)) {
+      return this.HTTPError(ohttp.E_HTTP_FORBIDDEN);
     }
   }
 
-  if(XMLDocuments.length === 0) {
-    return callback(new Error("No metadata was submitted."));
-  }
-
-  // Assert that directories exist for the submitted files
+  // Assert that directories exist for the submitted files (synchronous)
   XMLDocuments.forEach(x => createDirectory(x.metadata.filepath));
 
   this.writeSubmittedFiles(XMLDocuments, callback);
@@ -1441,8 +1507,8 @@ WebRequest.prototype.getNetworkPrototypes = function() {
     return this.HTTPError(ohttp.E_HTTP_FORBIDDEN);
   }
 
-  // Get all prototypes
-  database.prototypes().find().toArray(function(error, documents) {
+  // Get all the prototypes from the database
+  database.getPrototypes(function(error, documents) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1465,17 +1531,23 @@ WebRequest.prototype.getNetworkPrototype = function() {
    */
 
   function getPrototypeFile(document) {
+
+    /* WebRequest.getNetworkPrototype::getPrototypeFile
+     * Returns the file location on disk of the prototype
+     */
+
     return path.join("metadata", "prototypes", document.sha256 + ".stationXML");
+
   }
 
   // Parse the query string
   var queryString = querystring.parse(this.url.query);
 
-  // If an id parameter was passed
+  // If an id parameter was passed, make a different query
   if(queryString.id) {
     var findQuery = {"sha256": queryString.id}
   } else {
-    var findQuery = {"network": this.session.network}
+    var findQuery = {"network": this.session.prototype.network}
   }
 
   database.prototypes().find(findQuery).sort({"created": database.DESCENDING}).limit(1).toArray(function(error, documents) {
@@ -1532,7 +1604,7 @@ WebRequest.prototype.pipeMetadata = function(id) {
     }
 
     // Pipe the response
-    this.pipe(result.filepath + ".stationxml");
+    this.pipe(result.filepath + ".stationXML");
 
   }.bind(this));
 
@@ -1638,7 +1710,7 @@ WebRequest.prototype.attachSeedlinkMetadata = function(DNSRecords, seedlinkServe
          "identifier": seedlinkServer.identifier,
          "connected": seedlinkServer.connected,
          "version": seedlinkServer.version,
-         "stations": seedlinkServer.error === "CATNOTIMPLEMENTED" ? null : seedlinkServer.stations.filter(station => station.network === this.session.network.code)
+         "stations": seedlinkServer.error === "CATNOTIMPLEMENTED" ? null : seedlinkServer.stations.filter(station => station.network === this.session.prototype.network.code)
        }
      }
 
@@ -1942,10 +2014,6 @@ WebRequest.prototype.getFDSNWSChannels = function() {
   });
 
   // If a network end is specified only show channels from before the network end time
-  if(this.session.network.end !== null) {
-    queryString.endtime = this.session.network.end.toISOString();
-  }
-
   // Extend the query string
   queryString += "&" + this.url.query;
 
@@ -2049,9 +2117,8 @@ WebRequest.prototype.getSubmittedFiles = function() {
     networkQuery = {"network.code": new RegExp(/.*/)}
   } else {
     networkQuery = {
-      "network.code": this.session.network.code,
-      "network.start": this.session.network.start,
-      "network.end": this.session.network.end
+      "network.code": this.session.prototype.network.code,
+      "network.start": this.session.prototype.network.start
     }
   }
 
@@ -2124,14 +2191,10 @@ WebRequest.prototype.getFDSNWSStations = function() {
   var queryString = querystring.stringify({
     "level": "station",
     "format": "text",
-    "network": this.session.network.code
+    "network": this.session.prototype.network.code
   })
 
   // If the network end is specified only show stations from before the network end
-  if(this.session.network.end !== null) {
-    queryString.endtime = this.session.network.end.toISOString()
-  }
-
   ohttp.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
     this.writeJSON(this.parseFDSNWSResponse(json));
   }.bind(this));

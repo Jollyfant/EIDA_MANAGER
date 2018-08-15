@@ -12,6 +12,10 @@
 
 function validateFiles(files) {
 
+  /* function validateFiles
+   * Client-side validation of StationXML
+   */
+
   function convertISO(date) {
   
     /* function convertISO
@@ -22,7 +26,7 @@ function validateFiles(files) {
       return null;
     }
   
-    // Isodate
+    // Create an ISO8601 date
     if(!date.endsWith("Z")) {
       date += "Z";
     }
@@ -31,13 +35,26 @@ function validateFiles(files) {
   
   }
 
+  function validateNetwork(networkCode) {
+
+    /* function validateNetwork
+     * Validates the network code
+     */
+
+    const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
+
+    if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK.code !== networkCode) {
+      throw("Invalid network code: " + networkCode);
+    }
+
+  }
+
   /* function validateFiles
    * validates uploaded StationXML files
    * throws an exception on formatting error
    */
 
   const FDSN_STATION_XML_HEADER = "FDSNStationXML";
-  const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
   const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
 
   var stagedStations = new Array();
@@ -64,21 +81,10 @@ function validateFiles(files) {
       var networkStart = convertISO(network.getAttribute("startDate"));
       var networkEnd = convertISO(network.getAttribute("endDate"));
 
-      // Confirm network regex & user must own network (allow administrators)
-      if(USER_NETWORK.code !== "*") {
+      validateNetwork(networkCode);
 
-        if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK.code !== networkCode) {
-          throw("Invalid network code: " + networkCode);
-        }
-
-        if(USER_NETWORK.start !== networkStart) {
-          throw("Invalid network start time: " + networkStart);
-        }
-
-        if(USER_NETWORK.end !== networkEnd) {
-          throw("Invalid network end time: " + networkEnd);
-        }
-
+      if(USER_NETWORK.start !== networkStart) {
+        throw("Invalid network start time: " + networkStart);
       }
 
       Array.from(network.getElementsByTagName("Station")).forEach(function(station) {
