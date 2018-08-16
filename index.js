@@ -15,23 +15,19 @@
 // Make require relative to the root directory
 require("./require");
 
-const childProcess = require("child_process");
-
 // Native includes
+const childProcess = require("child_process");
+const fs = require("fs");
 const { createServer } = require("http");
 const path = require("path");
-const url = require("url");
-const fs = require("fs");
 const querystring = require("querystring");
-
-// Third-party libs
-const multiparty = require("multiparty");
+const url = require("url");
 
 // ORFEUS libs
-const { User, Session } = require("./lib/orfeus-session");
 const { SHA256 } = require("./lib/orfeus-crypto");
-const { sum, createDirectory, escapeHTML } = require("./lib/orfeus-util");
+const { sum, createDirectory } = require("./lib/orfeus-util");
 const { updateStationXML, parsePrototype, splitStationXML } = require("./lib/orfeus-metadata.js");
+const { Message } = require("./lib/orfeus-message");
 const database = require("./lib/orfeus-database");
 const logger = require("./lib/orfeus-logging");
 const ohttp = require("./lib/orfeus-http");
@@ -39,11 +35,11 @@ const template = require("./lib/orfeus-template");
 
 // Static information
 const CONFIG = require("./config");
-const STATIC_FILES = require("./lib/orfeus-static");
 
-function init() {
+function __init__() {
 
-  /* function init
+  /*
+   * Function __init__
    * Initializes the application
    */
 
@@ -52,7 +48,7 @@ function init() {
   
     // Could not connect to Mongo: retry in 1 second
     if(error) {
-      setTimeout(init, 1000);
+      setTimeout(__init__, 1000);
       return logger.fatal(error);
     }
   
@@ -65,7 +61,8 @@ function init() {
 
 var WebRequest = function(request, response) {
 
-  /* Class WebRequest
+  /*
+   * Class WebRequest
    * Handles a single request to the HTTP webserver
    */
 
@@ -73,7 +70,9 @@ var WebRequest = function(request, response) {
   this.response = response;
   this.session = null;
 
+  // Save the parsed url
   this.url = url.parse(request.url);
+  this.query = querystring.parse(this.url.query);
 
   this.init();
 
@@ -81,13 +80,15 @@ var WebRequest = function(request, response) {
 
 WebRequest.prototype.logHTTPRequest = function() {
 
-  /* Function WebRequest.logHTTPRequest
+  /*
+   * Function WebRequest.logHTTPRequest
    * Writes HTTP summary to access log
    */
 
   function getClientIP(request) {
 
-    /* Function WebRequest.logHTTPRequest::getClientIP
+    /*
+     * Function WebRequest.logHTTPRequest::getClientIP
      * Returns the client IP address
      */
 
@@ -97,7 +98,8 @@ WebRequest.prototype.logHTTPRequest = function() {
 
   function getUserAgent(request) {
 
-    /* Function WebRequest.logHTTPRequest::getUserAgent
+    /*
+     * Function WebRequest.logHTTPRequest::getUserAgent
      * Returns the client user agent
      */
 
@@ -123,7 +125,8 @@ WebRequest.prototype.logHTTPRequest = function() {
 
 WebRequest.prototype.patchResponse = function() {
 
-  /* Function WebRequest.patchResponse
+  /*
+   * Function WebRequest.patchResponse
    * Patches function keep track of shipped bytes
    */
 
@@ -150,9 +153,13 @@ WebRequest.prototype.patchResponse = function() {
 
 WebRequest.prototype.init = function() {
 
-  /* Function WebRequest.init
+  /*
+   * Function WebRequest.init
    * Initializes an instance of the WebRequest class
    */
+
+  // Lazy load static files
+  const STATIC_FILES = require("./lib/orfeus-static");
 
   this._initialized = Date.now();
 
@@ -177,13 +184,15 @@ WebRequest.prototype.init = function() {
 
 WebRequest.prototype.serveStaticFile = function(resource) {
 
-  /* Function WebRequest.serveStaticFile
+  /*
+   * Function WebRequest.serveStaticFile
    * Servers static file to request
    */
 
   function getMIMEType(ext) {
 
-    /* Function WebRequest.serveStaticFile::getMIMEType
+    /*
+     * Function WebRequest.serveStaticFile::getMIMEType
      * Returns the HTTP MIME type associated with the file extension
      */
 
@@ -209,14 +218,15 @@ WebRequest.prototype.serveStaticFile = function(resource) {
   // Write the HTTP header [200] with the appropriate MIME type
   this.response.writeHead(ohttp.S_HTTP_OK, getMIMEType(path.extname(resource)));
 
-  // Pipe the response
+  // Pipe the response from the static folder
   this.pipe(path.join("static", resource));
 
 }
 
 WebRequest.prototype.pipe = function(resource) {
 
-  /* function WebRequest.pipe
+  /*
+   * Function WebRequest.pipe
    * Pipes a single resource to the response writeable stream
    */
 
@@ -224,15 +234,16 @@ WebRequest.prototype.pipe = function(resource) {
 
 }
 
-WebRequest.prototype.getSession = function(callback) {
+WebRequest.prototype.getSession = function(sessionHandler) {
 
-  /* function WebRequest.getSession
+  /*
+   * Function WebRequest.getSession
    * Attemps to get an existing session from the database
    */
 
   function extractSessionCookie(headers) {
   
-    /* Function WebRequest.extractSessionCookie
+    /* Function WebRequest.getSession::extractSessionCookie
      * Extracts a session cookie from the HTTP headers
      */
   
@@ -261,77 +272,28 @@ WebRequest.prototype.getSession = function(callback) {
   
   }
 
-  callback = callback.bind(this);
+  sessionHandler = sessionHandler.bind(this);
 
-  // Get the session identifier from cookie
+  // Get the session identifier from HTTP Headers (cookie)
   var sessionIdentifier = extractSessionCookie(this.request.headers);
 
-  // No session cookie available
-  if(sessionIdentifier === null) {
-    return callback(null);
-  }
-
-  // Query the database
-  database.getSession(sessionIdentifier, function(error, session) {
-
-    // Error querying the database
-    if(error) {
-      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-    }
-
-    // The session does not exist
-    if(session === null) {
-      return callback(null);
-    }
-
-    // Get the user that belongs to the session
-    database.getUserById(session.userId, function(error, user) {
-
-      // Error querying the database
-      if(error) {
-        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-      }
-
-      // No error but no user could be found
-      if(user === null) {
-        return callback(null);
-      }
-
-      database.getActivePrototype(user.network, function(error, documents) {
-
-        // Error querying the database
-        if(error) {
-          return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-        }
-
-        // Administrators can go without a prototype
-        if(user.role === "admin") {
-          return callback(new User(user, sessionIdentifier, null));
-        }
-
-        // No error but no prototype could be found: disable user
-        if(documents.length === 0) {
-          return callback(null);
-        }
-
-        // Callback with the authenticated user
-        callback(new User(user, sessionIdentifier, documents.pop())); 
- 
-      }.bind(this));
-
-    }.bind(this));
-
-  }.bind(this));
+  // Get the session and pass 
+  database.getSessionUser(sessionIdentifier, sessionHandler);
 
 }
 
-WebRequest.prototype.handleSession = function(session) {
+WebRequest.prototype.handleSession = function(error, session) {
 
-  /* Function WebRequest.handleSession
+  /*
+   * Function WebRequest.handleSession
    * Callback fired when session is obtained
    */
 
-  // Session is not required
+  if(error) {
+    return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+  }
+
+  // For these paths a session is not required
   switch(this.url.pathname) {
     case "/":
       return this.redirect("/login");
@@ -346,7 +308,7 @@ WebRequest.prototype.handleSession = function(session) {
     return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED);
   }
 
-  // Attach the session
+  // Attach the session to the webrequest handler
   this.session = session;
 
   // Forward the request to the API
@@ -354,10 +316,21 @@ WebRequest.prototype.handleSession = function(session) {
     return this.APIRequest();
   }
 
-  // Forward RPCs
+  // Forward requests to RPCs
   if(this.url.pathname.startsWith("/rpc")) {
     return this.RPC();
   }
+
+  this.handleRouting();
+
+}
+
+WebRequest.prototype.handleRouting = function() {
+
+  /*
+   * Function WebRequest.handleRouting
+   * Chooses function handler for the requested path
+   */
 
   // Serve the different pages
   switch(this.url.pathname) {
@@ -374,13 +347,13 @@ WebRequest.prototype.handleSession = function(session) {
     case "/home/admin":
       return this.launchAdmin();
     case "/home/messages":
-      return this.HTTPResponse(200, template.generateMessages(this.session));
+      return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateMessages(this.session));
     case "/home/messages/details":
-      return this.HTTPResponse(200, template.generateMessageDetails(this.session));
+      return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateMessageDetails(this.session));
     case "/home/messages/new":
-      return this.HTTPResponse(200, template.generateNewMessageTemplate(this.request.url, this.session));
+      return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateNewMessageTemplate(this.request.url, this.session));
     case "/home/station":
-      return this.HTTPResponse(200, template.generateStationDetails(this.session));
+      return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateStationDetails(this.session));
     default:
       return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
   }
@@ -389,13 +362,13 @@ WebRequest.prototype.handleSession = function(session) {
 
 WebRequest.prototype.RPC = function() {
 
-  /* WebRequest.RPC
-   * Handler for remote procedure calls for
-   * service administrators
+  /*
+   * Function WebRequest.RPC
+   * Handler for remote procedure calls for service administrators
    */
 
   if(this.session.role !== "admin") {
-    return this.HTTPError(ohttp.E_HTTP_FORBIDDEN); 
+    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED); 
   }
 
   switch(this.url.pathname) {
@@ -411,7 +384,8 @@ WebRequest.prototype.RPC = function() {
 
 WebRequest.prototype.writePrototype = function(parsedPrototype, buffer, callback) {
 
-  /* function WebRequest.writePrototype
+  /*
+   * Function WebRequest.writePrototype
    * Writes the newly submitted network prototype to disk
    */
 
@@ -450,7 +424,7 @@ WebRequest.prototype.writePrototype = function(parsedPrototype, buffer, callback
         var XMLDocuments = updateStationXML(parsedPrototype, files);
 
         // Call routine to write all updated files
-        this.writeSubmittedFiles(XMLDocuments, callback);
+        database.writeSubmittedFiles(this.session._id, XMLDocuments, callback);
 
       }.bind(this));
 
@@ -462,7 +436,8 @@ WebRequest.prototype.writePrototype = function(parsedPrototype, buffer, callback
 
 WebRequest.prototype.handlePrototypeUpdate = function(file, callback) {
 
-  /* WebRequest.handlePrototypeUpdates
+  /*
+   * Function WebRequest.handlePrototypeUpdates
    * Updates the network prototype definitions to the database
    */
 
@@ -508,7 +483,8 @@ WebRequest.prototype.handlePrototypeUpdate = function(file, callback) {
 
 WebRequest.prototype.readPrototypeDirectory = function(callback) {
 
-  /* WebRequest.readPrototypeDirectory
+  /*
+   * Function WebRequest.readPrototypeDirectory
    * Reads the contents of the prototype directory
    */
 
@@ -530,16 +506,18 @@ WebRequest.prototype.readPrototypeDirectory = function(callback) {
 
 WebRequest.prototype.RPCPrototypes = function() {
 
-  /* WebRequest.RPCPrototypes
+  /*
+   * Function WebRequest.RPCPrototypes
    * Updates the network prototype definitions to the database
    */
+
+  var next;
 
   // Collect all files from the prototype directory
   this.readPrototypeDirectory(function(files) {
 
     // Async but concurrently read all files
-    var readPrototypeFile;
-    (readPrototypeFile = function() {
+    (next = function() {
 
       // All buffers were read and available: send 204 (pretend OK??)
       if(!files.length) {
@@ -553,8 +531,7 @@ WebRequest.prototype.RPCPrototypes = function() {
           return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
         }
 
-        // Next
-        readPrototypeFile();
+        next();
 
       }.bind(this));
 
@@ -566,9 +543,10 @@ WebRequest.prototype.RPCPrototypes = function() {
 
 WebRequest.prototype.RPCInventory = function() {
 
-  /* Function RPCInventory
+  /*
+   * Function RPCInventory
    * Call to merge the entire inventory based on the most recent
-   * ACCEPTED or COMPLETED metadata
+   * ACCEPTED or COMPLETED metadata from the database
    */
 
   const FILENAME = CONFIG.NODE.ID + "-sc3ml-full-inventory";
@@ -627,7 +605,8 @@ WebRequest.prototype.RPCInventory = function() {
 
 WebRequest.prototype.launchLogin = function(session) {
 
-  /* Function WebRequest.launchLogin
+  /*
+   * Function WebRequest.launchLogin
    * Launches login page if not signed in
    */
 
@@ -642,12 +621,13 @@ WebRequest.prototype.launchLogin = function(session) {
 
 WebRequest.prototype.launchAdmin = function() {
 
-  /* Function WebRequest.launchAdmin
+  /*
+   * Function WebRequest.launchAdmin
    * Launches login page if not signed in
    */
 
   if(this.session.role !== "admin") {
-    return this.HTTPError(ohttp.E_HTTP_FORBIDDEN);
+    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED);
   }
 
   return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateAdmin(this.session));
@@ -656,7 +636,8 @@ WebRequest.prototype.launchAdmin = function() {
 
 WebRequest.prototype.launchAuthentication = function() {
 
-  /* Function WebRequest.launchAuthentication
+  /*
+   * Function WebRequest.launchAuthentication
    * Launches handler for user authentication
    */
 
@@ -673,7 +654,8 @@ WebRequest.prototype.launchAuthentication = function() {
 
 WebRequest.prototype.launchUpload = function() {
 
-  /* Function WebRequest.launchUpload
+  /*
+   * Function WebRequest.launchUpload
    * Launches handler for file uploading
    */
 
@@ -688,7 +670,11 @@ WebRequest.prototype.launchUpload = function() {
   }
 
   // Parse the request multiform
-  this.parseRequestMultiform(function(error, files) {
+  ohttp.handlePOSTForm(this.request, function(error, files) {
+
+    if(files.length === 0) {
+      return this.HTTPResponse(ohttp.E_HTTP_BAD_REQUEST);
+    }
 
     this.handleFileUpload(files, function(error) {
 
@@ -696,6 +682,7 @@ WebRequest.prototype.launchUpload = function() {
         return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       } 
 
+      // All metadata was succesfully received
       return this.redirect("/home?S_METADATA_SUCCESS");
 
     }.bind(this));
@@ -706,7 +693,8 @@ WebRequest.prototype.launchUpload = function() {
 
 WebRequest.prototype.launchSeedlink = function() {
 
-  /* Function WebRequest.launchSeedlink
+  /*
+   * Function WebRequest.launchSeedlink
    * Launches Seedlink server submission code
    */
 
@@ -770,13 +758,14 @@ WebRequest.prototype.launchSeedlink = function() {
 
 WebRequest.prototype.launchHome = function() {
 
-  /* Function WebRequest.launchHome
+  /*
+   * Function WebRequest.launchHome
    * Launchs the EIDA Manager homepage
    */
 
   // Update the last visit & app. version
   if(this.url.search === "?welcome") {
-    database.users().updateOne({"_id": this.session._id}, {"$set": {"version": CONFIG.__VERSION__, "visited": new Date()}});
+    database.updateUserVisit(this.session._id);
   }
 
   return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateProfile(this.session));
@@ -785,7 +774,8 @@ WebRequest.prototype.launchHome = function() {
 
 WebRequest.prototype.launchSend = function() {
 
-  /* Function WebRequest.launchSend
+  /*
+   * Function WebRequest.launchSend
    * Launchs code to handle message submission
    */
 
@@ -835,8 +825,8 @@ WebRequest.prototype.launchSend = function() {
         return Message(
           user._id,
           this.session._id,
-          escapeHTML(postBody.subject),
-          escapeHTML(postBody.content)
+          postBody.subject,
+          postBody.content
         );
       }.bind(this));
 
@@ -860,7 +850,8 @@ WebRequest.prototype.launchSend = function() {
 
 WebRequest.prototype.removeSession = function() {
 
-  /* Function WebRequest.removeSession
+  /*
+   * Function WebRequest.removeSession
    * Removes a session from the database collection
    */
 
@@ -880,7 +871,8 @@ WebRequest.prototype.removeSession = function() {
 
 WebRequest.prototype.handleAuthenticationPOST = function(credentials) {
 
-  /* Function WebRequest.handleParsedRequestPOST
+  /*
+   * Function WebRequest.handleParsedRequestPOST
    * Code that handles when credentials were posted to the /authenticate endpoint
    */
 
@@ -891,7 +883,8 @@ WebRequest.prototype.handleAuthenticationPOST = function(credentials) {
 
 WebRequest.prototype.handleAuthentication = function(error, user) {
 
-  /* Function WebRequest.handleAuthentication
+  /*
+   * Function WebRequest.handleAuthentication
    * Blocks requests with false credentials
    */
 
@@ -900,36 +893,14 @@ WebRequest.prototype.handleAuthentication = function(error, user) {
     return this.redirect("/login?" + error);
   }
 
-  this.createSession(user, this.handleSessionCreation);
-
-}
-
-WebRequest.prototype.createSession = function(user, callback) {
-
-  /* function WebRequest.createSession
-   * Creates a new session in the database
-   */
-
-  callback = callback.bind(this);
-
-  // Create a new session for the user
-  var session = new Session(user);
-
-  // Metadata to store in the session collection
-  var storeObject = {
-    "sessionId": session.id,
-    "userId": user._id,
-    "created": new Date()
-  }
-
-  // Insert a new session
-  database.sessions().insertOne(storeObject, function(error, result) {
+  // Add a session to the database
+  database.createSession(user, function(error, session) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
-    callback(session);
+    this.handleSessionCreation(session);
 
   }.bind(this));
 
@@ -964,7 +935,8 @@ WebRequest.prototype.handleSessionCreation = function(session) {
 
 WebRequest.prototype.authenticate = function(credentials, callback) {
 
-  /* WebRequest.authenticate
+  /*
+   * WebRequest.authenticate
    * Authenticates the users against credentials in the database
    */
 
@@ -996,7 +968,8 @@ WebRequest.prototype.authenticate = function(credentials, callback) {
 
 WebRequest.prototype.parseRequestMultiform = function(parsedCallback) {
 
-  /* WebRequest.parseRequestMultiform
+  /*
+   * WebRequest.parseRequestMultiform
    * Calls multiparty library to handle parsing of multipart data
    */
 
@@ -1013,6 +986,7 @@ WebRequest.prototype.parseRequestMultiform = function(parsedCallback) {
       chunks.push(data);
     });
 
+    // Files have a filename, and parameters do not
     part.on("end", function() {
       files.push({
         "type": part.filename ? "file" : "parameter",
@@ -1033,15 +1007,17 @@ WebRequest.prototype.parseRequestMultiform = function(parsedCallback) {
     parsedCallback(error);
   });
 
-  // Start parsing
+  // Attach
   form.parse(this.request);
 
 }
 
 WebRequest.prototype.parseRequestBody = function(type, callback) {
 
-  /* Function WebRequest.parseRequestBody
+  /*
+   * Function WebRequest.parseRequestBody
    * Parses a request body received from the client
+   * TODO let multiparty handle this
    */
 
   callback = callback.bind(this);
@@ -1068,13 +1044,10 @@ WebRequest.prototype.parseRequestBody = function(type, callback) {
       return;
     }
 
-    // Add all chunks to a string buffer
-    var fullBuffer = Buffer.concat(chunks);
-
     // Support for different types of data
     switch(type) {
       case "json":
-        return callback(querystring.parse(fullBuffer.toString()));
+        return callback(querystring.parse(Buffer.concat(chunks).toString()));
       default:
         return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
     }
@@ -1085,7 +1058,8 @@ WebRequest.prototype.parseRequestBody = function(type, callback) {
 
 WebRequest.prototype.redirect = function(path) {
 
-  /* Function WebRequest.redirect
+  /*
+   * Function WebRequest.redirect
    * Redirects the client to another page
    */
 
@@ -1096,11 +1070,12 @@ WebRequest.prototype.redirect = function(path) {
 
 WebRequest.prototype.HTTPResponse = function(statusCode, HTML) {
 
-  /* Function WebRequest.HTTPResponse
+  /*
+   * Function WebRequest.HTTPResponse
    * Returns an HTTP error to the client
    */
 
-  // Handle 204
+	// Handle 204
   if(statusCode === ohttp.S_HTTP_NO_CONTENT) {
     this.response.writeHead(statusCode);
     this.response.end();
@@ -1116,7 +1091,8 @@ WebRequest.prototype.HTTPResponse = function(statusCode, HTML) {
 
 WebRequest.prototype.HTTPError = function(statusCode, error) {
 
-  /* Function WebRequest.HTTPError
+  /*
+   * Function WebRequest.HTTPError
    * Returns an HTTP error to the client
    */
 
@@ -1132,9 +1108,9 @@ WebRequest.prototype.HTTPError = function(statusCode, error) {
 
 var Webserver = function() {
 
-  /* Class Webserver
-   * Opens NodeJS webservice on given PORT
-   * Handles all incoming connections
+  /*
+   * Class Webserver
+   * Opens NodeJS webservice on given PORT and handles all incoming connections
    */
 
   // Launch the metaDaemon if enabled
@@ -1171,11 +1147,11 @@ var Webserver = function() {
 
 Webserver.prototype.SIGINT = function() {
 
-  /* Function Webserver.SIGINT
+  /*
+   * Function Webserver.SIGINT
    * Signal handler for SIGINT
    */
 
-  process.exit(0);
   logger.info("SIGINT received - initializing graceful shutdown of webserver and database connection.");
 
   this.webserver.close()
@@ -1184,28 +1160,46 @@ Webserver.prototype.SIGINT = function() {
 
 WebRequest.prototype.handleFileUpload = function(objects, callback) {
 
-  /* Function WebRequest.handleFileUpload
+  /*
+   * Function WebRequest.handleFileUpload
    * Writes multiple (split) StationXML files to disk
    */
 
-  function ownsNetwork(network, metadata) {
+  function validateOwnership(prototype, XMLDocuments) {
 
-    /* function WebRequest.handleFileUpload::ownsNetwork
-     * Compares the user network prototype to the metadata
+    /*
+     * Function WebRequest.handleFileUpload::validateOwnership
+     * Validates the ownership of submitted metadata
      */
 
-    return (network.code === metadata.code && network.start === metdata.start);
+    function userOwnsNetwork(network, metadata) {
+
+      /*
+       * Function WebRequest.handleFileUpload::validateOwnership::userOwnsNetwork
+       * Compares the user network prototype to the metadata
+       */
+
+      return (network.code === metadata.code && network.start.toISOString() === metadata.start.toISOString());
+
+    }
+
+    // Go over each document
+    XMLDocuments.forEach(function(document) {
+      if(!userOwnsNetwork(prototype.network, document.metadata.network)) {
+        throw(new Error("User does not own network rights"));
+      }
+    });
 
   }
 
-  function getNetworkProperties(objects, prototype) {
+  function getNetworkProperties(properties, prototype) {
 
     /* Function WebRequest.handleFileUpload::getNetworkProperties
      * Extracts properties passed through MultiParty form
      */
 
     var propertyObject = {
-      "restricted": (objects.filter(x => x.name === "restricted" && x.data === "on").length !== 0),
+      "restricted": properties.restricted && properties.restricted === "on",
       "description": prototype.description,
       "netRestricted": prototype.restricted,
       "end": prototype.end
@@ -1221,223 +1215,33 @@ WebRequest.prototype.handleFileUpload = function(objects, callback) {
   }
 
   // Get properties from the network
-  var properties = getNetworkProperties(objects, this.session.prototype);
+  var properties = getNetworkProperties(objects.properties, this.session.prototype);
 
-  // Explicitly get only submtited files (ref: MultiParty lib)
-  var files = objects.filter(x => x.type === "file");
-
-  if(files.length === 0) {
-    return this.HTTPResponse(ohttp.E_HTTP_BAD_REQUEST); 
-  }
-
-  // We split any submitted StationXML files
+  // We split any submitted StationXML files to the station level
   try {
-    var XMLDocuments = splitStationXML(files, properties);
+    var XMLDocuments = splitStationXML(objects.files, properties);
   } catch(exception) {
     return callback(exception);
   }
 
-  // Confirm user is manager of the network
-  for(var i = 0; i < XMLDocuments.length; i++) {
-    if(!ownsNetwork(this.session.prototype.network, XMLDocuments[i].metadata.network)) {
-      return this.HTTPError(ohttp.E_HTTP_FORBIDDEN);
-    }
+  try {
+    validateOwnership(this.session.prototype, XMLDocuments);
+  } catch(exception) {
+    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED, exception);
   }
 
   // Assert that directories exist for the submitted files (synchronous)
   XMLDocuments.forEach(x => createDirectory(x.metadata.filepath));
 
-  this.writeSubmittedFiles(XMLDocuments, callback);
-
-}
-
-WebRequest.prototype.messageAdministrators = function(filenames) {
-
- /* function messageAdministrators
-  * Queries the database for all administrators
-  */
-
-  // No files were uploaded
-  if(filenames.length === 0) {
-    return;
-  }
-
-  // Get all ORFEUS administrators
-  database.getAdministrators(function(error, administrators) {
-
-    if(error) {
-      return logger.error(error);
-    }
-
-    // No administrators
-    if(administrators.length === 0) {
-      return logger.info("No administrators could be found");
-    }
-
-    // Message each administrator but skip messaging self
-    var messages = administrators.filter(x => x._id.toString() !== this.session._id.toString()).map(function(administrator) {
-
-      return Message(
-        administrator._id,
-        this.session._id,
-        "New Metadata Uploaded",
-        "New metadata has been submitted for station(s): " + filenames.map(escapeHTML).join(", ")
-      );
-
-    }.bind(this));
-
-    if(messages.length === 0) {
-      return;
-    }
-
-    // Store the messages
-    database.storeMessages(messages, function(error, result) {
-
-      if(error) {
-        logger.error(error);
-      } else {
-        logger.info("Messaged " + administrators.length + " adminstrators about " + filenames.length + " file(s) uploaded.");
-      }
-
-    });
-
-  }.bind(this));
-
-}
-
-WebRequest.prototype.writeSubmittedFiles = function(XMLDocuments, callback) {
-
-  /* WebRequest.writeSubmittedFiles
-   * Concurrently writes all submitted XMLDocuments to disk and metadata to the database
-   */
-
-  var writeNextFile;
-  var submittedFiles = new Array();
-
-  // Asynchronous writing for multiple files to disk and
-  // adding metadata to the database
-  (writeNextFile = function() {
-
-    // Finished writing all documents
-    if(!XMLDocuments.length) {
-
-      // Write a private message to each administrator
-      this.messageAdministrators(submittedFiles);
-
-      // Fire callback without an error
-      return callback(null);
-
-    }
-
-    // Get the next queued file
-    var file = XMLDocuments.pop();
-
-    // Extact metadata for the file
-    var metadata = {
-      "userId": this.session._id,
-      "status": database.METADATA_STATUS_PENDING,
-      "type": "FDSNStationXML",
-      "filename": file.metadata.id,
-      "network": file.metadata.network,
-      "station": file.metadata.station,
-      "nChannels": file.metadata.nChannels,
-      "filepath": path.join(file.metadata.filepath, file.metadata.sha256),
-      "size": file.metadata.size,
-      "sha256": file.metadata.sha256,
-      "error": null,
-      "available": null,
-      "modified": null,
-      "created": new Date()
-    }
-
-    // Check if the file (sha256) is already in the database
-    // Since it is pointless to store multiple objects for the same file
-    // Superseded files ALWAYS stay in the database to keep the history complete
-    database.files().findOne({"sha256": metadata.sha256, "status": {"$ne": database.METADATA_STATUS_SUPERSEDED}}, function(error, document) {
-
-      if(error) {
-        return callback(error);
-      }
-
-      // Document is in database: continue next
-      if(document !== null) {
-        return writeNextFile();
-      }
-
-      // Insert the new (or updated) metadata document
-      database.files().insertOne(metadata, function(error, document) {
-
-        if(error) {
-          logger.error("Could not insert new metadata object for " + metadata.filename);
-        } else {
-          logger.info("Inserted new metadata object for " + metadata.filename);
-        }
-
-        if(error) {
-          return callback(error);
-        }
-
-        // NodeJS stdlib for writing file
-        fs.writeFile(path.join(metadata.filepath + ".stationXML"), file.data, function(error) {
-
-          if(error) {
-            logger.error("Could not write file " + metadata.filename + " to disk (" + metadata.sha256 + ")");
-          } else {
-            logger.info("Writing file for " + metadata.filename + " to disk (" + metadata.sha256 + ")");
-          }
-
-          if(error) {
-            return callback(error);
-          }
-
-          // Supersede previous metadata documents (outdated metadata)
-          database.supersedeFileByStation(document.insertedId, metadata, function(error) {
-
-            if(error) {
-              return callback(error);
-            }
-
-            // Save the written filename for a message sent to the administrators
-            submittedFiles.push(metadata.filename);
-
-            // More files to write
-            writeNextFile();
-
-          });
-
-        });
-
-      });
-
-    });
-
-  }.bind(this))();
-
-}
-
-function Message(recipient, sender, subject, content) {
-
-  /* Function Message
-   * Creates default object for message with variable content
-   */
-
-  return {
-    "recipient": recipient,
-    "sender": sender,
-    "subject": subject,
-    "content": content,
-    "read": false,
-    "recipientDeleted": false,
-    "senderDeleted": false,
-    "created": new Date(),
-    "level": 0
-  }
+  // Delegate writing of files: pass id to match user to file
+  database.writeSubmittedFiles(this.session._id, XMLDocuments, callback);
 
 }
 
 WebRequest.prototype.APIRequest = function() {
 
-  /* Fuction WebRequest.APIRequest
+  /*
+   * Fuction WebRequest.APIRequest
    * All requests to the ORFEUS API go through here
    */
 
@@ -1447,7 +1251,7 @@ WebRequest.prototype.APIRequest = function() {
   // Register new routes here
   switch(this.url.pathname) {
     case "/api/prototypes":
-      return this.getNetworkPrototypes();
+      return this.getAllNetworkPrototypes();
     case "/api/prototype":
       return this.getNetworkPrototype();
     case "/api/seedlink":
@@ -1459,7 +1263,7 @@ WebRequest.prototype.APIRequest = function() {
     case "/api/stations":
       return this.getFDSNWSStations();
     case "/api/staged":
-      return this.getSubmittedFiles();
+      return this.getStagedFiles();
     case "/api/channels":
       return this.getFDSNWSChannels();
     case "/api/messages":
@@ -1491,20 +1295,20 @@ WebRequest.prototype.APIRequest = function() {
       }
     default:
       return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
-
   }
 
 }
 
-WebRequest.prototype.getNetworkPrototypes = function() {
+WebRequest.prototype.getAllNetworkPrototypes = function() {
 
-  /* WebRequest.prototype.getNetworkPrototypes
+  /*
+   * WebRequest.prototype.getAllNetworkPrototypes
    * API that returns a list of the network prototypes defined in the database
    */
 
   // Only for administrators
   if(this.session.role !== "admin") {
-    return this.HTTPError(ohttp.E_HTTP_FORBIDDEN);
+    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED);
   }
 
   // Get all the prototypes from the database
@@ -1526,13 +1330,15 @@ WebRequest.prototype.getNetworkPrototypes = function() {
 
 WebRequest.prototype.getNetworkPrototype = function() {
 
-  /* WebRequest.getNetworkPrototype
+  /*
+   * Function WebRequest.getNetworkPrototype
    * Returns the active network prototype for this session
    */
 
   function getPrototypeFile(document) {
 
-    /* WebRequest.getNetworkPrototype::getPrototypeFile
+    /*
+     * Function WebRequest.getNetworkPrototype::getPrototypeFile
      * Returns the file location on disk of the prototype
      */
 
@@ -1540,12 +1346,9 @@ WebRequest.prototype.getNetworkPrototype = function() {
 
   }
 
-  // Parse the query string
-  var queryString = querystring.parse(this.url.query);
-
-  // If an id parameter was passed, make a different query
-  if(queryString.id) {
-    var findQuery = {"sha256": queryString.id}
+  // If admin & an id parameter was passed, make a different query
+  if(this.session.role === "admin" && this.query.id) {
+    var findQuery = {"sha256": this.query.id}
   } else {
     var findQuery = {"network": this.session.prototype.network}
   }
@@ -1569,7 +1372,8 @@ WebRequest.prototype.getNetworkPrototype = function() {
 
 WebRequest.prototype.removeMetadata = function(id) {
 
-  /* Function WebRequest.removeMetadata
+  /*
+   * Function WebRequest.removeMetadata
    * Writes metadata file from disk to user
    */
 
@@ -1580,6 +1384,7 @@ WebRequest.prototype.removeMetadata = function(id) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
+    // Succesfully deleted: send 204
     return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
 
   }.bind(this));
@@ -1588,7 +1393,8 @@ WebRequest.prototype.removeMetadata = function(id) {
 
 WebRequest.prototype.pipeMetadata = function(id) {
 
-  /* WebRequest.pipeMetadata
+  /*
+   * Function WebRequest.pipeMetadata
    * Pipes a metadata file from disk to user
    */
 
@@ -1612,8 +1418,9 @@ WebRequest.prototype.pipeMetadata = function(id) {
 
 WebRequest.prototype.getMetadataFile = function(id) {
 
-  /* Function WebRequest.getMetadataFile
-   * Writes metadata file from disk to user
+  /*
+   * Function WebRequest.getMetadataFile
+   * RESTful API handling for getting or deleting metadata
    */
 
   switch(this.request.method) {
@@ -1629,20 +1436,19 @@ WebRequest.prototype.getMetadataFile = function(id) {
 
 WebRequest.prototype.getMetadataHistory = function() {
 
-  /* Function WebRequest.getMetadataHistory
+  /*
+   * Function WebRequest.getMetadataHistory
    * Queries database for full metadata history of single station
    */
 
   // Parse the query string
-  var queryString = querystring.parse(this.url.query);
-
   // If an id parameter was passed
-  if(queryString.id) {
-    return this.getMetadataFile(queryString.id);
+  if(this.query.id) {
+    return this.getMetadataFile(this.query.id);
   }
 
   // Get the file by network and station identifier
-  database.getFilesByStation(this.session, queryString, function(error, results) {
+  database.getFilesByStation(this.session, this.query, function(error, results) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1658,80 +1464,15 @@ WebRequest.prototype.getMetadataHistory = function() {
 
 }
 
-WebRequest.prototype.getDNSLookup = function(servers) {
-
-  /* Function WebRequest.getDNSLookup
-   * Does a DNS lookup on Seedlink servers and proceeds with response
-   */
-
-  const SEEDLINK_API_URL = "http://" + CONFIG.STATIONS.HOST + ":" + CONFIG.STATIONS.PORT;
-
-  // Query the DNS records
-  ohttp.getDNS(servers, function(DNSRecords) {
-
-    // Combine all servers and ports
-    var serversAndPorts = DNSRecords.map(x => x.host + ":" + x.port).join(",");
-
-    // Make the request to the internal API
-    ohttp.request(SEEDLINK_API_URL + "?host=" + serversAndPorts, function(seedlinkServers) {
-
-      if(seedlinkServers === null) {
-        return this.writeJSON(DNSRecords);
-      }
-
-      this.attachSeedlinkMetadata(DNSRecords, JSON.parse(seedlinkServers));
-
-    }.bind(this));
-
-  }.bind(this));
-
-}
-
-WebRequest.prototype.attachSeedlinkMetadata = function(DNSRecords, seedlinkServers) {
-
-  /* Function WebRequest.attachSeedlinkMetadata
-   * Attaches seedlink metadata (e.g. version, identifier) to a DNS record
-   */
-
- // Attach seedlink metadata to each DNS record
- var results = DNSRecords.map(function(x) {
-
-   // Naively try to match every seedlink server
-   for(var i = 0; i < seedlinkServers.length; i++) {
-
-     var seedlinkServer = seedlinkServers[i];
-
-     // Match: extend metadata
-     if(seedlinkServer.server.host === x.host && seedlinkServer.server.port === x.port) {
-       return {
-         "host": x.host,
-         "ip": x.ip,
-         "port": x.port,
-         "identifier": seedlinkServer.identifier,
-         "connected": seedlinkServer.connected,
-         "version": seedlinkServer.version,
-         "stations": seedlinkServer.error === "CATNOTIMPLEMENTED" ? null : seedlinkServer.stations.filter(station => station.network === this.session.prototype.network.code)
-       }
-     }
-
-   }
-
-   return x;
-
- }.bind(this));
-
- this.writeJSON(results);
-
-}
-
 WebRequest.prototype.getSeedlinkServers = function() {
 
-  /* Function WebRequest.getSeedlinkServers
+  /*
+   * Function WebRequest.getSeedlinkServers
    * Returns submitted seedlink servers from the database
    */
 
   // Query the database for submitted servers
-  database.seedlink().find({"userId": this.session._id}).toArray(function(error, results) {
+  database.getSeedlinkServers(this.session._id, function(error, results) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1742,7 +1483,10 @@ WebRequest.prototype.getSeedlinkServers = function() {
       return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
     }
 
-    this.getDNSLookup(results);
+    // Look up DNS records
+    ohttp.getDNSLookup(this.session.prototype.network.code, results, function(servers) {
+      this.writeJSON(servers);
+    }.bind(this));
 
   }.bind(this));
 
@@ -1750,7 +1494,8 @@ WebRequest.prototype.getSeedlinkServers = function() {
 
 WebRequest.prototype.removeAllMessagesSent = function() {
 
-  /* Function WebRequest.RemoveAllMessages
+  /*
+   * Function WebRequest.removeAllMessagesSent
    * Sets all messages for user to deleted
    */
 
@@ -1774,7 +1519,8 @@ WebRequest.prototype.removeAllMessagesSent = function() {
 
 WebRequest.prototype.removeAllMessages = function() {
 
-  /* Function WebRequest.RemoveAllMessages
+  /*
+   * Function WebRequest.removeAllMessages
    * Sets all messages for user to deleted
    */
 
@@ -1798,23 +1544,23 @@ WebRequest.prototype.removeAllMessages = function() {
 
 WebRequest.prototype.removeSpecificMessage = function() {
 
-  /* Function WebRequest.RemoveSpecificMessage
+  /*
+   * Function WebRequest.RemoveSpecificMessage
    * Sets message with particular id to deleted
+   * We have no way of knowing whether the sender of recipient is deleting (FIXME)
    */
 
   // Get the message identifier from the query string
-  var queryString = querystring.parse(this.url.query);
-
   var senderQuery = {
     "sender": database.ObjectId(this.session._id),
     "senderDeleted": false,
-    "_id": database.ObjectId(queryString.id)
+    "_id": database.ObjectId(this.query.id)
   }
 
   var recipientQuery = {
     "recipient": database.ObjectId(this.session._id),
     "recipientDeleted": false,
-    "_id": database.ObjectId(queryString.id)
+    "_id": database.ObjectId(this.query.id)
   }
 
   // Get specific message from the database
@@ -1850,14 +1596,13 @@ WebRequest.prototype.removeSpecificMessage = function() {
 
 WebRequest.prototype.getSpecificMessage = function() {
 
-  /* Function GetSpecificMessage
+  /*
+   * Function GetSpecificMessage
    * Returns a specific private message
    */
 
-  var queryString = querystring.parse(this.url.query);
-
   // Get specific message from the database
-  database.getMessageById(this.session._id, queryString.id, function(error, message) {
+  database.getMessageById(this.session._id, this.query.id, function(error, message) {
 
     // Could not find message
     if(error) {
@@ -1871,9 +1616,9 @@ WebRequest.prototype.getSpecificMessage = function() {
     // Check if the author of the message is the owner of the session
     var author = message.sender.toString() === this.session._id.toString();
 
-    // If requestee is not the author: set message to read
+    // If requestee is not the author: set the message to read (background)
     if(!author && !message.read) {
-      database.messages().updateOne({"_id": message._id}, {"$set": {"read": true}});
+      database.setMessageRead(message._id);
     }
 
     var userIdentifier = author ? message.recipient : message.sender;
@@ -1905,7 +1650,8 @@ WebRequest.prototype.getSpecificMessage = function() {
 
 WebRequest.prototype.getNewMessages = function() {
 
-  /* Function WebRequest.getNewMessages
+  /*
+   * Function WebRequest.getNewMessages
    * Return the number of new messages 
    */
 
@@ -1923,7 +1669,8 @@ WebRequest.prototype.getNewMessages = function() {
 
 WebRequest.prototype.getMessages = function() {
 
-  /* Function WebRequest.getMessages
+  /*
+   * Function WebRequest.getMessages
    * Returns all messages that belong to a user in a session
    */
 
@@ -1933,6 +1680,7 @@ WebRequest.prototype.getMessages = function() {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
+    // All senders and recipient identifiers
     var userIdentifiers = documents.map(x => database.ObjectId(x.sender)).concat(documents.map(x => database.ObjectId(x.recipient)));
 
     // Get usernames from user identifiers
@@ -1942,8 +1690,8 @@ WebRequest.prototype.getMessages = function() {
         return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       }
 
-      // Create a temporary hashMap that maps
-      // {user._id} to {user.username}
+      // Create a simple hashMap that maps id to username 
+
       var hashMap = new Object();
       users.forEach(function(x) {
         hashMap[x._id] = {"username": x.username, "role": x.role};
@@ -1952,6 +1700,7 @@ WebRequest.prototype.getMessages = function() {
       // Create a JSON with the message contents
       var messageContents = documents.map(function(x) {
 
+        // Body payload
         return {
           "subject": x.subject,
           "sender": hashMap[x.sender],
@@ -1961,6 +1710,7 @@ WebRequest.prototype.getMessages = function() {
           "read": x.read,
           "author": x.sender.toString() === this.session._id.toString()
         }
+
       }.bind(this));
       
       this.writeJSON(messageContents);
@@ -1973,7 +1723,8 @@ WebRequest.prototype.getMessages = function() {
 
 WebRequest.prototype.getStationLatencies = function() {
 
-  /* Function WebRequest.getStationLatencies
+  /*
+   * Function WebRequest.getStationLatencies
    * Returns Seedlink latencies for a network, station
    */
 
@@ -1985,13 +1736,18 @@ WebRequest.prototype.getStationLatencies = function() {
 
 WebRequest.prototype.writeJSON = function(json) {
 
-  /* Function WebRequest.writeJSON
+  /*
+   * Function WebRequest.writeJSON
    * Writes JSON to client
    */
 
-  // Null when 204
+  // Send 204 NO CONTENT 
   if(json === null) {
     return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+  }
+
+  if(json === undefined) {
+    return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, new Error("Writing undefined JSON"));
   }
 
   // This is bound to the response
@@ -2004,7 +1760,8 @@ WebRequest.prototype.writeJSON = function(json) {
 
 WebRequest.prototype.getFDSNWSChannels = function() {
 
-  /* Function WebRequest.getFDSNWSChannels
+  /*
+   * Function WebRequest.getFDSNWSChannels
    * Returns the channels for a given station from FDSNWS
    */
 
@@ -2103,73 +1860,34 @@ WebRequest.prototype.parseFDSNWSResponse = function(data) {
 
 }
 
-WebRequest.prototype.getSubmittedFiles = function() {
+WebRequest.prototype.getStagedFiles = function() {
 
-  /* Function WebRequest.getSubmittedFiles
-   * Abstracted function to read files from multiple directories
-   * and concatenate the result
+  /*
+   * Function WebRequest.getStagedFiles
+   * Returns the files that are staged
    */
 
-  var networkQuery;
-
-  // Submitted files with metadata
-  if(this.session.role === "admin") {
-    networkQuery = {"network.code": new RegExp(/.*/)}
-  } else {
-    networkQuery = {
-      "network.code": this.session.prototype.network.code,
-      "network.start": this.session.prototype.network.start
+  // Find all metadata in these processing pipeline
+  var findQuery = {
+    "status": {
+      "$in": [
+        database.METADATA_STATUS_REJECTED,
+        database.METADATA_STATUS_PENDING,
+        database.METADATA_STATUS_CONVERTED,
+        database.METADATA_STATUS_VALIDATED,
+        database.METADATA_STATUS_ACCEPTED
+      ]
     }
   }
 
-  // Stages:
-  // Pending -> Accepted | Rejected
-  var pipeline = [{
-    "$match": networkQuery
-  }, {
-    "$group": {
-      "_id": {
-        "network": "$network",
-        "station": "$station",
-      },
-      "created": {
-        "$last": "$created"
-      },
-      "size": {
-        "$last": "$size"
-      },
-      "status": {
-        "$last": "$status"
-      },
-      "nChannels": {
-        "$last": "$nChannels"
-      },
-      "modified": {
-        "$last": "$modified"
-      },
-      "error": {
-        "$last": "$error"
-      },
-      "sha256": {
-        "$last": "$sha256"
-      }
-    }
-  }, {
-    "$match": {
-      "status": {
-        "$in": [
-          database.METADATA_STATUS_REJECTED,
-          database.METADATA_STATUS_PENDING,
-          database.METADATA_STATUS_CONVERTED,
-          database.METADATA_STATUS_VALIDATED,
-          database.METADATA_STATUS_ACCEPTED
-        ]
-      }
-    }
-  }];
+  // Filter anything that does not belong to the user
+  if(!this.session.role === "admin") {
+    findQuery["network.code"] = this.session.prototype.network.code;
+    findQuery["network.start"] = this.session.prototype.network.start;
+  }
 
-  // Query the database for submitted files
-  database.files().aggregate(pipeline).toArray(function(error, files) {
+  // Get the staged files from the database
+  database.getStagedFiles(findQuery, function(error, files) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -2183,7 +1901,8 @@ WebRequest.prototype.getSubmittedFiles = function() {
 
 WebRequest.prototype.getFDSNWSStations = function() {
 
-  /* Function WebRequest.GetFDSNWSStations
+  /*
+   * Function WebRequest.GetFDSNWSStations
    * Returns station information from FDSNWS Station
    */
 
@@ -2192,7 +1911,7 @@ WebRequest.prototype.getFDSNWSStations = function() {
     "level": "station",
     "format": "text",
     "network": this.session.prototype.network.code
-  })
+  });
 
   // If the network end is specified only show stations from before the network end
   ohttp.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
@@ -2202,4 +1921,4 @@ WebRequest.prototype.getFDSNWSStations = function() {
 }
 
 // Init the server
-init();
+__init__();

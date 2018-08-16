@@ -783,7 +783,7 @@ App.prototype.setupStagedFilePolling = function() {
       var statusInformation = "<b title='" + title + "'>" + getStatus(file.status) + "</b>";
 
       return [
-        "<b><a href='/home/station?network=" + file._id.network.code + "&station=" + file._id.station + "'>" + file._id.network.code + "." + file._id.station +" </a></b>" + (file.new ? "&nbsp;<span class='fa fa-star text-warning'></span>" : ""),
+        "<b><a href='/home/station?network=" + file.network.code + "&station=" + file.station + "'>" + file.network.code + "." + file.station +" </a></b>" + (file.new ? "&nbsp;<span class='fa fa-star text-warning'></span>" : ""),
         "<a target='_blank' href='/api/history?id=" + file.sha256 + "'><code data-toggle='tooltip' data-placement='right' data-html='true' title='<span class=\"fas fa-fingerprint\"></span> " + file.sha256 +"'>" + file.sha256.slice(0, 8) + "…</code></a>",
         file.nChannels,
         file.created,
@@ -2046,7 +2046,7 @@ function generateAccordionContent(list) {
       "</div>",
       "<hr>",
       "<button class='btn btn-link' onClick='getInstrumentResponse(\"" + [channel.network, channel.station, channel.location, channel.channel, channel.sensorUnits].join(".") + "\")'>" + getIcon("eye") + " View Sensor Response</button>",
-      "<a style='float: right;' class='btn btn-link' target='_blank' href='https://www.orfeus-eu.org/fdsnws/station/1/query" + query + "'>" + getIcon("download") + " StationXML</a>",
+      "<a style='float: right;' class='btn btn-link' target='_blank' href='https://www.orfeus-eu.org/fdsnws/station/1/query" + query + "'>" + getIcon("download") + " FDSNWS StationXML</a>",
     ].join("\n");
   
   }
