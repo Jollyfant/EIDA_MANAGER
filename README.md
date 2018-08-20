@@ -37,15 +37,15 @@ The system manages a complete history of all metadata submitted. Files that are 
 
 Processing Pipeline terminology:
 
-  - Pending - Metadata is awaiting metadaemon process
-  - Validated - Server side validation of the FDSNStationXML
-  - Converted - SeisComP3 conversion from FDSNStationXML to valid SC3ML
-  - Merged - Dummy SeisComP3 merge against the network prototype to reject existing merge conflicts
-  - Approved - Valid SC3ML waiting idle to be combined to a full inventory by the metadaemon
+  - `Pending` - Metadata is awaiting metadaemon process.
+  - `Validated` - Server side validation of the FDSNStationXML (e.g. schema, sanity, user rights).
+  - `Converted` - SeisComP3 conversion from FDSNStationXML to SeisComP3 SC3ML.
+  - `Merged` - Dummy SeisComP3 merge against the network prototype to raise any merge conflicts.
+  - `Approved` - Valid SC3ML waiting to be exposed by FDSNWS Station.
 
-  - Rejected - Metadata was rejected by the system
-  - Terminated - Metadata processing was terminated
-  - Available - Metadata is presently available through the FDSNWS Webservice
+  - `Rejected` - Metadata was rejected by the system. Hover over the element to find the reason for rejection.
+  - `Terminated` - Metadata processing was terminated by the user or administrator.
+  - `Available` - Metadata is available through FDSNWS Station.
 
 ## Configuration
 
@@ -82,26 +82,26 @@ Configuration parameters are:
 
 ## Setting up the SeisComP3 MySQL Database
 
-Start and connect to a MariaDB image that will create the SeisComP3 database. Add the database schema manually:
+Start and connect to a MariaDB image that will create the SeisComP3 database. Mount the volume (-v) that will retain the container data on the host and match it to the configuration of docker-compose. Add the database schema manually:
 
     Remember to replace {password}, {data-directory}, {container} with appropriate values
 
     $ docker run -d --rm -e "MYSQL_ROOT_PASSWORD={password}" -e "MYSQL_DATABASE=seiscomp3" -v {directory/data/mysql}:/var/lib/mysql mariadb:latest
     b6375277f9733fa1a0de1d048c0fe6bb04c49e997971c8c22f0dd999dc84ae3c
-    $ cat seiscomp3.sql | docker exec -i {container} mysql -uroot -pexample seiscomp3
+    $ cat seiscomp3.sql | docker exec -i {container} mysql -uroot -ppassword seiscomp3
     $ docker stop {container}
 
 The root password needs to be configured in the `scconfig` directory before building the EIDA Manager image.
 
-## Settings up the MongoDB Database
+## Setting up the MongoDB Database
 
 Start up and connect to a MongoDB image. Users need to be inserted manually (with a SHA256 password hash/salt) for now.
 
-    docker run -d --rm -e "MONGO_INITDB_ROOT_USERNAME=root" -e "MONGO_INITDB_ROOT_PASSWORD=password" -v {directory/data/mongo}:/data/db mongo:latest
+    $ docker run -d --rm -e "MONGO_INITDB_ROOT_USERNAME=root" -e "MONGO_INITDB_ROOT_PASSWORD=password" -v {directory/data/mongo}:/data/db mongo:latest
     b6375277f9733fa1a0de1d048c0fe6bb04c49e997971c8c22f0dd999dc84ae3c
-    docker exec -it {container} mongo
+    $ docker exec -it {container} mongo
     > use admin
     > db.auth("root", "password")
     > use orfeus-manager
     > db.users.insert({object})
-    docker stop {container}
+    $ docker stop {container}
