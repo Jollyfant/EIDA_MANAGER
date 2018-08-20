@@ -376,6 +376,8 @@ WebRequest.prototype.RPC = function() {
       return this.RPCInventory();
     case "/rpc/prototypes":
       return this.RPCPrototypes();
+    case "/rpc/database":
+      return this.RPCDatabase();
     default:
       return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
   }
@@ -541,6 +543,166 @@ WebRequest.prototype.RPCPrototypes = function() {
 
 }
 
+WebRequest.prototype.RPCDatabase = function() {
+
+  /*
+   * Function RPCInventory
+   * Call to merge the entire inventory based on the most recent
+   * ACCEPTED or COMPLETED metadata from the database
+   */
+
+  logger.info("RPC for database update received.");
+
+  const inventoryFile = path.join("seiscomp3", "etc", "inventory", "inventory.xml");
+
+  // Attempt to remove the previous merged XML
+  fs.unlink(inventoryFile, function(error) {
+
+    // ENOENT means file does not exist
+    if(error && error.code !== "ENOENT") {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
+
+    // Get the accepted inventory from the database
+    database.getAcceptedInventory(function(error, documents) {
+
+      if(error) {
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      }
+
+      if(documents.length === 0) {
+        return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+      }
+
+      // Get the SC3ML filenames and add them to the CMDline
+      var SEISCOMP_COMMAND = [
+        "exec",
+        "scinv",
+        "merge"
+      ].concat(documents.map(x => x.filepath + ".sc3ml"));
+
+      SEISCOMP_COMMAND = SEISCOMP_COMMAND.concat([
+        "-o",
+        inventoryFile
+      ]);
+
+      // Spawn the SeisComP3 subprocess
+      const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
+
+      // ENOENT SeisComP3
+      convertor.on("error", function(error) {
+        this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      }.bind(this));
+
+      // NOOP but required..
+      convertor.stderr.on("data", Function.prototype);
+
+      // Child process has closed
+      convertor.on("close", function(code) {
+
+        if(code === 1) {
+          return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        logger.info("RPC merged full inventory of " + documents.length + " files. Exited with status code " + code + ".");
+
+        this.RPCUpdateInventory(documents);
+
+      }.bind(this));
+
+    }.bind(this));
+
+  }.bind(this));
+
+}
+
+WebRequest.prototype.RPCRestartFDSNWS = function(callback) {
+
+  /*
+   * Function RPCRestartFDSNWS
+   * Restarts the SeisComP3 FDSNWS webservice running inside
+   * In production, FDSNWS services should be run in a dedicated container
+   */
+
+  logger.info("Restart of FDSNWS requested.");
+
+  var SEISCOMP_COMMAND = [
+    "restart",
+    "fdsnws"
+  ];
+
+  // Spawn the SeisComP3 subprocess
+  const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
+
+  // ENOENT SeisComP3
+  convertor.on("error", function(error) {
+    return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+  }.bind(this));
+
+  // NOOP but required..
+  convertor.stderr.on("data", Function.prototype);
+
+  convertor.on("close", callback.bind(this));
+
+}
+
+WebRequest.prototype.RPCUpdateInventory = function(documents) {
+
+  /*
+   * Function RPCUpdateInventory
+   * Updates the database with the accepted inventory
+   */
+
+  // SeisComP3 command to update the MySQL database
+  var SEISCOMP_COMMAND = [
+    "update-config",
+    "inventory"
+  ];
+
+  // Spawn the SeisComP3 subprocess
+  const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
+
+  // ENOENT SeisComP3
+  convertor.on("error", function(error) {
+    this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+  }.bind(this));
+
+  // NOOP but required..
+  convertor.stderr.on("data", Function.prototype);
+
+  // Child process has closed
+  convertor.on("close", function(code) {
+
+    logger.info("SeisComP3 database has been updated. Exited with status code " + code + ".");
+
+    // Error updating the database
+    if(code === 1) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
+    }
+
+    // Set all submitted files to being available/completed
+    database.setAvailable(documents.map(x => x.id), function(error) {
+
+      if(error) {
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      }
+
+      this.RPCRestartFDSNWS(function(code) {
+
+        if(code === 1) {
+          return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+
+      });
+
+    }.bind(this));
+
+  }.bind(this));
+
+}
+
 WebRequest.prototype.RPCInventory = function() {
 
   /*
@@ -561,14 +723,13 @@ WebRequest.prototype.RPCInventory = function() {
     }
 
     if(documents.length === 0) {
-      return this.HTTPError(ohttp.S_HTTP_NO_CONTENT);
+      return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
     }
 
     logger.info("RPC is merging " + documents.length + " inventory files.");
 
     // Get the SC3ML filenames and add them to the CMDline
     var SEISCOMP_COMMAND = [
-      "--asroot",
       "exec",
       "scinv",
       "merge"
@@ -591,7 +752,7 @@ WebRequest.prototype.RPCInventory = function() {
     convertor.stdout.pipe(this.response);
 
     // NOOP but required..
-    convertor.stderr.on("data", function() { });
+    convertor.stderr.on("data", Function.prototype);
 
     // Child process has closed
     convertor.on("close", function(code) {
@@ -1165,33 +1326,6 @@ WebRequest.prototype.handleFileUpload = function(objects, callback) {
    * Writes multiple (split) StationXML files to disk
    */
 
-  function validateOwnership(prototype, XMLDocuments) {
-
-    /*
-     * Function WebRequest.handleFileUpload::validateOwnership
-     * Validates the ownership of submitted metadata
-     */
-
-    function userOwnsNetwork(network, metadata) {
-
-      /*
-       * Function WebRequest.handleFileUpload::validateOwnership::userOwnsNetwork
-       * Compares the user network prototype to the metadata
-       */
-
-      return (network.code === metadata.code && network.start.toISOString() === metadata.start.toISOString());
-
-    }
-
-    // Go over each document
-    XMLDocuments.forEach(function(document) {
-      if(!userOwnsNetwork(prototype.network, document.metadata.network)) {
-        throw(new Error("User does not own network rights"));
-      }
-    });
-
-  }
-
   function getNetworkProperties(properties, prototype) {
 
     /* Function WebRequest.handleFileUpload::getNetworkProperties
@@ -1199,10 +1333,12 @@ WebRequest.prototype.handleFileUpload = function(objects, callback) {
      */
 
     var propertyObject = {
-      "restricted": properties.restricted && properties.restricted === "on",
+      "restricted": properties.restricted !== undefined  && properties.restricted === "on",
       "description": prototype.description,
       "netRestricted": prototype.restricted,
-      "end": prototype.end
+      "end": prototype.end,
+      "code": prototype.network.code,
+      "start": prototype.network.start
     }
 
     // Network prototype is restricted: must propogate to stations
@@ -1222,12 +1358,6 @@ WebRequest.prototype.handleFileUpload = function(objects, callback) {
     var XMLDocuments = splitStationXML(objects.files, properties);
   } catch(exception) {
     return callback(exception);
-  }
-
-  try {
-    validateOwnership(this.session.prototype, XMLDocuments);
-  } catch(exception) {
-    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED, exception);
   }
 
   // Assert that directories exist for the submitted files (synchronous)

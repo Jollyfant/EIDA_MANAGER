@@ -3,11 +3,23 @@
 version: '3.3'
 services:
 
+  # Driver for the SeisComP3 database
+  mariadb:
+    image: mariadb
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+
   # Default MongoDB image for users, sessions, etc..
   # Mount volume for persistent data storage
   mongo:
     image: mongo
     restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
     volumes:
       - ./data/mongo:/data/db
 
@@ -18,11 +30,12 @@ services:
     image: eida-manager:1.0
     restart: always
     volumes:
-      - ./logs:/usr/src/app/logs
-      - ./data/metadata:/usr/src/app/metadata
-      - ./prototypes:/usr/src/app/prototypes
+      - ./logs:/home/sysop/logs
+      - ./data/metadata:/home/sysop/metadata
+      - ./prototypes:/home/sysop/prototypes
     ports:
       - 8088:8088
+      - 8080:8080
 
   # NodeJS Seedlink latency connector
   # Can be pulled from https://github.com/Jollyfant/NodeJS-Seedlink-Latencies
@@ -53,6 +66,7 @@ services:
     environment:
       - "SERVICE_PORT=8089"
 
+  # Webservice for network DOIs
   doi-webservice:
     image: doi-webservice:1.0
     restart: always

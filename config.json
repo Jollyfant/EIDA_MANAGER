@@ -8,7 +8,7 @@
   "HOST": "0.0.0.0",
   "LOGFILE": "./logs/server.log",
   "SEISCOMP": {
-    "PROCESS": "seiscomp"
+    "PROCESS": "./seiscomp3/bin/seiscomp"
   },
   "EXTERNAL": {
     "IP": "145.23.31.253"
@@ -25,12 +25,12 @@
     },
     "DAEMON": {
       "ENABLED": true,
-      "SLEEP_INTERVAL_MS": 6000
+      "SLEEP_INTERVAL_MS": 60000
     }
   },
   "FDSNWS": {
     "STATION": {
-      "HOST": "http://orfeus-eu.org/fdsnws/station/1/query"
+      "HOST": "http://0.0.0.0:8080/fdsnws/station/1/query"
     },
     "DATASELECT": {
       "HOST": "http://orfeus-eu.org/fdsnws/dataselect/1/query"
@@ -54,6 +54,8 @@
   "MONGO": {
     "NAME": "orfeus-manager",
     "HOST": "mongo",
+    "USER": "root",
+    "PASS": "password",
     "PORT": 27017
   }
 }

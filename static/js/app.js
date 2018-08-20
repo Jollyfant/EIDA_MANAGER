@@ -126,26 +126,6 @@ App.prototype.AddMap = function() {
    * Initializes code for Google Maps application
    */
 
-  function generateNodeInfoWindow(node, times) {
-  
-    /* AddMap::generateNodeInfoWindow
-     * Generates HTML for the EIDA node info window
-     */
-
-    return [
-      "<h5>" + getCountryFlag(node.id) + " EIDA Node " + node.id + "</h5>",
-      "<hr>",
-      node.title,
-      "<hr>",
-      "<b> Node Webservice Health </b>",
-      "<br>",
-      (times.dataselect ? getIcon("circle", "success") : getIcon("circle", "danger")) + " FDSNWS Dataselect " + times.dataselect + "ms",
-      "<br>",
-      (times.station ? getIcon("circle", "success") : getIcon("circle", "danger")) + " FDSNWS Station " + times.station + "ms"
-    ].join("");
-  
-  }
-
   var start = Date.now();
 
   this.map = new google.maps.Map(Element("map"), {
@@ -214,6 +194,20 @@ App.prototype.AddMap = function() {
 
 App.prototype.addNode = function(node) {
 
+  function generateNodeInfoWindow(node) {
+
+    /* AddMap::generateNodeInfoWindow
+     * Generates HTML for the EIDA node info window
+     */
+
+    return [
+      "<h5>" + getCountryFlag(node.id) + " EIDA Node " + node.id + "</h5>",
+      "<hr>",
+      node.title
+    ].join("");
+
+  }
+
   /* function App.addNode
    * Adds a single EIDA node to the map
    */
@@ -234,45 +228,10 @@ App.prototype.addNode = function(node) {
   marker.addListener("click", function() {
 
     this.infowindow.close();
-
-    // Get the webservice response times
-    this.getFDSNWSStatus(function(responseTimes) {
-      this.infowindow.setContent(generateNodeInfoWindow(marker, responseTimes));
-      this.infowindow.open(this.map, marker);
-    }.bind(this));
+    this.infowindow.setContent(generateNodeInfoWindow(marker));
+    this.infowindow.open(this.map, marker);
 
   }.bind(this));
-
-}
-
-App.prototype.getFDSNWSStatus = function(callback) {
-
-  /* Function App.getFDSNWSStatus
-   * Fires callback with number of miliseconds FDSNWS services took to respond
-   */
-
-  var _station = null;
-  var _dataselect = null; 
-
-  var start = Date.now();
-
-  function cally() {
-
-    if(_station && _dataselect) {
-      callback({"station": _station, "dataselect": _dataselect});
-    }
-
-  }
-
-  HTTPRequest("https://www.orfeus-eu.org/fdsnws/station/1/version", function(json){
-    _station = Date.now() - start;
-    cally();
-  });
-
-  HTTPRequest("https://www.orfeus-eu.org/fdsnws/dataselect/1/version", function(json){
-    _dataselect = Date.now() - start;
-    cally();
-  });
 
 }
 
@@ -802,7 +761,7 @@ App.prototype.setupStagedFilePolling = function() {
       "Submitted",
       "Modified",
       "Inventory Size",
-      "Current Status"
+      "Status"
     ];
   
     new Table({
@@ -889,7 +848,7 @@ App.prototype.launchHome = function() {
   HTTPRequest("/api/stations", function(json) {
 
     if(json === null) {
-      return;
+      json = new Array();
     }
 
     console.debug("Retrieved " + json.length + " stations from server in " + (Date.now() - start) + "ms.");
@@ -1486,6 +1445,7 @@ function GoogleMapsInfoWindowContent(marker) {
     marker.description,
     "<p>Operational from <b>" + marker.start + "</b> - <b>" + (marker.end || "present") + "</b>",
     "<br>",
+    "<p>At location <b>" + marker.position.lat().toFixed(3) + "</b>°N, <b>" + marker.position.lng().toFixed(3) + "</b>°E",
     "<br>",
     "<div style='text-align: center;'>" + markerDetailLink(marker) + "</div>"
   ].join(""); 
@@ -2552,6 +2512,10 @@ App.prototype.AddMetadataUpload = function() {
    * Adds event to metadata uploading
    */
 
+  function unique(v, i, a) {
+    return a.indexOf(v) === i;
+  }
+
   Element("metadata-submission").style.display = "block";
 
   // Add event handler when files are selected 
@@ -2577,7 +2541,7 @@ App.prototype.AddMetadataUpload = function() {
       // Generate the content
       var stagedFileContent = stagedStations.map(function(x) {
         return (x.new ? getIcon("star", "warning") + " " : "") + x.network + "." + x.station
-      }).join(", ");
+      }).filter(unique).join(", ");
 
       Element("file-help").innerHTML = "<b>" + getIcon("check", "success") + "</span> Staged Metadata:</b> " + (stagedStations.length ? stagedFileContent : "None"); 
 

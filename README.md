@@ -9,23 +9,21 @@ Prototype for an EIDA metadata management system. This interface is built on an 
 
 Each service can be run as a seperate NodeJS process or built to a Docker image:
 
-  docker build -t {service-name}:1.0 .
+    docker build -t {service-name}:1.0 .
 
 All modules must be configured in `docker-compose.yml`. When building the EIDA Manager, make sure that `seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz` or another version of SeisComP3 is available in the root folder and that the configuration is valid for your deployment.
 
 ## Running with Docker
 
-  docker-compose up
+Before running docker-compose one needs to set up the MongoDB/MariaDB as described at the bottom of this README.
 
-## Running without Docker
-
-Without Docker, a manual installation of `MongoDB` and `SeisComP3` are required.
+    docker-compose up
 
 ## Network prototypes
 
 Network prototypes are metadata definitions on a network level (e.g. code, start, end, description). All submitted metadata from a network (identified by a code, start & end) is compared to its respective network prototype. This is a requirement put in place by SeisComP3 when merging inventories where all top-level network attributes *must* be identical. Because metadata is sourced from multiple users, we must define a prototype that all stations from a single network must be based on.
 
-The prototype files (stationXML) must be downloaded outside of the application and put in the `/prototype` directory. Administrators may invoke an RPC that updates the network prototypes to the database. It is highly unrecommended to update existing prototypes -- as this will supersede all station metadata that was previously submitted. Adding new prototypes for new networks follows the usual business.
+The prototype files (stationXML) must be downloaded outside of the application and put in the `/prototype` directory. Administrators may invoke an RPC that updates the network prototypes to the database. It is highly unrecommended to update existing prototypes -- as this will supersede all station metadata that was previously submitted. Adding new prototypes for new networks follows business as usual.
 
 ## EIDA Manager Metadata handling
 
@@ -33,9 +31,9 @@ Metadata is submitted through the EIDA Manager user interface. All metadata is v
 
 Network operators can follow their metadata through the system by the interface. If metadata is rejected for a reason, the operator can identify the problem and submit corrected metadata.
 
-A daemon process (metadaemon) runs periodically and processes metadata. Occasionally it merges the most up-to-date inventory to a full inventory that can be manually supplied to SeisComP3 to expose the most recent metadata through FDSNWS webservices.
+A daemon process (metadaemon) runs periodically and processes metadata. Metadata that is deemed correct and was approved by the system can be exported, or automatically added to the SeisComP3 inventory database through the adminstrator panel.
 
-The system manages the complete history of all metadata submitted. Files that are not important (e.g. rejected files, or files that were never published through FDSNWS are purged from the system). This feature greatly increases the data provenance.
+The system manages a complete history of all metadata submitted. Files that are not important (e.g. rejected files, or files that were never published through FDSNWS are purged from the system automatically). This feature greatly increases the data provenance.
 
 Processing Pipeline terminology:
 
@@ -81,3 +79,29 @@ Configuration parameters are:
   - `MONGO.NAME` Name of the database used by the application.
   - `MONGO.HOST` Host that the MongoDB is runnign on.
   - `MONGO.PORT` Port that the MongoDB is running on.
+
+## Setting up the SeisComP3 MySQL Database
+
+Start and connect to a MariaDB image that will create the SeisComP3 database. Add the database schema manually:
+
+    Remember to replace {password}, {data-directory}, {container} with appropriate values
+
+    $ docker run -d --rm -e "MYSQL_ROOT_PASSWORD={password}" -e "MYSQL_DATABASE=seiscomp3" -v {directory/data/mysql}:/var/lib/mysql mariadb:latest
+    b6375277f9733fa1a0de1d048c0fe6bb04c49e997971c8c22f0dd999dc84ae3c
+    $ cat seiscomp3.sql | docker exec -i {container} mysql -uroot -pexample seiscomp3
+    $ docker stop {container}
+
+The root password needs to be configured in the `scconfig` directory before building the EIDA Manager image.
+
+## Settings up the MongoDB Database
+
+Start up and connect to a MongoDB image. Users need to be inserted manually (with a SHA256 password hash/salt) for now.
+
+    docker run -d --rm -e "MONGO_INITDB_ROOT_USERNAME=root" -e "MONGO_INITDB_ROOT_PASSWORD=password" -v {directory/data/mongo}:/data/db mongo:latest
+    b6375277f9733fa1a0de1d048c0fe6bb04c49e997971c8c22f0dd999dc84ae3c
+    docker exec -it {container} mongo
+    > use admin
+    > db.auth("root", "password")
+    > use orfeus-manager
+    > db.users.insert({object})
+    docker stop {container}
