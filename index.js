@@ -392,41 +392,59 @@ WebRequest.prototype.writePrototype = function(parsedPrototype, buffer, callback
    */
 
   // Otherwise proceed to write the prototype to disk
-  fs.writeFile(parsedPrototype.filepath, buffer, function(error) {
+  fs.writeFile(parsedPrototype.filepath + ".stationXML", buffer, function(error) {
 
     // Propogate error
     if(error) {
       return callback(error);
     }
 
-    database.addPrototype(parsedPrototype, function(error, result) {
+    const SEISCOMP_COMMAND = [
+      "exec",
+      "fdsnxml2inv",
+       parsedPrototype.filepath + ".stationXML",
+      "-f",
+      parsedPrototype.filepath + ".sc3ml"
+    ];
 
-      // Propogate error
-      if(error) {
-        return callback(error);
+    const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
+
+    convertor.on("close", function(code) {
+
+      if(code === 1) {
+        return callback(new Error("Could not create SC3ML from station prototype"));
       }
 
-      logger.info("Inserted new network prototype for " + JSON.stringify(parsedPrototype.network));
-
-      // A new network prototype was submitted (or changed) and we are required to supersede all metadata from this network
-      // In this case, all stations from the network will be updated to match the new prototype and have their descriptions, restrictedStatus changed
-      database.updateNetwork(parsedPrototype.network, function(error, files) {
+      database.addPrototype(parsedPrototype, function(error, result) {
 
         // Propogate error
         if(error) {
           return callback(error);
         }
 
-        // Nothing to do
-        if(files.length === 0) {
-          return callback(null);
-        }
+        logger.info("Inserted new network prototype for " + JSON.stringify(parsedPrototype.network));
 
-        // Update all submitted StationXML to match the prototype definition
-        var XMLDocuments = updateStationXML(parsedPrototype, files);
+        // A new network prototype was submitted (or changed) and we are required to supersede all metadata from this network
+        // In this case, all stations from the network will be updated to match the new prototype and have their descriptions, restrictedStatus changed
+        database.updateNetwork(parsedPrototype.network, function(error, files) {
 
-        // Call routine to write all updated files
-        database.writeSubmittedFiles(this.session._id, XMLDocuments, callback);
+          // Propogate error
+          if(error) {
+            return callback(error);
+          }
+
+          // Nothing to do
+          if(files.length === 0) {
+            return callback(null);
+          }
+
+          // Update all submitted StationXML to match the prototype definition
+          var XMLDocuments = updateStationXML(parsedPrototype, files);
+
+          // Call routine to write all updated files
+          database.writeSubmittedFiles(this.session._id, XMLDocuments, callback);
+
+        }.bind(this));
 
       }.bind(this));
 
@@ -1273,12 +1291,6 @@ var Webserver = function() {
    * Class Webserver
    * Opens NodeJS webservice on given PORT and handles all incoming connections
    */
-
-  // Launch the metaDaemon if enabled
-  // TODO This should go in a seperate docker container
-  if(CONFIG.METADATA.DAEMON.ENABLED) {
-    require("./lib/orfeus-metadaemon");
-  }
 
   // Create the HTTP server and listen to incoming requests
   this.webserver = createServer(function(request, response) {

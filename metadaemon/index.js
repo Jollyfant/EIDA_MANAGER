@@ -1,4 +1,5 @@
-/* EIDA Manager - module orfeus-metadaemon.js
+/*
+ * EIDA Manager - metadaemon container
  *
  * Background daemon for processing submitted StationXML
  *
@@ -7,6 +8,11 @@
  * License: MIT
  *
  */
+
+"use strict";
+
+// Make require relative to the root directory
+require("./require");
 
 // Native libs
 const fs = require("fs");
@@ -20,7 +26,6 @@ const libxmljs = require("libxmljs");
 const XSDSchema = require("./lib/orfeus-xml");
 const database = require("./lib/orfeus-database");
 const logger = require("./lib/orfeus-logging");
-const ohttp = require("./lib/orfeus-http");
 const { parsePrototype, validateMetadata } = require("./lib/orfeus-metadata");
 
 const CONFIG = require("./config");
@@ -29,8 +34,12 @@ const E_CHILD_PROCESS = 1;
 
 var GLOBAL_CALLBACK;
 
-// Start the daemon
-(metaDaemonInit = function() {
+var metaDaemonInit = function() {
+
+  /*
+   * Function metaDaemonInit
+   * Initializes the metadata processing pipeline
+   */
 
   var statusCodes = [
     database.METADATA_STATUS_PENDING,
@@ -38,67 +47,57 @@ var GLOBAL_CALLBACK;
     database.METADATA_STATUS_CONVERTED
   ];
 
-  // Also purge unnecessary files from the system
+  // Also purge unnecessary (terminated) files from the system
   if(CONFIG.METADATA.PURGE) {
     statusCodes.push(database.METADATA_STATUS_DELETED);
   }
 
-  // Aggregate the results
-  database.files().find({"status": {"$in": statusCodes}}).toArray(function(error, results) {
+  // Define a global callback
+  (GLOBAL_CALLBACK = function() {
 
-    logger.info("Metad initialized with " + results.length + " metadata for processing");
+    // Get the next result again (prevent race conditions)
+    database.files().findOne({"status": {"$in": statusCodes}}, function(error, document) {
 
-    // Define a global callback
-    (GLOBAL_CALLBACK = function() {
-
-      // No results: sleep
-      if(results.length === 0) {
-        return metaDaemonSleep(CONFIG.METADATA.DAEMON.SLEEP_INTERVAL_MS);
+      if(error || document === null) {
+        return metaDaemonSleep(CONFIG.METADATA.DAEMON.SLEEP_INTERVAL_SECONDS);
       }
 
-      // Get the next result again (prevent race conditions)
-      database.files().findOne({"_id": results.pop()._id}, function(error, document) {
+      // metaDaemonCallback document conversion, merging, and check for completion 
+      switch(document.status) {
+        case database.METADATA_STATUS_PENDING:
+          return metadValidate(document);
+        case database.METADATA_STATUS_VALIDATED:
+          return metadConvert(document);
+        case database.METADATA_STATUS_CONVERTED:
+          return metadMerge(document);
+        case database.METADATA_STATUS_DELETED:
+          return metadPurge(document);
+      }
 
-        if(error) {
-          return metaDaemonSleep(CONFIG.METADATA.DAEMON.SLEEP_INTERVAL_MS);
-        }
+    });
 
-        // metaDaemonCallback document conversion, merging, and check for completion 
-        switch(document.status) {
-          case database.METADATA_STATUS_PENDING:
-            return metadValidate(document);
-          case database.METADATA_STATUS_VALIDATED:
-            return metadConvert(document);
-          case database.METADATA_STATUS_CONVERTED:
-            return metadMerge(document);
-          case database.METADATA_STATUS_DELETED:
-            return metadPurge(document);
-        }
+  })();
 
-      });
-
-    })();
-
-  });
-
-})();
+}
 
 function metaDaemonSleep(time) {
 
-  /* function metaDaemonSleep
-   * Put the daemon to sleep for some time
+  /*
+   * Function metaDaemonSleep
+   * Put the daemon to sleep for N seconds
    */
 
-  logger.info("metaDaemon is sleeping for " + time + " miliseconds");
+  logger.info("metaDaemon is sleeping for " + time + " seconds");
 
-  setTimeout(metaDaemonInit, time);
+  setTimeout(metaDaemonInit, 1E3 * time);
 
 }
 
 function getStatusInfo(status) {
 
-  /* function getStatusInfo
-   * Returns states info based on status enum
+  /*
+   * Function getStatusInfo
+   * Returns states info based on status enumeration
    */
 
   switch(status) {
@@ -126,11 +125,12 @@ function getStatusInfo(status) {
 
 function metaDaemonCallback(document, status, error) {
 
-  /* function metaDaemonCallback
-   * Fired after an attempted metadMerge, metadConvert or metadCheck
-   * sets new status for metadata
+  /*
+   * Function metaDaemonCallback
+   * Fired after an attempted metadMerge, metadConvert and sets new status for metadata
    */
 
+  // If not defined set to null
   if(error === undefined) {
     error = null;
   }
@@ -161,12 +161,14 @@ function metaDaemonCallback(document, status, error) {
 
 function metadValidate(document) {
 
-  /* function metadValidate
+  /*
+   * Function metadValidate
    * Validates the StationXML against the schema
    */
 
   const E_SCHEMA_VALIDATION = "The StationXML could not be validated against the XSD schema. Please check the syntax of the submitted file.";
 
+  // Read the file from disk
   fs.readFile(document.filepath + ".stationXML", function(error, XMLString) {
  
     // Problem reading the file: skip
@@ -205,7 +207,8 @@ function metadValidate(document) {
 
 function comparePrototypes(XMLDocument, callback) {
 
-  /* function comparePrototypes
+  /*
+   * Function comparePrototypes
    * Does simple validation of submitted file against the network prototype definition
    */
 
@@ -247,13 +250,15 @@ function comparePrototypes(XMLDocument, callback) {
 
 function metadPurge(document) {
 
-  /* function metadPurge
-   * Checks whether the metadata can be removed from disk
+  /*
+   * Function metadPurge
+   * Purges metadata that was rejected or terminated from database and disk
    */
 
   function removeMetadata(x) {
 
-    /* function removeMetadata
+    /*
+     * Function removeMetadata
      * Purges metadata from filesystem
      */
 
@@ -265,16 +270,22 @@ function metadPurge(document) {
   }
 
   // Both the sc3ml and stationXML are saved to disk
-  const EXTENSIONS = [".sc3ml", ".stationXML"];
+  const EXTENSIONS = [
+    ".sc3ml",
+    ".stationXML"
+  ];
 
   logger.info("metadPurge is requested for " + document.network.code + "." + document.station);
 
+  // Delete the document entry from the database
   database.files().deleteOne({"_id": document._id}, function(error, result) {
 
     if(error) {
       return metaDaemonCallback(document, database.METADATA_STATUS_UNCHANGED);
     }
 
+    // Check if there is another document with this hash
+    // In that case do not delete it from disk
     database.files().find({"sha256": document.sha256}).count(function(error, count) {
 
       if(error) {
@@ -297,14 +308,16 @@ function metadPurge(document) {
 
 function metadMerge(document) {
 
-  /* function metadMerge
+  /*
+   * Function metadMerge
    * Attempts to merge new SC3ML station file with its full network prototype
    * These prototypes need to be created by data center operators
    */
 
-  function getPrototype(hash) {
+  function getPrototypeFilename(hash) {
 
-    /* function getPrototype
+    /*
+     * Function getPrototypeFilename
      * Returns the SC3ML prototype file for a network
      */
 
@@ -312,13 +325,14 @@ function metadMerge(document) {
 
   }
 
-  const TEMPORARY_PROTOTYPE = getPrototype("temporary");
+  const TEMPORARY_PROTOTYPE = getPrototypeFilename("temporary");
   const E_PROTOTYPE_CONFLICT = "Could not merge metadata attribute against network prototype definition. Please contact an administrator: ";
   const E_PROTOTYPE_MISSING = "The network prototype definition is missing";
 
   logger.info("metadMerge is requested for " + document.network.code + "." + document.station);
 
-  database.prototypes().find({"network.code": document.network.code, "network.start": document.network.start}).sort({"created": database.DESCENDING}).limit(1).toArray(function(error, prototypes) {
+  // Get the active prototype
+  database.getActivePrototype(document.network, function(error, prototypes) {
 
     if(error) {
       return metaDaemonCallback(document, database.METADATA_STATUS_UNCHANGED);
@@ -330,60 +344,40 @@ function metadMerge(document) {
 
     var prototype = prototypes.pop();
 
-    const SEISCOMP_COMMAND = [
+    // Attempt to merge the station SC3ML with the converted prototype
+    var SEISCOMP_COMMAND = [
       "exec",
-      "fdsnxml2inv",
-       getPrototype(prototype.sha256),
-      "-f",
-      TEMPORARY_PROTOTYPE
+      "scinv",
+      "merge",
+      document.filepath + ".sc3ml",
+      prototype.filepath + ".sc3ml"
     ];
 
+    // Spawn subprocess
     const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
+
+    var chunks = new Array();
 
     // Child process has closed
     convertor.on("close", function(code) {
 
-      // Set to rejected if the conversion fails
+      var stderr = Buffer.concat(chunks).toString();
+
+      // Set status to rejected when failed
       if(code === E_CHILD_PROCESS) {
-        return metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, E_PROTOTYPE_MISSING);
+        metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, E_PROTOTYPE_CONFLICT + stderr);
+      } else {
+        metaDaemonCallback(document, database.METADATA_STATUS_ACCEPTED);
       }
 
-      logger.info("Network prototype has been temporarily converted to SC3ML");
-
-      // Attempt to merge the station SC3ML with the converted prototype
-      var SEISCOMP_COMMAND = [
-        "exec",
-        "scinv",
-        "merge",
-        document.filepath + ".sc3ml",
-        TEMPORARY_PROTOTYPE
-      ];
-
-      // Spawn subprocess
-      const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
-
-      var chunks = new Array();
-
-      // Child process has closed
-      convertor.on("close", function(code) {
-
-        var stderr = Buffer.concat(chunks).toString();
-
-        // Set status to rejected when failed
-        if(code === E_CHILD_PROCESS) {
-          metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, E_PROTOTYPE_CONFLICT + stderr);
-        } else {
-          metaDaemonCallback(document, database.METADATA_STATUS_ACCEPTED);
-        }
-
-      });
-
-      // Save stderr
-      convertor.stderr.on("data", function(data) {
-        chunks.push(data);
-      });
-
     });
+
+    // Save stderr
+    convertor.stderr.on("data", function(data) {
+      chunks.push(data);
+    });
+
+    ;
 
   });
 
@@ -391,7 +385,8 @@ function metadMerge(document) {
 
 function metadConvert(document) {
 
-  /* functon metadConvert
+  /*
+   * Functon metadConvert
    * Attempts to converts StationXML to SC3ML
    */
 
@@ -434,3 +429,25 @@ function metadConvert(document) {
   });
 
 }
+
+function __init__() {
+
+  /*
+   * Function __init__
+   * Initializes the metadaemon after connecting to the MongoDB database
+   */
+
+  database.connect(function(error) {
+  
+    if(error) {
+      setTimeout(__init__, 1000);
+      return logger.fatal(error);
+    }
+  
+    metaDaemonInit();
+  
+  });
+
+}
+
+__init__();

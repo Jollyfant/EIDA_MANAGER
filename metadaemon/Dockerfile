@@ -10,11 +10,11 @@ FROM node:8
 LABEL maintainer="Mathijs Koymans"
 LABEL email="koymans@knmi.nl"
 
-# Add sysop user
-RUN useradd -ms /bin/bash sysop
+# Add metadaemon user
+RUN useradd -ms /bin/bash metadaemon
 
 # Set the source directory for the application
-WORKDIR /home/sysop
+WORKDIR /home/metadaemon
 
 # Copy the source code of SeisComP3
 COPY seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz \
@@ -22,20 +22,16 @@ COPY seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz \
 
 # Unpack SeisComP3 and install dependencies
 RUN apt-get -y update \
-        && apt-get -y install python-pip python-dev aptitude libxml2-utils \
-        && pip install python-dateutil twisted \
+        && apt-get -y install aptitude libxml2-utils \
         && tar -zxvf seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz \
         && yes | sh seiscomp3/share/deps/debian/8.0/install-base.sh \
         && rm seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz
 
-# Copy the SeisComP3 configuration files
-COPY scconfig/*.cfg seiscomp3/etc/
+# Change SeisComP3 directory to metadaemon user
+RUN chown -R metadaemon /home/metadaemon/seiscomp3
 
-# Change SeisComP3 directory to sysop user
-RUN chown -R sysop /home/sysop/seiscomp3
-
-# Change user to sysop
-USER sysop
+# Change user to metadaemon
+USER metadaemon
 
 # Copy package for Node dependencies
 # So it does not rebuild when changing local source
@@ -44,15 +40,8 @@ COPY package*.json ./
 # Install NodeJS dependencies
 RUN npm install
 
-# Set some environment variables
-ENV SERVICE_HOST="" \
-    SERVICE_PORT=""
-
 # Copy rest of the source
 COPY . .
-
-# Expose port 8088 to the outside
-EXPOSE 8088
 
 # Run the NodeJS webserver
 CMD ["npm", "start"]

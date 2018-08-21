@@ -27,11 +27,9 @@ The prototype files (stationXML) must be downloaded outside of the application a
 
 ## EIDA Manager Metadata handling
 
-Metadata is submitted through the EIDA Manager user interface. All metadata is validated (e.g. schema; sanity checks) by the client and server. Metadata is split to a station level and written to disk, and an entry in the database is made. This triggers the automatic metadata processing pipeline (pending -> validated -> converted -> merged -> approved). When new metadata is submitted, the old metadata is superseded but never removed. The newer metadata is saved under a different name and subject to the same processing pipeline until it is approved for inclusion by the system.
+Metadata is submitted through the EIDA Manager user interface. All metadata is validated (e.g. schema; sanity checks) by the client and server. Metadata is split to a station level and written to disk, and an entry in the database is made. This triggers the automatic metadata processing pipeline (`pending` -> `validated` -> `converted` -> `merged` -> `approved` -> `available`). When new metadata is submitted, the old metadata is superseded but never removed. The newer metadata is saved under a different name and subject to the same processing pipeline until it is approved for inclusion by the system.
 
-Network operators can follow their metadata through the system by the interface. If metadata is rejected for a reason, the operator can identify the problem and submit corrected metadata.
-
-A daemon process (metadaemon) runs periodically and processes metadata. Metadata that is deemed correct and was approved by the system can be exported, or automatically added to the SeisComP3 inventory database through the adminstrator panel.
+Network operators can follow their metadata through the system by the interface. If metadata is rejected for a reason, the operator can identify the problem and submit corrected metadata.  A daemon process (metadaemon) runs periodically and processes metadata. Metadata that is deemed correct and was approved by the system can be exported, or automatically added to the SeisComP3 inventory database through the adminstrator panel.
 
 The system manages a complete history of all metadata submitted. Files that are not important (e.g. rejected files, or files that were never published through FDSNWS are purged from the system automatically). This feature greatly increases the data provenance.
 

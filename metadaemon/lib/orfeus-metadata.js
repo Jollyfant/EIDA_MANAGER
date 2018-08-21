@@ -57,7 +57,7 @@ function parsePrototype(XMLString) {
      * Returns the prototype file
      */
 
-    return path.join("metadata", "prototypes", sha256);
+    return path.join("metadata", "prototypes", sha256 + ".stationXML");
 
   }
 
