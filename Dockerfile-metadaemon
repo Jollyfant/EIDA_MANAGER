@@ -44,4 +44,4 @@ RUN npm install
 COPY . .
 
 # Run the NodeJS webserver
-CMD ["npm", "start"]
+CMD ["node", "metadaemon.js"]

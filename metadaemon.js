@@ -437,11 +437,13 @@ function __init__() {
    * Initializes the metadaemon after connecting to the MongoDB database
    */
 
+  const RETRY_TIMEOUT_MS = 1E3;
+
   database.connect(function(error) {
   
     if(error) {
-      setTimeout(__init__, 1000);
-      return logger.fatal(error);
+      logger.fatal(error);
+      return setTimeout(__init__, RETRY_TIMEOUT_MS);
     }
   
     metaDaemonInit();

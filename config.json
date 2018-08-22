@@ -22,6 +22,10 @@
     "PATH": "./metadata",
     "SCHEMA": {
       "PATH": "./schema/fdsn-station-1.0.xsd"
+    },
+    "DAEMON": {
+      "ENABLED": true,
+      "SLEEP_INTERVAL_SECONDS": 60
     }
   },
   "FDSNWS": {
