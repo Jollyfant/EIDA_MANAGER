@@ -1614,7 +1614,7 @@ WebRequest.prototype.getSeedlinkServers = function() {
    */
 
   // Query the database for submitted servers
-  database.getSeedlinkServers(this.session._id, function(error, results) {
+  database.getSeedlinkServers(this.session, function(error, results) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);

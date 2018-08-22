@@ -13,6 +13,11 @@ Each service can be run as a seperate NodeJS process or built to a Docker image:
 
 All modules must be configured in `docker-compose.yml`. When building the EIDA Manager, make sure that `seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz` or another version of SeisComP3 is available in the root folder and that the configuration is valid for your deployment.
 
+To build the EIDA Manager and Metadaemon run:
+
+    docker build -t eida-manager:1.0 -f Dockerfile-manager .
+    docker build -t eida-metadaemon:1.0 -f Dockerfile-metadaemon .
+
 ## Running with Docker
 
 Before running docker-compose one needs to set up the MongoDB/MariaDB as described at the bottom of this README.

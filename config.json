@@ -21,7 +21,7 @@
     "PURGE": true,
     "PATH": "./metadata",
     "SCHEMA": {
-      "PATH": "./schema/fdsn-station-1.0.xsd"
+      "PATH": "./static/schema/fdsn-station-1.0.xsd"
     },
     "DAEMON": {
       "ENABLED": true,
