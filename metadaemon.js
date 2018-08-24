@@ -166,6 +166,8 @@ function metadValidate(document) {
    * Validates the StationXML against the schema
    */
 
+  logger.info("metadValidate is requested for " + document.network.code + "." + document.station);
+
   const E_SCHEMA_VALIDATION = "The StationXML could not be validated against the XSD schema. Please check the syntax of the submitted file.";
 
   // Read the file from disk

@@ -82,3 +82,10 @@ services:
       - 8090:8090
     environment:
       - "SERVICE_PORT=8090"
+
+  # Webservice for getting the instrument frequency response 
+  response-api:
+    image: response-api:1.0
+    restart: always
+    ports:
+      - 7000:8080

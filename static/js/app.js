@@ -39,6 +39,12 @@ var App = function() {
 
 }
 
+function hideResponse() {
+
+  Element("response-charts").style.display = "none";
+
+}
+
 function getCountryFlag(archive) {
 
   /* function getCountryFlag
@@ -1425,27 +1431,41 @@ function getIcon(icon, color) {
 
 function GoogleMapsInfoWindowContent(marker) {
 
-  /* Function GoogleMapsInfoWindowContent
+  /*
+   * Function GoogleMapsInfoWindowContent
    * Returns content string for Google Maps info window
    */
 
   function markerDetailLink(marker) {
 
-    /* Function markerDetailLink
+    /*
+     * Function markerDetailLink
      * Returns formatted HTML link to station detail page
      */
 
-    return "<a href='/home/station?network=" + marker.network + "&station=" + marker.station + "'>" + getIcon("cogs") + " View Instrument Details</a>";
+    return "<a href='/home/station?network=" + marker.network + "&station=" + marker.station + "'>" + getIcon("cogs") + " <b>View Instrument Details</b></a>";
 
+  }
+
+  var latencyInformation = "";
+  if(_latencyHashMap.hasOwnProperty(marker.title)) {
+    latencyInformation = createLatencyTrafficLight(_latencyHashMap, marker);
   }
 
   return [
     "<h5>Station " + marker.title + "</h5>",
     "<hr>",
-    marker.description,
-    "<p>Operational from <b>" + marker.start + "</b> - <b>" + (marker.end || "present") + "</b>",
+    "<p><i>" + marker.description + "</i>",
     "<br>",
-    "<p>At location <b>" + marker.position.lat().toFixed(3) + "</b>°N, <b>" + marker.position.lng().toFixed(3) + "</b>°E",
+    "<br>",
+    "Operational from <b>" + marker.start + "</b> - <b>" + (marker.end || "present") + "</b>",
+    "<br>",
+    "At location <b>" + marker.position.lat().toFixed(3) + "</b>°N, <b>" + marker.position.lng().toFixed(3) + "</b>°E",
+    "<br>",
+    "<br>",
+    "<b> Latency Information: </b>",
+    "<br>",
+    latencyInformation,
     "<br>",
     "<div style='text-align: center;'>" + markerDetailLink(marker) + "</div>"
   ].join(""); 
@@ -1717,6 +1737,70 @@ console.debug = (function(fnClosure) {
 
 })(console.debug);
 
+function createLatencyTrafficLight(hashMap, x) {
+
+  /*
+   * Function createLatencyTrafficLight
+   * Returns traffic light color of latency status
+   */
+
+  function getAverageLatencyLight(code, x) {
+
+    /*
+     * Function getAverageLatencyLight
+     * Returns the average latency for a group of channels with the same code
+     */
+
+    function channelCodeToDescription(code, average) {
+
+      /*
+       * Function channelCodeToDescription
+       * Maps channel code (e.g. V, L, B, H) to readable description
+       */
+
+      var average = average.toFixed(0) + "ms";
+
+      switch(code) {
+        case "V":
+          return "Very Low Sampling Rate (" + average + ")";
+        case "L":
+          return "Low Sampling Rate (" + average + ")";
+        case "B":
+          return "Broadband Sampling Rate (" + average + ")";
+        case "H":
+          return "High Sampling Rate (" + average + ")";
+        default:
+          return "Unknown Channel Type (" + average + ")";
+      }
+
+    }
+
+    // Get the average latency for this particular channel
+    var average = getAverage(x.map(y => y.msLatency));
+
+    // Generate HTML
+    return [
+      "<span title='" + channelCodeToDescription(code, average) + "' class='fa fa-exclamation-circle text-" + getLatencyColorClass(code, average) + "'>",
+        "<span style='font-family: monospace;'><b>" + code + "</b></span>",
+      "</span>",
+    ].join("\n");
+
+  }
+
+  var stationIdentifier = [x.network, x.station].join(".");
+
+  // If the station exists loop over all grouped channels
+  if(hashMap.hasOwnProperty(stationIdentifier)) {
+    return Object.keys(hashMap[stationIdentifier]).map(function(channel) {
+      return getAverageLatencyLight(channel, hashMap[stationIdentifier][channel]);
+    }).join("\n");
+  }
+
+  // There is no information
+  return getIcon("circle", "muted");
+
+}
+
 App.prototype.generateStationTable = function() {
 
   /* function GenerateTable
@@ -1772,69 +1856,6 @@ App.prototype.generateStationTable = function() {
       console.debug("Latency hashmap generated in " + (Date.now() - start) + " ms.");
     
       return hashMap;
-    
-    }
-
-    function createLatencyTrafficLight(hashMap, x) {
-    
-      /* function createLatencyTrafficLight
-       * Returns traffic light color of latency status
-       */
-    
-      function getAverageLatencyLight(code, x) {
-      
-        /* function getAverageLatencyLight
-         * Returns the average latency for a group of channels with the same code
-         */
-      
-        function channelCodeToDescription(code, average) {
-        
-          /* Function channelCodeToDescription
-           * Maps channel code (e.g. V, L, B, H) to readable description
-           */
-        
-          var average = average.toFixed(0) + "ms";
-        
-          switch(code) {
-            case "V":
-              return "Very Low Sampling Rate (" + average + ")";
-            case "L":
-              return "Low Sampling Rate (" + average + ")";
-            case "B":
-              return "Broadband Sampling Rate (" + average + ")";
-            case "H":
-              return "High Sampling Rate (" + average + ")";
-            default:
-              return "Unknown Channel Type (" + average + ")";
-          }
-        
-        }
-
-        // Get the average latency for this particular channel
-        var average = getAverage(x.map(function(x) {
-          return x.msLatency;
-        }));
-      
-        // Generate HTML
-        return [
-          "<span title='" + channelCodeToDescription(code, average) + "' class='fa fa-exclamation-circle text-" + getLatencyColorClass(code, average) + "'>",
-            "<span style='font-family: monospace;'><b>" + code + "</b></span>",
-          "</span>",
-        ].join("\n");
-      
-      }
-
-      var stationIdentifier = [x.network, x.station].join(".");
-    
-      // If the station exists loop over all grouped channels
-      if(hashMap.hasOwnProperty(stationIdentifier)) {
-        return Object.keys(hashMap[stationIdentifier]).map(function(channel) {
-          return getAverageLatencyLight(channel, hashMap[stationIdentifier][channel]);
-        }).join("\n");
-      }
-    
-      // There is no information
-      return getIcon("circle", "muted");
     
     }
 
@@ -2078,7 +2099,14 @@ function getInstrumentResponse(query) {
   var channel = query.split(".")[3];
   var units = query.split(".")[4];
 
-  var API = "https://orfeus-eu.org/api/response/" + network + "/" + station + "/" + loc + "/" + channel + "?units=" + mapUnit(units);
+  var queryString = [
+    "network=" + network,
+    "station=" + station,
+    "location=" + loc,
+    "channel=" + channel
+  ].join("&");
+
+  var API = "http://0.0.0.0:7000?" + queryString
 
   Element("response-loading-bar").style.display = "block";
 
@@ -2090,6 +2118,7 @@ function getInstrumentResponse(query) {
 
     // Hide the loading bar
     Element("response-loading-bar").style.display = "none";
+    Element("response-charts").style.display = "block";
 
   });
 
@@ -2103,6 +2132,11 @@ function responsePhaseChart(result) {
 
   if(!result) {
     return Element("response-phase").innerHTML = "Instrument response is unavailable.";
+  }
+
+  var series = new Array();
+  for(var i = 0; i < result.frequency.length; i++) {
+    series.push([result.frequency[i], result.phase[i]]);
   }
 
   // The Phase response highchart container
@@ -2180,7 +2214,11 @@ function responsePhaseChart(result) {
         "shadow": false
       }
     },
-    "series": result.payload.filter(function(x) { return x.typo === "phase" }),
+    "series": [{
+      "type": "line",
+      "name": "Frequency Response",
+      "data": series
+    }]
   });
 
 }
@@ -2195,6 +2233,11 @@ function responseAmplitudeChart(result) {
     return Element("response-amplitude").innerHTML = "Instrument response is unavailable.";
   }
 
+  var series = new Array();
+  for(var i = 0; i < result.frequency.length; i++) {
+    series.push([result.frequency[i], result.amplitude[i]]);
+  }
+
   Highcharts.chart("response-amplitude", {
     "chart": {
       "height": 200,
@@ -2202,7 +2245,7 @@ function responseAmplitudeChart(result) {
       "zoomType": "x"
     },
     "title": {
-      "text": result.payload[0].name
+      "text": result.channel
     },  
     "subtitle": {
       "text": "Instrument Frequency Response"
@@ -2252,9 +2295,11 @@ function responseAmplitudeChart(result) {
     "credits": {
       "enabled": false
     },
-    "series": result.payload.filter(function(x) {
-      return x.typo === "amplitude"
-    })
+    "series": [{
+      "type": "line",
+      "name": "Frequency Response",
+      "data": series
+    }]
   });
 
 }
