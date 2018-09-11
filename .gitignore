@@ -11,4 +11,4 @@ config.json
 *.swp
 *.swo
 data
-seiscomp*
+seiscomp3-*
