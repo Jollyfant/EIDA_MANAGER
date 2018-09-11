@@ -86,16 +86,16 @@ Configuration parameters are:
 
 ## Setting up the SeisComP3 MySQL Database
 
-Start and connect to a MariaDB image that will create the SeisComP3 database. Mount the volume (-v) that will retain the container data on the host and match it to the configuration of docker-compose. Add the database schema manually:
+Start and connect to a MariaDB image that will create the SeisComP3 database. Mount the volume (-v) that will retain the container data on the host and match it to the configuration of docker-compose. You need to add the database schema manually:
 
     Remember to replace {password}, {data-directory}, {container} with appropriate values
 
     $ docker run -d --rm -e "MYSQL_ROOT_PASSWORD={password}" -e "MYSQL_DATABASE=seiscomp3" -v {$pwd/data/mysql}:/var/lib/mysql mariadb:latest
     b6375277f9733fa1a0de1d048c0fe6bb04c49e997971c8c22f0dd999dc84ae3c
-    $ cat seiscomp3.sql | docker exec -i {container} mysql -uroot -ppassword seiscomp3
+    $ cat schema/seiscomp3.sql | docker exec -i {container} mysql -uroot -ppassword seiscomp3
     $ docker stop {container}
 
-The root password needs to be configured in the `scconfig` directory before building the EIDA Manager image.
+The chosen root password needs to be configured in the `scconfig` directory before building the EIDA Manager image.
 
 ## Setting up the MongoDB Database
 
