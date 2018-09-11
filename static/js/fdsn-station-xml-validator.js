@@ -1,4 +1,5 @@
-/* EIDA Manager - module fdsn-station-xml-validator.js
+/*
+ * EIDA Manager - module fdsn-station-xml-validator.js
  *
  * JavaScript module for client-side validation ofStationXML
  *
@@ -12,13 +13,15 @@
 
 function validateFiles(files) {
 
-  /* function validateFiles
+  /*
+   * Function validateFiles
    * Client-side validation of StationXML
    */
 
   function convertISO(date) {
   
-    /* function convertISO
+    /*
+     * Function convertISO
      * Converts a ISO string missing "Z" to a proper one
      */
   
@@ -37,8 +40,9 @@ function validateFiles(files) {
 
   function validateNetwork(networkCode) {
 
-    /* function validateNetwork
-     * Validates the network code
+    /*
+     * Function validateNetwork
+     * Validates the network code through a regular expression
      */
 
     const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
@@ -49,8 +53,9 @@ function validateFiles(files) {
 
   }
 
-  /* function validateFiles
-   * validates uploaded StationXML files
+  /*
+   * Function validateFiles
+   * validates uploaded StationXML files on the client-side and 
    * throws an exception on formatting error
    */
 
@@ -171,6 +176,13 @@ function validateStationMetadata(station) {
       throw("Invalid sample rate");
     }
 
+    // Confirm the bandcode against the sample rate 
+    // These are definitions we SHOULD enforce despite not doing it
+    var sampleRateCode = getExpectedBandCode(sampleRate);
+    if(sampleRateCode !== channelCode.charAt(0)) {
+      throw("Sampling rate of " + sampleRate + " does not match the channel band code " + channelCode);
+    }
+
     // Get the response element
     var response = channel.getElementsByTagName("Response");
 
@@ -218,6 +230,40 @@ function validateStationMetadata(station) {
 
 }
 
+function getExpectedBandCode(samplingRate) {
+
+  /*
+   * Function getExpectedBandCode
+   * Returns the expected band code based on sampling rate
+   * https://www.fdsn.org/seed_manual/SEEDManual_V2.4.pdf
+   * > Appendix A
+   */
+
+  // Map sampling rate to band code
+  if(samplingRate <= 0.001) {
+    return "R";
+  } else if(samplingRate <= 0.01) {
+    return "U";
+  } else if(samplingRate <= 0.1) {
+    return "V";
+  } else if(samplingRate <= 1) {
+    return "L";
+  } else if(samplingRate <= 10) {
+    return "M";
+  } else if(samplingRate <= 80) {
+    return "B";
+  } else if(samplingRate <= 250) {
+    return "H";
+  } else if(samplingRate <= 1000) {
+    return "C";
+  } else if(samplingRate <= 5000) {
+    return "F";
+  } else {
+    throw("Sampling rate " + samplingRate + " is too high and could not be mapped to a band code");
+  }
+
+}
+
 function validateFIRStage(FIRStage) {
 
   /* function validateFIRStage
@@ -236,9 +282,8 @@ function validateFIRStage(FIRStage) {
     throw("FIR Stage output units invalid");
   }
 
-  var FIRSum = Sum(Array.from(FIRStage.getElementsByTagName("NumeratorCoefficient")).map(function(FIRCoefficient) {
-    return Number(FIRCoefficient.innerHTML);
-  }));
+  // Calculate the sum of the FIR coefficients
+  var FIRSum = Sum(Array.from(FIRStage.getElementsByTagName("NumeratorCoefficient")).map(x => x.innerHTML).map(Number))
 
   // Symmetry specified: FIR coefficients are symmetrical (double the sum)
   if(FIRStage.getElementsByTagName("Symmetry").item(0).innerHTML !== "NONE") {

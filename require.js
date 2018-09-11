@@ -14,7 +14,7 @@ const path = require("path");
 // Capture the require function in a closure
 module.constructor.prototype.require = (function(closure) {
 
-  // Relative ("./lib/something") or native module (http)
+  // Relative ("./lib/something") or native module (e.g. http)
   // Skip all node_modules includes from dependencies
   return function(importPath) {
     if(!this.filename.includes("node_modules") && importPath.startsWith(".")) {

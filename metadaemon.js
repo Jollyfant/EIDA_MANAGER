@@ -17,7 +17,7 @@ require("./require");
 // Native libs
 const fs = require("fs");
 const path = require("path");
-const childProcess = require("child_process");
+const { spawn } = require("child_process");
 
 // Third party
 const libxmljs = require("libxmljs");
@@ -41,6 +41,7 @@ var metaDaemonInit = function() {
    * Initializes the metadata processing pipeline
    */
 
+  // Status codes that need metadaemon attention
   var statusCodes = [
     database.METADATA_STATUS_PENDING,
     database.METADATA_STATUS_VALIDATED,
@@ -58,11 +59,12 @@ var metaDaemonInit = function() {
     // Get the next result again (prevent race conditions)
     database.files().findOne({"status": {"$in": statusCodes}}, function(error, document) {
 
+      // Put the metadaemon to sleep
       if(error || document === null) {
         return metaDaemonSleep(CONFIG.METADATA.DAEMON.SLEEP_INTERVAL_SECONDS);
       }
 
-      // metaDaemonCallback document conversion, merging, and check for completion 
+      // Map the document status to the processing pipeline 
       switch(document.status) {
         case database.METADATA_STATUS_PENDING:
           return metadValidate(document);
@@ -72,6 +74,8 @@ var metaDaemonInit = function() {
           return metadMerge(document);
         case database.METADATA_STATUS_DELETED:
           return metadPurge(document);
+        default:
+          throw("Unknown document status received: " + document.status);
       }
 
     });
@@ -135,7 +139,7 @@ function metaDaemonCallback(document, status, error) {
     error = null;
   }
 
-  // Nothing changed: proceed
+  // Nothing has changed: proceed
   if(status === database.METADATA_STATUS_UNCHANGED) {
     return GLOBAL_CALLBACK();
   }
@@ -149,7 +153,7 @@ function metaDaemonCallback(document, status, error) {
   }
 
   // When metadata is completed (available through FDSNWS)
-  // we track the date & time of availability for provenance
+  // we track the date & time of availability for data provenance
   if(status === database.METADATA_STATUS_COMPLETED) {
     setObject.available = new Date();
   }
@@ -214,7 +218,7 @@ function comparePrototypes(XMLDocument, callback) {
    * Does simple validation of submitted file against the network prototype definition
    */
 
-  const E_PROTOTYPE_MISSING = "Network prototype could not be found. Please contact an administrator";
+  const E_PROTOTYPE_MISSING = "The network prototype could not be found. Please contact an administrator";
   const E_PROTOTYPE_CONFLICT_END = "The submitted network end time conflicts with the network prototype definition";
   const E_PROTOTYPE_CONFLICT_RESTRICTED = "The submitted network restricted status conflicts with the network prototype definition";
   const E_INTERNAL_SERVER_ERROR = "The server experienced an unexpected error";
@@ -228,6 +232,7 @@ function comparePrototypes(XMLDocument, callback) {
       return callback(E_INTERNAL_SERVER_ERROR);
     }
 
+    // The network prototype could not be found in the database
     if(documents.length === 0) {
       return callback(E_PROTOTYPE_MISSING);
     }
@@ -287,7 +292,7 @@ function metadPurge(document) {
     }
 
     // Check if there is another document with this hash
-    // In that case do not delete it from disk
+    // In that case DO NOT delete it from disk
     database.files().find({"sha256": document.sha256}).count(function(error, count) {
 
       if(error) {
@@ -356,7 +361,7 @@ function metadMerge(document) {
     ];
 
     // Spawn subprocess
-    const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
+    const convertor = spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
 
     var chunks = new Array();
 
@@ -403,7 +408,7 @@ function metadConvert(document) {
   ];
 
   // Spawn subproceed
-  const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
+  const convertor = spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
 
   var chunks = new Array();
 
@@ -454,4 +459,5 @@ function __init__() {
 
 }
 
+// Initialize the metadaemon
 __init__();

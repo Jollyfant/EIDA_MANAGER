@@ -367,10 +367,12 @@ WebRequest.prototype.RPC = function() {
    * Handler for remote procedure calls for service administrators
    */
 
+  // Block normal users
   if(this.session.role !== "admin") {
     return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED); 
   }
 
+  // Delegate the RPC to the appropriate function
   switch(this.url.pathname) {
     case "/rpc/inventory":
       return this.RPCInventory();
@@ -425,7 +427,8 @@ WebRequest.prototype.writePrototype = function(parsedPrototype, buffer, callback
         logger.info("Inserted new network prototype for " + JSON.stringify(parsedPrototype.network));
 
         // A new network prototype was submitted (or changed) and we are required to supersede all metadata from this network
-        // In this case, all stations from the network will be updated to match the new prototype and have their descriptions, restrictedStatus changed
+        // In this case, all stations from the network will be updated to match the new prototype
+        // have their descriptions, restrictedStatus changed
         database.updateNetwork(parsedPrototype.network, function(error, files) {
 
           // Propogate error
