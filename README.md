@@ -6,12 +6,13 @@ Prototype for an EIDA metadata management system. This interface is built on an 
   * https://github.com/Jollyfant/node-seedlink-data-proxy.git
   * https://github.com/Jollyfant/nodejs-seedlink-stations-proxy.git
   * https://github.com/Jollyfant/nodejs-doi-webservice.git
+  * https://github.com/Jollyfant/bottle-response-api.git
 
-Each service can be run as a seperate NodeJS process or built to a Docker image:
+Each service can be run as a seperate NodeJS (Python) process or built to a Docker image. See the repositories for details.
 
     docker build -t {service-name}:1.0 .
 
-All modules must be configured in `docker-compose.yml`. When building the EIDA Manager, make sure that `seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz` or another version of SeisComP3 is available in the root folder and that the configuration is valid for your deployment.
+All modules must be configured in `docker-compose.yml`. When building the EIDA Manager, make sure that `seiscomp3-jakarta-2017.334.05-debian8-x86_64.tar.gz` or another version of SeisComP3 is available in the root folder (see Dockerfile) and that the configuration is valid for your deployment.
 
 To build the EIDA Manager and Metadaemon run:
 
@@ -89,7 +90,7 @@ Start and connect to a MariaDB image that will create the SeisComP3 database. Mo
 
     Remember to replace {password}, {data-directory}, {container} with appropriate values
 
-    $ docker run -d --rm -e "MYSQL_ROOT_PASSWORD={password}" -e "MYSQL_DATABASE=seiscomp3" -v {directory/data/mysql}:/var/lib/mysql mariadb:latest
+    $ docker run -d --rm -e "MYSQL_ROOT_PASSWORD={password}" -e "MYSQL_DATABASE=seiscomp3" -v {$pwd/data/mysql}:/var/lib/mysql mariadb:latest
     b6375277f9733fa1a0de1d048c0fe6bb04c49e997971c8c22f0dd999dc84ae3c
     $ cat seiscomp3.sql | docker exec -i {container} mysql -uroot -ppassword seiscomp3
     $ docker stop {container}
@@ -100,7 +101,7 @@ The root password needs to be configured in the `scconfig` directory before buil
 
 Start up and connect to a MongoDB image. Users need to be inserted manually (with a SHA256 password hash/salt) for now.
 
-    $ docker run -d --rm -e "MONGO_INITDB_ROOT_USERNAME=root" -e "MONGO_INITDB_ROOT_PASSWORD=password" -v {directory/data/mongo}:/data/db mongo:latest
+    $ docker run -d --rm -e "MONGO_INITDB_ROOT_USERNAME=root" -e "MONGO_INITDB_ROOT_PASSWORD=password" -v {$pwd/data/mongo}:/data/db mongo:latest
     b6375277f9733fa1a0de1d048c0fe6bb04c49e997971c8c22f0dd999dc84ae3c
     $ docker exec -it {container} mongo
     > use admin
