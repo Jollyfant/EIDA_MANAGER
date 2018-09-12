@@ -20,7 +20,11 @@ var Table = function(options) {
   if(this.search) {
     content = content.concat([ 
       "<div class='input-group'>",
-      "  <span class='input-group-addon'><span class='fa fa-search' style='float: left;'></span></span>",
+      "  <span class='input-group-prepend'>",
+      "    <div class='input-group-text'>",
+      "      <span class='fa fa-search' style='float: left;'></span>",
+      "    </div>",
+      "  </span>",
       "  <input class='form-control' id='" + options.id + "-search" + "'/>",
       "</div>",
     ])

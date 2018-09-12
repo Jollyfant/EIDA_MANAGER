@@ -342,6 +342,8 @@ WebRequest.prototype.handleRouting = function() {
       return this.launchSend();
     case "/upload":
       return this.launchUpload();
+    case "/user":
+      return this.launchUser();
     case "/seedlink":
       return this.launchSeedlink();
     case "/home/admin":
@@ -544,7 +546,7 @@ WebRequest.prototype.RPCPrototypes = function() {
 
       // All buffers were read and available: send 204 (pretend OK??)
       if(!files.length) {
-        return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+        return this.redirect("/home/admin?S_UPDATE_PROTOTYPES");
       }
 
       // Delegate handling of prototype update
@@ -714,7 +716,7 @@ WebRequest.prototype.RPCUpdateInventory = function(documents) {
           return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+        return this.redirect("/home/admin?S_UPDATE_SEISCOMP"); 
 
       });
 
@@ -951,6 +953,30 @@ WebRequest.prototype.launchHome = function() {
   }
 
   return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateProfile(this.session));
+
+}
+
+WebRequest.prototype.launchUser = function() {
+
+  // Only allow administrators
+  if(this.session.role !== "admin") {
+    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED);
+  }
+
+  this.parseRequestBody("json", function(postBody) {
+
+    // Add the user to the database
+    database.addUser(postBody, function(error) { 
+
+      if(error) {
+        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+      }
+
+      return this.redirect("/home/admin?S_ADD_USER");
+
+    }.bind(this));
+
+  }.bind(this));
 
 }
 
@@ -1399,6 +1425,8 @@ WebRequest.prototype.APIRequest = function() {
       return this.getAllNetworkPrototypes();
     case "/api/prototype":
       return this.getNetworkPrototype();
+    case "/api/users":
+      return this.getUsers();
     case "/api/seedlink":
       return this.getSeedlinkServers();
     case "/api/history":
@@ -1441,6 +1469,28 @@ WebRequest.prototype.APIRequest = function() {
     default:
       return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
   }
+
+}
+
+WebRequest.prototype.getUsers = function() {
+
+  if(this.session.role !== "admin") {
+    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED);
+  }
+
+  database.getAllUsers(function(error, documents) {
+
+    if(error) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
+
+    if(documents.length === 0) {
+      return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
+    }
+
+    this.writeJSON(documents);
+
+  }.bind(this));
 
 }
 
@@ -2026,7 +2076,7 @@ WebRequest.prototype.getStagedFiles = function() {
   }
 
   // Filter anything that does not belong to the user
-  if(!this.session.role === "admin") {
+  if(this.session.role !== "admin") {
     findQuery["network.code"] = this.session.prototype.network.code;
     findQuery["network.start"] = this.session.prototype.network.start;
   }

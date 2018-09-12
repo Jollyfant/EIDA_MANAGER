@@ -108,9 +108,7 @@ function HTTPRequest(url, callback) {
       case "application/json":
       case "application/vnd.schemaorg.ld+json":
         return callback(JSON.parse(xhr.response));
-      case "text/plain":
-      case "text/html; charset=UTF-8":
-      case "text/plain; charset=utf-8":
+      default:
         return callback(xhr.response);
     }
 
@@ -596,7 +594,8 @@ App.prototype.init = function() {
 
 App.prototype.launchAdmin = function() {
 
-  /* App.launchAdmin
+  /*
+   * Function App.launchAdmin
    * Launches some client-side code for the admin console
    */
 
@@ -614,6 +613,22 @@ App.prototype.launchAdmin = function() {
     "url": "https://www.orfeus-eu.org/eidaws/routing/1/version"
   }];
 
+  const S_UPDATE_SEISCOMP = "The SeisComP3 database has been updated.";
+  const S_UPDATE_PROTOTYPES = "The network prototypes have been updated.";
+  const S_ADD_USER = "The new user has been succesfully added.";
+
+  if(location.search) {
+    switch(location.search.substring(1)) {
+      case "S_UPDATE_SEISCOMP":
+        Element("modal-content").innerHTML = generateMessageAlert("success", S_UPDATE_SEISCOMP); break;
+      case "S_UPDATE_PROTOTYPES":
+        Element("modal-content").innerHTML = generateMessageAlert("success", S_UPDATE_PROTOTYPES); break;
+      case "S_ADD_USER":
+        Element("modal-content").innerHTML = generateMessageAlert("success", S_ADD_USER); break;
+    }
+    $("#modal-alert").modal();
+  }
+
   SERVICES.forEach(function(service) {
 
     // Time the request
@@ -624,15 +639,25 @@ App.prototype.launchAdmin = function() {
       if(json === null) {
         Element("card-" + service.name).className = "card text-white bg-danger";
         Element("card-" + service.name + "-text").innerHTML = "Could not get version";
-        return;
+      } else {
+        Element("card-" + service.name).className = "card text-white bg-success";
+        Element("card-" + service.name + "-text").innerHTML = "version " + json + " - " + (Date.now() - start) + "<small>ms</small>";
       }
-
-      Element("card-" + service.name).className = "card text-white bg-success";
-      Element("card-" + service.name + "-text").innerHTML = "version " + json + " - " + (Date.now() - start) + "<small>ms</small>";
 
     });
 
   });
+
+  function formatUserTable(x) {
+
+    return [
+      formatMessageSender(x),
+      x.role,
+      x.role === "admin" ? "" : (x.network.code + " " + x.network.start),
+      x.created
+    ];
+
+  }
 
   function formatPrototypeTable(x) {
 
@@ -662,12 +687,34 @@ App.prototype.launchAdmin = function() {
 
   }
 
+  HTTPRequest("/api/users", function(json) {
+
+    if(json === null) {
+      return Element("user-table").innerHTML = "<span class='text-muted'>No users available.</span>";
+    }
+
+    new Table({
+      "id": "user-table",
+      "search": true,
+      "header": ["Username", "Role", "Network Prototype", "Created"],
+      "body": json.sort(sortCreated).map(formatUserTable)
+    });
+
+  });
+
   // Collect all network prototypes from the API
   HTTPRequest("/api/prototypes", function(json) {
 
     if(json === null) {
       return Element("prototype-table").innerHTML = "<span class='text-muted'>No prototypes available.</span>";
     }
+
+    json.sort(sortCreated).forEach(function(x) {
+      var option = document.createElement("option");
+      option.text = x.network.code + " " + new Date(x.network.start).getFullYear();
+      option.value = x._id;
+      Element("prototype-select").add(option);
+    });
 
     new Table({
       "id": "prototype-table",
@@ -788,6 +835,98 @@ App.prototype.setupStagedFilePolling = function() {
 
 }
 
+App.prototype.statistics = function() {
+
+  /*
+   * Function App.statistics
+   * Creates the statistics chart
+   */
+
+  // Fake data for display
+  var data = new Array();
+
+  for(var i = 0; i < 52; i++) {
+
+    endDate = new Date();
+
+    data.push({
+      "x": endDate.setDate(endDate.getDate() + (7 * i)),
+      "y": 0.3333 * (Math.sin(0.5 * i * Math.PI) + Math.sin(0.25 * i * Math.PI) + Math.sin(0.1 * i * Math.PI)) + 1
+    });
+
+  }
+
+  Highcharts.chart("statistics-chart-bar", {
+    "chart": {
+      "type": "column"
+    },
+    "title": {
+      "text": "Continuous Waveform Data Exported"
+    },
+    "subtitle": {
+      "text": "ORFEUS Data Center (" + USER_NETWORK.code + ")"
+    },
+    "xAxis": {
+      "type": "datetime"
+    },
+    "yAxis": {
+      "min": 0,
+      "title": {
+        "text": "Number of bytes exported"
+      }
+    },
+    "plotOptions": {
+      "column": {
+        "pointPadding": 0,
+        "borderWidth": 0
+      }
+    },
+    "credits": {
+      "enabled": false
+    },
+    "series": [{
+      "name": "Bytes exported",
+      "data": data
+    }]
+  });
+
+  // Build the chart
+  Highcharts.chart("statistics-chart-pie", {
+    "chart": {
+      "type": "pie"
+    },
+    "title": {
+      "text": "Type of Waveform Data Exported"
+    },
+    "plotOptions": {
+      "pie": {
+        "showInLegend": true
+      }
+    },
+    "credits": {
+      "enabled": false
+    },
+    "series": [{
+      "name": "Brands",
+      "colorByPoint": true,
+      "data": [{
+        "name": "Accelerometric",
+        "y": 61.41,
+      }, {
+        "name": "High Broadband",
+        "y": 11.84
+      }, {
+        "name": "Infrasound",
+        "y": 1.82
+      }, {
+        "name": "Broadband",
+        "y": 10.85
+      }]
+    }]
+  });
+
+}
+
 App.prototype.launchHome = function() {
 
   /* Function App.launchHome
@@ -849,6 +988,8 @@ App.prototype.launchHome = function() {
   }
 
   var start = Date.now();
+
+  this.statistics();
 
   // Add the stations to the map
   HTTPRequest("/api/stations", function(json) {
@@ -1447,13 +1588,13 @@ function GoogleMapsInfoWindowContent(marker) {
 
   }
 
-  var latencyInformation = "";
+  var latencyInformation = "<i> Latencies not available </i>";
   if(_latencyHashMap.hasOwnProperty(marker.title)) {
     latencyInformation = createLatencyTrafficLight(_latencyHashMap, marker);
   }
 
   return [
-    "<h5>Station " + marker.title + "</h5>",
+    "<h5> " + getIcon("database", "primary") + " Station " + marker.title + "</h5>",
     "<hr>",
     "<p><i>" + marker.description + "</i>",
     "<br>",
@@ -1462,12 +1603,13 @@ function GoogleMapsInfoWindowContent(marker) {
     "<br>",
     "At location <b>" + marker.position.lat().toFixed(3) + "</b>°N, <b>" + marker.position.lng().toFixed(3) + "</b>°E",
     "<br>",
-    "<br>",
-    "<b> Latency Information: </b>",
-    "<br>",
+    "<div style='text-align: center;'>",
     latencyInformation,
     "<br>",
-    "<div style='text-align: center;'>" + markerDetailLink(marker) + "</div>"
+    "<br>",
+    markerDetailLink(marker),
+    "</div>",
+    "<br>"
   ].join(""); 
 
 }
@@ -1503,7 +1645,7 @@ App.prototype.getNetworkDOI = function() {
 
   // Do not show all DOIs for an administrator
   if(this.network.code === "*") {
-    return doiElement.innerHTML = "<small><a href='/home/admin'>Administrator Panel</a></small>";
+    return doiElement.innerHTML = "<small><a href='/home/admin'><i class='fas fa-unlock-alt'></i> Administrator Panel</a></small>";
   }
 
   // Asynchronous call to get the DOI
@@ -1511,7 +1653,7 @@ App.prototype.getNetworkDOI = function() {
 
     // When nothing returned just put the network
     if(json === null) {
-      return doiElement.innerHTML = "<span class='fa fa-globe'></span> " + this.network.code
+       return doiElement.innerHTML = "<span class='fas fa-globe-americas'></span> " + this.network.code + " <a href='https://www.fdsn.org/services/doi/'><small>Request DOI</small></a>";
     }
 
     var element = json.pop();
@@ -1670,7 +1812,7 @@ String.prototype.capitalize = function() {
 function generateBreadcrumb(pathname) {
 
   /* Function generateBreadcrumb
-   * Renders the HTML for a singel breadcrumb element
+   * Renders the HTML for a single breadcrumb element
    */
 
   var crumbs = pathname.split("/").slice(1);
@@ -1975,95 +2117,6 @@ function isActive(station) {
 
   // Station is closed
   return getIcon("times", "danger");
-
-}
-
-function generateAccordionContent(list) {
-
-  /* Function generateAccordionContent
-   * Generates the accordion for a channel component
-   */
-
-  function generateAccordionContentChannel(channel) {
-  
-    /* Function generateAccordionContentChannel
-     * Generates the content for the channel accordion element
-     */
-
-    // Table for displaying some channel information
-    var tableHTML = [
-      "<table class='table table-sm table-striped'>",
-      "  <thead>",
-      "    <tr><th>Sensor</th><th>Unit</th><th>Sampling Rate</th><th>Gain</th></tr>",
-      "  </thead>",
-      "  <tbody>",
-      "    <tr>",
-      "      <td>" + channel.description + "</td>",
-      "      <td>" + channel.sensorUnits + "</td>",
-      "      <td>" + channel.sampleRate + "</td>",
-      "      <td>" + channel.gain + "</td>",
-      "    </tr>",
-      "  </tbody>",
-      "</table>"
-    ].join("\n");
-  
-    // Build up the query for the FDSNWS-Station channel query
-    var query = "?" + [
-      "level=response",
-      "&net=", channel.network,
-      "&sta=", channel.station,
-      "&cha=", channel.channel,
-      "&loc=", channel.location || "--"
-    ].join("");
-
-    return [
-      "Channel <b>" + (channel.location ? channel.location + "." : "") + channel.channel + "</b>",
-      "<small>(" + channel.start + " - " + (isStationActive(channel) ? "present" : channel.end) + ")</small>",
-      "<p>",
-      tableHTML,
-      "<div class='seedlink-container' id='seedlink-container-" + channel.location + "-" + channel.channel + "'>",
-        "<div class='info'></div>",
-        "<div class='chart'></div>",
-      "</div>",
-      "<hr>",
-      "<button class='btn btn-link' onClick='getInstrumentResponse(\"" + [channel.network, channel.station, channel.location, channel.channel, channel.sensorUnits].join(".") + "\")'>" + getIcon("eye") + " View Sensor Response</button>",
-      "<a style='float: right;' class='btn btn-link' target='_blank' href='https://www.orfeus-eu.org/fdsnws/station/1/query" + query + "'>" + getIcon("download") + " FDSNWS StationXML</a>",
-    ].join("\n");
-  
-  }
-
-  function visibleChannels(channel) {
-
-    /* Function visibleChannels
-     * Returns whether a station is active and should be visible
-     * or show hidden channels is checked
-     */
-
-    return isStationActive(channel) || Element("hide-channels").checked;
-
-  }
-
-  // Reset the chart pointers
-  chartPointers = new Object();
-
-  return list.filter(visibleChannels).map(function(x, i) {
-    return [
-      "<div class='card'>",
-        "<div class='card-header small' role='tab' id='heading-" + i + "'>",
-            "<button class='btn btn-link' data-toggle='collapse' data-target='#collapse-" + i + "' aria-expanded='true' aria-controls='collapse-" + i + "'>",
-            getIcon("caret-right") + " " + (x.location ? x.location + "." : "") + x.channel,
-            "</button>",
-            "<span class='heartbeat' id='heartbeat-" + x.location + "-" + x.channel + "'></span>",
-            "<span class='text-danger'>" + (isStationActive(x) ? " " : " " + getIcon("lock") + " Channel closed since " + x.end + "</span>"),
-        "</div>",
-        "<div id='collapse-" + i + "' class='collapse' role='tabpanel' aria-labelledby='heading-" + i + "' data-parent='#accordion'>",
-          "<div class='card-block'>",
-            generateAccordionContentChannel(x),
-          "</div>",
-        "</div>",
-      "</div>"
-    ].join("\n");
-  }).join("\n");
 
 }
 
