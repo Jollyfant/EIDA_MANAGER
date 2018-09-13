@@ -82,6 +82,16 @@ textarea {
   z-index: 2;
 }
 
+.gm-style .gm-style-iw, .gm-style .gm-style-iw a, .gm-style .gm-style-iw span, .gm-style .gm-style-iw label, .gm-style .gm-style-iw div {
+  max-height: 280px;
+  overflow-y: scroll;
+  overflow-x: visible;
+}
+
+.gm-style-iw div {
+  overflow:visible !important;
+}
+
 .tooltip-inner {
   min-width: 580px;
   font-weight: bold;

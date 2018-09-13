@@ -269,7 +269,7 @@ App.prototype.setupNotificationPolling = function() {
   // Make a request to get the number of new messages
   HTTPRequest("/api/messages?new", function(json) {
 
-    console.debug("Retrieved " + json.count + " new message(s) from server in " + (Date.now() - start) + " ms.");
+    console.debug("Retrieved " + (json ? json.count : 0) + " new message(s) from server in " + (Date.now() - start) + " ms.");
 
     // Show modal that user has new messages
     if(json.count > 0 && this.uri.search === "?welcome") {
@@ -396,7 +396,7 @@ App.prototype.launchMessageDetails = function() {
       "    <small style='float: right;'>Sent @ <b>" + message.created + "</b></small>",
       "    <h5><b><span class='fa fa-envelope-o'></span> " + message.subject + "</b></h5>",
       "  </div>",
-      "  <div class='card-block'>",
+      "  <div class='card-body'>",
       message.content,
       "    <hr>",
       "    <button class='btn btn-danger btn-sm' style='float: right;' onClick='deleteMessage()'><span class='fa fa-trash'></span> Delete Message</button>",
@@ -481,7 +481,7 @@ App.prototype.launchMessages = function() {
       ];
     });
   
-  }
+ }
 
   function generateMessageTableContentSent(json) {
   
@@ -614,6 +614,7 @@ App.prototype.launchAdmin = function() {
   }];
 
   const S_UPDATE_SEISCOMP = "The SeisComP3 database has been updated.";
+  const S_RESTART_FDSNWS = "SeisComP3 FDSNWS Station has been restarted.";
   const S_UPDATE_PROTOTYPES = "The network prototypes have been updated.";
   const S_ADD_USER = "The new user has been succesfully added.";
 
@@ -625,6 +626,8 @@ App.prototype.launchAdmin = function() {
         Element("modal-content").innerHTML = generateMessageAlert("success", S_UPDATE_PROTOTYPES); break;
       case "S_ADD_USER":
         Element("modal-content").innerHTML = generateMessageAlert("success", S_ADD_USER); break;
+      case "S_RESTART_FDSNWS":
+        Element("modal-content").innerHTML = generateMessageAlert("success", S_RESTART_FDSNWS); break;
     }
     $("#modal-alert").modal();
   }
@@ -648,20 +651,21 @@ App.prototype.launchAdmin = function() {
 
   });
 
-  function formatUserTable(x) {
+  // Create a table for registered users & prototypes
+  createUserTable();
+  createPrototypeTable();
 
-    return [
-      formatMessageSender(x),
-      x.role,
-      x.role === "admin" ? "" : (x.network.code + " " + x.network.start),
-      x.created
-    ];
+  // Set the last breadcrum title
+  updateCrumbTitle("Administrator Panel");
 
-  }
+}
+
+function createPrototypeTable() {
 
   function formatPrototypeTable(x) {
 
-    /* function formatPrototypeTable
+    /*
+     * Function formatPrototypeTable
      * Sorts documents by the created property
      */
 
@@ -676,31 +680,6 @@ App.prototype.launchAdmin = function() {
     ];
 
   }
-
-  function sortCreated(x, y) {
-
-    /* function sortCreated
-     * Sorts documents by the created property
-     */
-
-    return (new Date(y.created) - new Date(x.created));
-
-  }
-
-  HTTPRequest("/api/users", function(json) {
-
-    if(json === null) {
-      return Element("user-table").innerHTML = "<span class='text-muted'>No users available.</span>";
-    }
-
-    new Table({
-      "id": "user-table",
-      "search": true,
-      "header": ["Username", "Role", "Network Prototype", "Created"],
-      "body": json.sort(sortCreated).map(formatUserTable)
-    });
-
-  });
 
   // Collect all network prototypes from the API
   HTTPRequest("/api/prototypes", function(json) {
@@ -719,14 +698,57 @@ App.prototype.launchAdmin = function() {
     new Table({
       "id": "prototype-table",
       "search": true,
-      "header": ["Identifier", "Code", "Start", "End", "Description", "Restricted", "Created"],
+      "header": new Array("Identifier", "Code", "Start", "End", "Description", "Restricted", "Created"),
       "body": json.sort(sortCreated).map(formatPrototypeTable)
     });
 
   });
 
-  // Set the last breadcrum title
-  updateCrumbTitle("Administrator Panel");
+}
+
+function sortCreated(x, y) {
+
+  /* function sortCreated
+   * Sorts documents by the created property
+   */
+
+  return (new Date(y.created) - new Date(x.created));
+
+}
+
+function createUserTable() {
+
+  function formatUserTable(x) {
+
+    /*
+     * Function formatUserTable
+     * Generator for a single row of the user table
+     */
+
+    return [
+      formatMessageSender(x),
+      x.role === 0 ? "Administrator" : "Network Operator",
+      x.role === 0 ? "" : (x.network.code + " " + x.network.start),
+      x.created
+    ];
+
+  }
+
+  // Asynchronous request to get the users API
+  HTTPRequest("/api/users", function(json) {
+
+    if(json === null) {
+      return Element("user-table").innerHTML = "<span class='text-muted'>No users available.</span>";
+    }
+
+    new Table({
+      "id": "user-table",
+      "search": true,
+      "header": new Array("Username", "Role", "Network Prototype", "Created"),
+      "body": json.sort(sortCreated).map(formatUserTable)
+    });
+
+  });
 
 }
 
@@ -1023,12 +1045,28 @@ App.prototype.launchHome = function() {
         "position": station.position,
       });
 
+      var _this = this;
+
       // Event listener for clicks
       marker.addListener("click", function() {
-        this.infowindow.close();
-        this.infowindow.setContent(GoogleMapsInfoWindowContent(marker))
-        this.infowindow.open(this.map, marker);
-      }.bind(this));
+
+        var position = this.getPosition();
+
+        var boreholes = markers.filter(function(x) {
+          return x.getPosition().equals(position);
+        });
+
+        _this.infowindow.close();
+
+        if(boreholes.length === 1) {
+          _this.infowindow.setContent(GoogleMapsInfoWindowContent(this));
+        } else {
+          _this.infowindow.setContent(GoogleMapsInfoWindowContentBorehole(boreholes));
+        }
+
+        _this.infowindow.open(this.map, marker);
+
+      });
 
       // Make sure to keep a reference
       markers.push(marker);
@@ -1552,7 +1590,7 @@ function formatMessageSender(sender) {
    */
 
   // Indicate user is an administrator
-  if(sender.role === "admin") {
+  if(sender.role === 0) {
     return sender.username + " (<span class='text-danger'><b>O</span>RFEUS Administrator</b>)";
   }
  
@@ -1567,6 +1605,16 @@ function getIcon(icon, color) {
    */
 
   return "<span class='fas fa fa-" + icon + " text-" + color + "'></span>";
+
+}
+
+function GoogleMapsInfoWindowContentBorehole(markers) {
+
+  return [
+    "<h4> " + getIcon("ruler-vertical", "primary") + " Vertical Array </h4>",
+    "<hr>",
+    markers.map(GoogleMapsInfoWindowContent).join("<hr>")
+  ].join("");
 
 }
 
@@ -1631,29 +1679,29 @@ App.prototype.getNetworkDOI = function() {
 
   }
 
-  function getFormattedDOILink(element) {
+  function getFormattedDOILink(element, description) {
 
     /* Function getFormattedDOILink
      * Returns formatted DOI link to show on page
      */
 
-    return "<a title='" + element.doi + "' href='https://doi.org/" + element.doi + "'><span class='fas fa-globe-americas'></span> " + element.network + "</a>";
+    return "<a title='" + element.doi + "' href='https://doi.org/" + element.doi + "'><span class='fas fa-globe-americas'></span> " + description + "</a>";
 
   }
 
   var doiElement = Element("doi-link");
 
   // Do not show all DOIs for an administrator
-  if(this.network.code === "*") {
+  if(this.network.network.code === "*") {
     return doiElement.innerHTML = "<small><a href='/home/admin'><i class='fas fa-unlock-alt'></i> Administrator Panel</a></small>";
   }
 
   // Asynchronous call to get the DOI
-  getDOI(this.network.code, function(json) {
+  getDOI(this.network.network.code, function(json) {
 
     // When nothing returned just put the network
     if(json === null) {
-       return doiElement.innerHTML = "<span class='fas fa-globe-americas'></span> " + this.network.code + " <a href='https://www.fdsn.org/services/doi/'><small>Request DOI</small></a>";
+       return doiElement.innerHTML = "<span class='fas fa-globe-americas'></span> " + this.network.description + " <a href='https://www.fdsn.org/services/doi/'><small>Request DOI</small></a>";
     }
 
     var element = json.pop();
@@ -1661,7 +1709,7 @@ App.prototype.getNetworkDOI = function() {
     console.debug("DOI returned from FDSN: " + element.doi);
 
     // Update the DOM to reflect the DOI
-    doiElement.innerHTML = getFormattedDOILink(element);
+    doiElement.innerHTML = getFormattedDOILink(element, this.network.description);
 
     // Continue with the actual DOI lookup
     if(false) {
@@ -2065,7 +2113,7 @@ App.prototype.generateStationTable = function() {
   var start = Date.now();
 
   // Asynchronous request to get the latency information
-  HTTPRequest("/api/latency?network=" + this.network.code, generateStationLatencyTable.bind(this)); 
+  HTTPRequest("/api/latency?network=" + this.network.network.code, generateStationLatencyTable.bind(this)); 
 
 }
 
@@ -2443,7 +2491,7 @@ function generateAccordion(list) {
               "<span class='text-danger'>" + (isStationActive(x) ? " " : " " + getIcon("lock") + " Channel closed since " + x.end + "</span>"),
           "</div>",
           "<div id='collapse-" + i + "' class='collapse' role='tabpanel' aria-labelledby='heading-" + i + "' data-parent='#accordion'>",
-            "<div class='card-block'>",
+            "<div class='card-body'>",
               generateAccordionContentChannel(x),
             "</div>",
           "</div>",

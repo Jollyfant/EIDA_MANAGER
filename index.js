@@ -332,6 +332,16 @@ WebRequest.prototype.handleRouting = function() {
    * Chooses function handler for the requested path
    */
 
+  // Administrators
+  if(this.session.isAdministrator()) {
+    switch(this.url.pathname) {
+      case "/user":
+        return this.launchUser();
+      case "/home/admin":
+        return this.launchAdmin();
+    }
+  }
+
   // Serve the different pages
   switch(this.url.pathname) {
     case "/logout":
@@ -342,12 +352,8 @@ WebRequest.prototype.handleRouting = function() {
       return this.launchSend();
     case "/upload":
       return this.launchUpload();
-    case "/user":
-      return this.launchUser();
     case "/seedlink":
       return this.launchSeedlink();
-    case "/home/admin":
-      return this.launchAdmin();
     case "/home/messages":
       return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateMessages(this.session));
     case "/home/messages/details":
@@ -370,7 +376,7 @@ WebRequest.prototype.RPC = function() {
    */
 
   // Block normal users
-  if(this.session.role !== "admin") {
+  if(!this.session.isAdministrator()) {
     return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED); 
   }
 
@@ -382,6 +388,8 @@ WebRequest.prototype.RPC = function() {
       return this.RPCPrototypes();
     case "/rpc/database":
       return this.RPCDatabase();
+    case "/rpc/fdsnws":
+      return this.RPCFDSNWS();
     default:
       return this.HTTPError(ohttp.E_HTTP_FILE_NOT_FOUND);
   }
@@ -529,6 +537,25 @@ WebRequest.prototype.readPrototypeDirectory = function(callback) {
 
 }
 
+WebRequest.prototype.RPCFDSNWS = function() {
+
+  /*
+   * Function WebRequest.RPCFDSNWS
+   * Restarts the FDSNWS Webservice
+   */
+
+  this.RPCRestartFDSNWS(function(code) {
+
+    if(code === 1) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
+    }
+
+    return this.redirect("/home/admin?S_RESTART_FDSNWS");
+
+  });
+
+}
+
 WebRequest.prototype.RPCPrototypes = function() {
 
   /*
@@ -647,7 +674,7 @@ WebRequest.prototype.RPCRestartFDSNWS = function(callback) {
    * In production, FDSNWS services should be run in a dedicated container
    */
 
-  logger.info("Restart of FDSNWS requested.");
+  logger.info("RPC restart of FDSNWS requested.");
 
   var SEISCOMP_COMMAND = [
     "restart",
@@ -810,10 +837,6 @@ WebRequest.prototype.launchAdmin = function() {
    * Launches login page if not signed in
    */
 
-  if(this.session.role !== "admin") {
-    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED);
-  }
-
   return this.HTTPResponse(ohttp.S_HTTP_OK, template.generateAdmin(this.session));
 
 }
@@ -958,11 +981,12 @@ WebRequest.prototype.launchHome = function() {
 
 WebRequest.prototype.launchUser = function() {
 
-  // Only allow administrators
-  if(this.session.role !== "admin") {
-    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED);
-  }
+  /*
+   * Function WebRequest.launchUser
+   * HTTP API operation for adding a new user
+   */
 
+  // Only allow administrators
   this.parseRequestBody("json", function(postBody) {
 
     // Add the user to the database
@@ -993,12 +1017,12 @@ WebRequest.prototype.launchSend = function() {
      * Returns query to find the recipient
      */
 
-    if(session.role === "admin" && recipient === "broadcast") {
+    if(session.isAdministrator() && recipient === "broadcast") {
       return {"username": {"$not": {"$eq": session.username}}}
     }
 
     if(recipient === "administrators") {
-      return {"role": "admin", "username": {"$not": {"$eq": session.username}}}
+      return {"role": database.ROLES.ADMINISTRATOR, "username": {"$not": {"$eq": session.username}}}
     }
 
     return {"username": recipient}
@@ -1419,14 +1443,19 @@ WebRequest.prototype.APIRequest = function() {
   // Only get the first query parameter (jQuery may add another one to prevent caching)
   var search = this.url.search ? this.url.search.split("&").shift() : null;
 
+  if(this.session.isAdministrator()) {
+    switch(this.url.pathname) {
+      case "/api/prototypes":
+        return this.getAllNetworkPrototypes();
+      case "/api/users":
+        return this.getUsers();
+    }
+  }
+
   // Register new routes here
   switch(this.url.pathname) {
-    case "/api/prototypes":
-      return this.getAllNetworkPrototypes();
     case "/api/prototype":
       return this.getNetworkPrototype();
-    case "/api/users":
-      return this.getUsers();
     case "/api/seedlink":
       return this.getSeedlinkServers();
     case "/api/history":
@@ -1474,9 +1503,10 @@ WebRequest.prototype.APIRequest = function() {
 
 WebRequest.prototype.getUsers = function() {
 
-  if(this.session.role !== "admin") {
-    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED);
-  }
+  /*
+   * Function WebRequest.getUsers
+   * Returns a list of the users in the application
+   */
 
   database.getAllUsers(function(error, documents) {
 
@@ -1500,11 +1530,6 @@ WebRequest.prototype.getAllNetworkPrototypes = function() {
    * WebRequest.prototype.getAllNetworkPrototypes
    * API that returns a list of the network prototypes defined in the database
    */
-
-  // Only for administrators
-  if(this.session.role !== "admin") {
-    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED);
-  }
 
   // Get all the prototypes from the database
   database.getPrototypes(function(error, documents) {
@@ -1542,7 +1567,7 @@ WebRequest.prototype.getNetworkPrototype = function() {
   }
 
   // If admin & an id parameter was passed, make a different query
-  if(this.session.role === "admin" && this.query.id) {
+  if(this.session.isAdministrator() && this.query.id) {
     var findQuery = {"sha256": this.query.id}
   } else {
     var findQuery = {"network": this.session.prototype.network}
@@ -2076,7 +2101,7 @@ WebRequest.prototype.getStagedFiles = function() {
   }
 
   // Filter anything that does not belong to the user
-  if(this.session.role !== "admin") {
+  if(!this.session.isAdministrator()) {
     findQuery["network.code"] = this.session.prototype.network.code;
     findQuery["network.start"] = this.session.prototype.network.start;
   }

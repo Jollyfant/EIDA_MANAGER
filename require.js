@@ -1,4 +1,5 @@
-/* NodeJS Require Patch 
+/*
+ * NodeJS Require Patch 
  *
  * Patches the default require function to support
  * relative imports from the root directory
