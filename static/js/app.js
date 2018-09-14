@@ -718,6 +718,11 @@ function sortCreated(x, y) {
 
 function createUserTable() {
 
+  /*
+   * Function createUserTable
+   * Makes API call and creates the user table 
+   */
+
   function formatUserTable(x) {
 
     /*
@@ -728,7 +733,7 @@ function createUserTable() {
     return [
       formatMessageSender(x),
       x.role === 0 ? "Administrator" : "Network Operator",
-      x.role === 0 ? "" : (x.network.code + " " + x.network.start),
+      x.role === 0 ? "" : (x.network.code + " " + new Date(Date.parse(x.network.start)).getFullYear()),
       x.created
     ];
 
@@ -886,7 +891,7 @@ App.prototype.statistics = function() {
       "text": "Continuous Waveform Data Exported"
     },
     "subtitle": {
-      "text": "ORFEUS Data Center (" + USER_NETWORK.code + ")"
+      "text": "Network <b>" + USER_NETWORK.network.code + "</b>"
     },
     "xAxis": {
       "type": "datetime"
@@ -951,17 +956,23 @@ App.prototype.statistics = function() {
 
 App.prototype.launchHome = function() {
 
-  /* Function App.launchHome
+  /*
+   * Function App.launchHome
    * Launches part of the application dealing with the homepage
    */
 
   function mapInformationString(nStations) {
   
-    /* Function App.launchHome::mapInformationString 
+    /*
+     * Function App.launchHome::mapInformationString 
      * Returns formatted information string below map
      */
   
-    return "<small>Map showing <b>" + nStations + "</b> stations from network <b>" + USER_NETWORK.code + "</b> as available from FDSNWS.</small>";
+    if(USER_NETWORK.network.code === "*") {
+      return "<small>Map showing <b>" + nStations + "</b> stations available from ORFEUS Data Center.<b>"; 
+    }
+
+    return "<small>Map showing <b>" + nStations + "</b> stations available from network <b>" + USER_NETWORK.network.code + "</b> as available from FDSNWS.</small>";
   
   }
 
@@ -1005,7 +1016,7 @@ App.prototype.launchHome = function() {
   this.setupStagedFilePolling();
 
   // Adds possibility to upload metadata
-  if(USER_NETWORK.code !== '*') {
+  if(USER_NETWORK.network.code !== '*') {
     this.AddMetadataUpload();
   }
 
@@ -1610,8 +1621,13 @@ function getIcon(icon, color) {
 
 function GoogleMapsInfoWindowContentBorehole(markers) {
 
+  var arrowIcon = getIcon("arrow-down", "muted");
+
   return [
-    "<h4> " + getIcon("ruler-vertical", "primary") + " Vertical Array </h4>",
+    "<div style='text-align: center;'>",
+    "  <h4> " + getIcon("ruler-vertical", "primary") + " Vertical Array </h4>",
+    "  <span class='text-muted'>" + arrowIcon + " Scroll for More " + arrowIcon + "</span>",
+    "</div>",
     "<hr>",
     markers.map(GoogleMapsInfoWindowContent).join("<hr>")
   ].join("");
@@ -1679,13 +1695,14 @@ App.prototype.getNetworkDOI = function() {
 
   }
 
-  function getFormattedDOILink(element, description) {
+  function getFormattedDOILink(element, network) {
 
-    /* Function getFormattedDOILink
+    /*
+     * Function getFormattedDOILink
      * Returns formatted DOI link to show on page
      */
 
-    return "<a title='" + element.doi + "' href='https://doi.org/" + element.doi + "'><span class='fas fa-globe-americas'></span> " + description + "</a>";
+    return "<a title='" + element.doi + "' href='https://doi.org/" + element.doi + "'><span class='fas fa-globe-americas'></span> " + network.description + " (" + network.network.code + ")</a>";
 
   }
 
@@ -1709,7 +1726,7 @@ App.prototype.getNetworkDOI = function() {
     console.debug("DOI returned from FDSN: " + element.doi);
 
     // Update the DOM to reflect the DOI
-    doiElement.innerHTML = getFormattedDOILink(element, this.network.description);
+    doiElement.innerHTML = getFormattedDOILink(element, this.network);
 
     // Continue with the actual DOI lookup
     if(false) {
@@ -2091,7 +2108,11 @@ App.prototype.generateStationTable = function() {
         "body": _stationJson.map(createTableBody)
       });
 
-      Element("table-information").innerHTML = "<small>Table showing <b>" + _stationJson.length + "</b> stations from network <b>" + USER_NETWORK.code + "</b> as available from FDSNWS.</small>";
+      if(USER_NETWORK.network.code === "*") {
+        Element("table-information").innerHTML = "<small>Table showing <b>" + _stationJson.length + "</b> available from FDSNWS.</small>";
+      } else {
+        Element("table-information").innerHTML = "<small>Table showing <b>" + _stationJson.length + "</b> stations from network <b>" + USER_NETWORK.network.code + "</b> as available from FDSNWS.</small>";
+      }
     
     }
 
@@ -2652,15 +2673,15 @@ function downloadAsJSON() {
 
 }
 
+function unique(v, i, a) {
+  return a.indexOf(v) === i;
+}
+
 App.prototype.AddMetadataUpload = function() {
 
   /* function AddMetadataUpload
    * Adds event to metadata uploading
    */
-
-  function unique(v, i, a) {
-    return a.indexOf(v) === i;
-  }
 
   Element("metadata-submission").style.display = "block";
 

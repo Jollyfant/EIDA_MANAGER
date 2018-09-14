@@ -47,7 +47,7 @@ function validateFiles(files) {
 
     const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
 
-    if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK.code !== networkCode) {
+    if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK.network.code !== networkCode) {
       throw("Invalid network code: " + networkCode);
     }
 
@@ -88,7 +88,7 @@ function validateFiles(files) {
 
       validateNetwork(networkCode);
 
-      if(USER_NETWORK.start !== networkStart) {
+      if(USER_NETWORK.network.start !== networkStart) {
         throw("Invalid network start time: " + networkStart);
       }
 
