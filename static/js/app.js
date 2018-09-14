@@ -688,12 +688,7 @@ function createPrototypeTable() {
       return Element("prototype-table").innerHTML = "<span class='text-muted'>No prototypes available.</span>";
     }
 
-    json.sort(sortCreated).forEach(function(x) {
-      var option = document.createElement("option");
-      option.text = x.network.code + " " + new Date(x.network.start).getFullYear();
-      option.value = x._id;
-      Element("prototype-select").add(option);
-    });
+    json.sort(sortCreated).map(getPrototypeValues).filter(unique).forEach(addPrototypeSelection);
 
     new Table({
       "id": "prototype-table",
@@ -703,6 +698,33 @@ function createPrototypeTable() {
     });
 
   });
+
+}
+
+function getPrototypeValues(x) {
+
+  /*
+   * Function getPrototypeValues
+   * Adds a prototype to the user prototype selection box
+   */
+
+  return x.network.code + " " + x.network.start;
+
+}
+
+function addPrototypeSelection(x) {
+
+  /*
+   * Function addPrototypeSelection
+   * Adds a prototype to the user prototype selection box
+   */
+
+  var option = document.createElement("option");
+
+  option.text = x.split("-")[0];
+  option.value = x;
+
+  Element("prototype-select").add(option);
 
 }
 

@@ -1334,7 +1334,7 @@ WebRequest.prototype.HTTPError = function(statusCode, error) {
   }
 
   // Delegate to the generic HTTPResponse function
-  return this.HTTPResponse(statusCode, template.generateHTTPError(statusCode));
+  return this.HTTPResponse(statusCode, template.generateHTTPError(statusCode, error));
 
 }
 
