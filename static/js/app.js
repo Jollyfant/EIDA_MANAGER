@@ -187,6 +187,34 @@ App.prototype.AddMap = function() {
       "lat": 52.4048,
       "lng": 9.8214
     }
+  }, {
+    "name": "Ludwig Maximilians Universitat Munchen",
+    "id": "LMU",
+    "position": {
+      "lat": 48.5014,
+      "lng": 11.5806
+    }
+  }, {
+    "name": "National Institute for Earth Physics",
+    "id": "NIEP",
+    "position": {
+      "lat": 44.35,
+      "lng": 26.02
+    }
+  }, {
+    "name": "Kandilli Observatory and Earthquake Research Institute",
+    "id": "KOERI",
+    "position": {
+      "lat": 41.063,
+      "lng": 29.062
+    }
+  }, {
+    "name": "National Observatory of Athens",
+    "id": "NOA",
+    "position": {
+      "lat": 37.973259,
+      "lng": 23.717904
+    }
   }];
 
   // Add the EIDA nodes
@@ -216,7 +244,7 @@ App.prototype.addNode = function(node) {
    * Adds a single EIDA node to the map
    */
 
-  const NODE_MARKER = "/images/node.png";
+  const NODE_MARKER = (node.id === CONFIG.NODE.ID) ? "/images/node-green.png" : "/images/node.png";
   const NODE_ZINDEX = 100;
 
   var marker = new google.maps.Marker({
@@ -601,16 +629,16 @@ App.prototype.launchAdmin = function() {
 
   const SERVICES = [{
     "name": "station",
-    "url": "https://www.orfeus-eu.org/fdsnws/station/1/version"
+    "url": CONFIG.FDSNWS.STATION.HOST.replace("query", "version")
   }, {
     "name": "dataselect",
-    "url": "https://www.orfeus-eu.org/fdsnws/dataselect/1/version"
+    "url": CONFIG.FDSNWS.DATASELECT.HOST.replace("query", "version")
   }, {
     "name": "wfcatalog",
-    "url": "https://www.orfeus-eu.org/eidaws/wfcatalog/1/version"
+    "url": CONFIG.FDSNWS.WFCATALOG.HOST.replace("query", "version")
   }, {
     "name": "routing",
-    "url": "https://www.orfeus-eu.org/eidaws/routing/1/version"
+    "url": CONFIG.FDSNWS.ROUTING.HOST.replace("query", "version")
   }];
 
   const S_UPDATE_SEISCOMP = "The SeisComP3 database has been updated.";
@@ -891,6 +919,16 @@ App.prototype.statistics = function() {
    * Creates the statistics chart
    */
 
+  function getSubtitle(network) {
+
+    if(network === "*") {
+      return "All networks";
+    } else {
+      return "Network <b>" + network + "</b>";
+    }
+
+  }
+
   // Fake data for display
   var data = new Array();
 
@@ -905,6 +943,8 @@ App.prototype.statistics = function() {
 
   }
 
+  var subtitle = getSubtitle(USER_NETWORK.network.code);
+
   Highcharts.chart("statistics-chart-bar", {
     "chart": {
       "type": "column"
@@ -913,7 +953,7 @@ App.prototype.statistics = function() {
       "text": "Continuous Waveform Data Exported"
     },
     "subtitle": {
-      "text": "Network <b>" + USER_NETWORK.network.code + "</b>"
+      "text": subtitle
     },
     "xAxis": {
       "type": "datetime"
@@ -927,7 +967,8 @@ App.prototype.statistics = function() {
     "plotOptions": {
       "column": {
         "pointPadding": 0,
-        "borderWidth": 0
+        "borderWidth": 1,
+        "groupPadding": 0
       }
     },
     "credits": {
@@ -1740,7 +1781,7 @@ App.prototype.getNetworkDOI = function() {
 
     // When nothing returned just put the network
     if(json === null) {
-       return doiElement.innerHTML = "<span class='fas fa-globe-americas'></span> " + this.network.description + " <a href='https://www.fdsn.org/services/doi/'><small>Request DOI</small></a>";
+       return doiElement.innerHTML = "<span class='fas fa-globe-americas'></span> " + this.network.description + " <a href='https://www.fdsn.org/services/doi/'><small title='A digital object identifier allows users to acknowledge data from your network'>Request a DOI!</small></a>";
     }
 
     var element = json.pop();
@@ -2504,7 +2545,7 @@ function generateAccordion(list) {
         "</div>",
         "<hr>",
         "<button class='btn btn-link' onClick='getInstrumentResponse(\"" + [channel.network, channel.station, channel.location, channel.channel, channel.sensorUnits].join(".") + "\")'>" + getIcon("eye") + " View Sensor Response</button>",
-        "<a style='float: right;' class='btn btn-link' target='_blank' href='https://www.orfeus-eu.org/fdsnws/station/1/query" + query + "'>" + getIcon("download") + " StationXML</a>",
+        "<a style='float: right;' class='btn btn-link' target='_blank' href='" + CONFIG.FDSNWS.STATION.HOST + query + "'>" + getIcon("download") + " StationXML</a>",
       ].join("\n");
   
     }
@@ -2706,6 +2747,7 @@ App.prototype.AddMetadataUpload = function() {
    */
 
   Element("metadata-submission").style.display = "block";
+  Element("seedlink-submission").style.display = "block";
 
   // Add event handler when files are selected 
   Element("file-stage").addEventListener("change", function(event) {
@@ -2732,7 +2774,7 @@ App.prototype.AddMetadataUpload = function() {
         return (x.new ? getIcon("star", "warning") + " " : "") + x.network + "." + x.station
       }).filter(unique).join(", ");
 
-      Element("file-help").innerHTML = "<b>" + getIcon("check", "success") + "</span> Staged Metadata:</b> " + (stagedStations.length ? stagedFileContent : "None"); 
+      Element("file-help").innerHTML = "<b>" + getIcon("file", "primary") + "</span> Staged Files:</b> " + files.map(x => x.name).join(", ") + "<p><b>" + getIcon("check", "success") + "</span> Staged Metadata:</b> " + (stagedStations.length ? stagedFileContent : "None"); 
 
     });
 
@@ -2771,6 +2813,7 @@ function readMultipleFiles(files, callback) {
 
       // Append the result
       fileContents.push({
+        "name": file.name,
         "data": reader.result,
         "size": file.size
       });

@@ -227,7 +227,7 @@ WebRequest.prototype.pipe = function(resource) {
 
   /*
    * Function WebRequest.pipe
-   * Pipes a single resource to the response writeable stream
+   * Pipes a single static resource to the response writeable stream
    */
 
   fs.createReadStream(resource).pipe(this.response);
@@ -243,7 +243,8 @@ WebRequest.prototype.getSession = function(sessionHandler) {
 
   function extractSessionCookie(headers) {
   
-    /* Function WebRequest.getSession::extractSessionCookie
+    /*
+     * Function WebRequest.getSession::extractSessionCookie
      * Extracts a session cookie from the HTTP headers
      */
   
@@ -316,8 +317,8 @@ WebRequest.prototype.handleSession = function(error, session) {
     return this.APIRequest();
   }
 
-  // Forward requests to RPCs
-  if(this.url.pathname.startsWith("/rpc")) {
+  // Forward requests to RPCs (administrators only)
+  if(this.session.isAdministrator() && this.url.pathname.startsWith("/rpc")) {
     return this.RPC();
   }
 
@@ -374,11 +375,6 @@ WebRequest.prototype.RPC = function() {
    * Function WebRequest.RPC
    * Handler for remote procedure calls for service administrators
    */
-
-  // Block normal users
-  if(!this.session.isAdministrator()) {
-    return this.HTTPError(ohttp.E_HTTP_UNAUTHORIZED); 
-  }
 
   // Delegate the RPC to the appropriate function
   switch(this.url.pathname) {
@@ -571,7 +567,7 @@ WebRequest.prototype.RPCPrototypes = function() {
     // Async but concurrently read all files
     (next = function() {
 
-      // All buffers were read and available: send 204 (pretend OK??)
+      // All buffers were read and available
       if(!files.length) {
         return this.redirect("/home/admin?S_UPDATE_PROTOTYPES");
       }
@@ -620,6 +616,7 @@ WebRequest.prototype.RPCDatabase = function() {
         return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       }
 
+      // No metadata in the database
       if(documents.length === 0) {
         return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
       }
@@ -686,7 +683,7 @@ WebRequest.prototype.RPCRestartFDSNWS = function(callback) {
 
   // ENOENT SeisComP3
   convertor.on("error", function(error) {
-    return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
   }.bind(this));
 
   // NOOP but required..
@@ -743,7 +740,7 @@ WebRequest.prototype.RPCUpdateInventory = function(documents) {
           return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        return this.redirect("/home/admin?S_UPDATE_SEISCOMP"); 
+        this.redirect("/home/admin?S_UPDATE_SEISCOMP"); 
 
       });
 
@@ -1307,7 +1304,7 @@ WebRequest.prototype.HTTPResponse = function(statusCode, HTML) {
    * Returns an HTTP error to the client
    */
 
-	// Handle 204
+  // Handle 204
   if(statusCode === ohttp.S_HTTP_NO_CONTENT) {
     this.response.writeHead(statusCode);
     this.response.end();
@@ -1334,7 +1331,7 @@ WebRequest.prototype.HTTPError = function(statusCode, error) {
   }
 
   // Delegate to the generic HTTPResponse function
-  return this.HTTPResponse(statusCode, template.generateHTTPError(statusCode, error));
+  this.HTTPResponse(statusCode, template.generateHTTPError(statusCode, error));
 
 }
 

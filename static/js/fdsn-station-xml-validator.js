@@ -38,21 +38,6 @@ function validateFiles(files) {
   
   }
 
-  function validateNetwork(networkCode) {
-
-    /*
-     * Function validateNetwork
-     * Validates the network code through a regular expression
-     */
-
-    const NETWORK_REGEXP = new RegExp(/^[a-z0-9]{1,2}$/i);
-
-    if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK.network.code !== networkCode) {
-      throw("Invalid network code: " + networkCode);
-    }
-
-  }
-
   /*
    * Function validateFiles
    * validates uploaded StationXML files on the client-side and 
@@ -60,7 +45,8 @@ function validateFiles(files) {
    */
 
   const FDSN_STATION_XML_HEADER = "FDSNStationXML";
-  const STATION_REGEXP = new RegExp(/^[a-z0-9]{1,5}$/i);
+  const STATION_REGEXP = new RegExp(/^[A-Z0-9]{1,5}$/);
+  const NETWORK_REGEXP = new RegExp(/^[A-Z0-9]{1,2}$/);
 
   var stagedStations = new Array();
 
@@ -75,7 +61,7 @@ function validateFiles(files) {
 
     // Confirm that XML owns the FDSNStationXML namespace
     if(XML.documentElement.nodeName !== FDSN_STATION_XML_HEADER) {
-      throw("Invalid FDSN Station XML");
+      throw("Invalid FDSN Station XML" + " in " + file.name + ".");
     }
 
     // Go over all networks and collect station names
@@ -86,10 +72,12 @@ function validateFiles(files) {
       var networkStart = convertISO(network.getAttribute("startDate"));
       var networkEnd = convertISO(network.getAttribute("endDate"));
 
-      validateNetwork(networkCode);
+      if(!NETWORK_REGEXP.test(networkCode) || USER_NETWORK.network.code !== networkCode) {
+        throw("Invalid network code: " + networkCode + " in " + file.name + ".");
+      }
 
       if(USER_NETWORK.network.start !== networkStart) {
-        throw("Invalid network start time: " + networkStart);
+        throw("Invalid network start time: " + networkStart + " in " + file.name + ".");
       }
 
       Array.from(network.getElementsByTagName("Station")).forEach(function(station) {
@@ -97,14 +85,14 @@ function validateFiles(files) {
         var stationCode = station.getAttribute("code");
 
         if(!STATION_REGEXP.test(stationCode)) {
-          throw("Invalid station code: " + stationCode);
+          throw("Invalid station code: " + stationCode + " in " + file.name + ".");
         }
 
         // Detailed sanization check on station metadata
         try {
           validateStationMetadata(station);
         } catch(exception) {
-          throw(exception + " for station " + networkCode + "." + stationCode + "."); 
+          throw(exception + " for station " + networkCode + "." + stationCode + " in " + file.name + "."); 
         }
 
         stagedStations.push({

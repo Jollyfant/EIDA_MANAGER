@@ -34,6 +34,12 @@
     },
     "DATASELECT": {
       "HOST": "http://orfeus-eu.org/fdsnws/dataselect/1/query"
+    },
+    "ROUTING": {
+      "HOST": "http://orfeus-eu.org/eidaws/routing/1/query"
+    },
+    "WFCATALOG": {
+      "HOST": "http://orfeus-eu.org/eidaws/wfcatalog/1/query"
     }
   },
   "NODE": {
