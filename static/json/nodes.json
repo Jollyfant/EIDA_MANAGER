@@ -1,0 +1,162 @@
+[
+    {
+        "homepage": "https://www.orfeus-eu.org",
+        "id": "ODC",
+        "name": "ORFEUS Data Center",
+        "position": {
+            "lat": 52.10165,
+            "lng": 5.1783
+        },
+        "region": "European-Mediterranean, Netherlands",
+        "webservices": {
+            "dataselect": "http://www.orfeus-eu.org/fdsnws/dataselect/1/query/",
+            "station": "http://www.orfeus-eu.org/fdsnws/station/1/query/",
+            "wfcatalog": "http://www.orfeus-eu.org/eidaws/wfcatalog/1/query/"
+        },
+        "year": 2013
+    },
+    {
+        "homepage": "https://geofon.gfz-potsdam.de",
+        "id": "GFZ",
+        "name": "Helmholz-Zentrum Potsdam",
+        "position": {
+            "lat": 52.383,
+            "lng": 13.066
+        },
+        "region": "European, Global temporary deployments",
+        "webservices": {
+            "dataselect": "http://geofon.gfz-potsdam.de/fdsnws/dataselect/1/query/",
+            "station": "http://geofon.gfz-potsdam.de/fdsnws/station/1/query/",
+            "wfcatalog": "http://geofon.gfz-potsdam.de/eidaws/wfcatalog/1/query/"
+        },
+        "year": 2013
+    },
+    {
+        "homepage": "https://www.resif.fr/",
+        "id": "RESIF",
+        "name": "Reseau Sismologique & Geodesique Francais",
+        "position": {
+            "lat": 45.1942,
+            "lng": 5.7704
+        },
+        "region": "France, Global temporary deployments",
+        "webservices": {
+            "dataselect": "http://ws.resif.fr/fdsnws/dataselect/1/query/",
+            "station": "http://ws.resif.fr/fdsnws/station/1/query/",
+            "wfcatalog": "http://ws.resif.fr/eidaws/wfcatalog/1/query/"
+        },
+        "year": 2013
+    },
+    {
+        "homepage": "http://www.ingv.it/en/",
+        "id": "INGV",
+        "name": "Instituto Nazionale di Geofisica e Vulcanologia",
+        "position": {
+            "lat": 41.848,
+            "lng": 12.5151
+        },
+        "region": "Italy, European-Mediterranean (MedNet)",
+        "webservices": {
+            "dataselect": "http://webservices.ingv.it/fdsnws/dataselect/1/query/",
+            "station": "http://webservices.ingv.it/fdsnws/station/1/query/",
+            "wfcatalog": "http://webservices.ingv.it/eidaws/wfcatalog/1/query/"
+        },
+        "year": 2013
+    },
+    {
+        "homepage": "http://eida.ethz.ch",
+        "id": "SED",
+        "name": "ETH Zurich Schweizerischer Erdbebendienst",
+        "position": {
+            "lat": 47.3788,
+            "lng": 8.5472
+        },
+        "region": "Switzerland",
+        "webservices": {
+            "dataselect": "http://eida.ethz.ch/fdsnws/dataselect/1/query/",
+            "station": "http://eida.ethz.ch/fdsnws/station/1/query/",
+            "wfcatalog": "http://eida.ethz.ch/eidaws/wfcatalog/1/query/"
+        },
+        "year": 2013
+    },
+    {
+        "homepage": "https://eida.bgr.de",
+        "id": "BGR",
+        "name": "Bundensanstalt fur Geowissenschaften und Rohstoffe",
+        "position": {
+            "lat": 52.4048,
+            "lng": 9.8214
+        },
+        "region": "Germany",
+        "webservices": {
+            "dataselect": "http://eida.bgr.de/fdsnws/dataselect/1/query/",
+            "station": "http://eida.bgr.de/fdsnws/station/1/query/",
+            "wfcatalog": "http://eida.bgr.de/eidaws/wfcatalog/1/query/"
+        },
+        "year": 2013
+    },
+    {
+        "homepage": "https://www.en.uni-muenchen.de/index.html",
+        "id": "LMU",
+        "name": "Ludwig Maximilians Universitat Munchen",
+        "position": {
+            "lat": 48.5014,
+            "lng": 11.5806
+        },
+        "region": "Germany (BayernNetz)",
+        "webservices": {
+            "dataselect": "http://erde.geophysik.uni-muenchen.de/fdsnws/dataselect/1/query/",
+            "station": "http://erde.geophysik.uni-muenchen.de/fdsnws/station/1/query/",
+            "wfcatalog": "http://erde.geophysik.uni-muenchen.de/eidaws/wfcatalog/1/query/"
+        },
+        "year": 2013
+    },
+    {
+        "homepage": "http://www.infp.ro/en/",
+        "id": "NIEP",
+        "name": "National Institute for Earth Physics",
+        "position": {
+            "lat": 44.35,
+            "lng": 26.02
+        },
+        "region": "Romania",
+        "webservices": {
+            "dataselect": "http://eida-sc3.infp.ro/fdsnws/dataselect/1/query/",
+            "station": "http://eida-sc3.infp.ro/fdsnws/station/1/query/",
+            "wfcatalog": "http://geofon.gfz-potsdam.de/eidaws/wfcatalog/1/query/"
+        },
+        "year": 2014
+    },
+    {
+        "homepage": "http://eida.koeri.boun.edu.tr",
+        "id": "KOERI",
+        "name": "Kandilli Observatory and Earthquake Research Institute",
+        "position": {
+            "lat": 41.063,
+            "lng": 29.062
+        },
+        "region": "Turkey",
+        "webservices": {
+            "dataselect": "http://eida-service.koeri.boun.edu.tr/fdsnws/dataselect/1/query/",
+            "station": "http://eida-service.koeri.boun.edu.tr/fdsnws/station/1/query/",
+            "wfcatalog": "http://eida-service.koeri.boun.edu.tr/eidaws/wfcatalog/1/query/"
+        },
+        "year": 2014
+    },
+    {
+        "homepage": "http://eida.gein.noa.gr",
+        "id": "NOA",
+        "name": "National Observatory of Athens",
+        "position": {
+            "lat": 37.973259,
+            "lng": 23.717904
+        },
+        "region": "Greece",
+        "webservices": {
+            "dataselect": "http://eida.gein.noa.gr/fdsnws/dataselect/1/query/",
+            "station": "http://eida.gein.noa.gr/fdsnws/station/1/query/",
+            "wfcatalog": "http://eida.gein.noa.gr/eidaws/wfcatalog/1/query/"
+        },
+        "year": 2016
+    }
+]

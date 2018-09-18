@@ -30,7 +30,7 @@ var App = function() {
    */
 
   // Set the session network
-  this.network = USER_NETWORK;
+  this.network = CONFIG.NETWORK;
 
   this.queryString = parseQuery(window.location.search);
 
@@ -134,6 +134,8 @@ App.prototype.AddMap = function() {
 
   this.map = new google.maps.Map(Element("map"), {
     "minZoom": 2,
+    "zoom": 3,
+    "center": new google.maps.LatLng(50.0, 10.0),
     "disableDefaultUI": true
   });
 
@@ -141,86 +143,25 @@ App.prototype.AddMap = function() {
   this.infowindow = new google.maps.InfoWindow();
 
   // Listener on map to close the info window
-  this.map.addListener("click", function() {
-    this.infowindow.close();
-  }.bind(this));
-
-  const NODES = [{
-    "name": "ORFEUS Data Center",
-    "id": "ODC",
-    "position": {
-      "lat": 52.10165,
-      "lng": 5.1783
-    }
-  }, {
-    "name": "Helmholz-Zentrum Potsdam",
-    "id": "GFZ",
-    "position": {
-      "lat": 52.383,
-      "lng": 13.066
-    }
-  }, {
-    "name": "Reseau Sismologique & Geodesique Francais",
-    "id": "RESIF",
-    "position": {
-      "lat": 45.1942,
-      "lng": 5.7704
-    }
-  }, {
-    "name": "Instituto Nazionale di Geofisica e Vulcanologia",
-    "id": "INGV",
-    "position": {
-      "lat": 41.848,
-      "lng": 12.5151
-    }
-  }, {
-    "name": "ETH Zurich Schweizerischer Erdbebendienst",
-    "id": "SED",
-    "position": {
-      "lat": 47.3788,
-      "lng": 8.5472
-    }
-  }, {
-    "name": "Bundensanstalt fur Geowissenschaften und Rohstoffe",
-    "id": "BGR",
-    "position": {
-      "lat": 52.4048,
-      "lng": 9.8214
-    }
-  }, {
-    "name": "Ludwig Maximilians Universitat Munchen",
-    "id": "LMU",
-    "position": {
-      "lat": 48.5014,
-      "lng": 11.5806
-    }
-  }, {
-    "name": "National Institute for Earth Physics",
-    "id": "NIEP",
-    "position": {
-      "lat": 44.35,
-      "lng": 26.02
-    }
-  }, {
-    "name": "Kandilli Observatory and Earthquake Research Institute",
-    "id": "KOERI",
-    "position": {
-      "lat": 41.063,
-      "lng": 29.062
-    }
-  }, {
-    "name": "National Observatory of Athens",
-    "id": "NOA",
-    "position": {
-      "lat": 37.973259,
-      "lng": 23.717904
-    }
-  }];
+  this.map.addListener("click", this.infowindow.close.bind(this));
 
   // Add the EIDA nodes
-  NODES.forEach(this.addNode.bind(this));
+  this.addNodes();
 
   console.debug("Map has been initialized in " + (Date.now() - start) + " ms.");
+
+}
+
+App.prototype.addNodes = function() {
+
+  /*
+   * Function App.addNodes
+   * Adds EIDA nodes to the file from static resource
+   */
+
+  HTTPRequest("/json/nodes.json", function(json) {
+    json.forEach(this.addNode.bind(this));
+  }.bind(this));
 
 }
 
@@ -233,9 +174,11 @@ App.prototype.addNode = function(node) {
      */
 
     return [
-      "<h5>" + getCountryFlag(node.id) + " EIDA Node " + node.id + "</h5>",
+      "<h5>" + getCountryFlag(node.id) + " " + node.id + "</h5>",
+      "<p>" + node.title,
+      "<p><b>Region: </b>" + node.region,
       "<hr>",
-      node.title
+      "<b><a href='" + node.homepage + "'>" + getIcon("link") + " Node Homepage</a></b>"
     ].join("");
 
   }
@@ -252,6 +195,8 @@ App.prototype.addNode = function(node) {
     "position": node.position,
     "id": node.id,
     "title": node.name, 
+    "homepage": node.homepage,
+    "region": node.region,
     "icon": NODE_MARKER,
     "zIndex": NODE_ZINDEX
   });
@@ -943,7 +888,7 @@ App.prototype.statistics = function() {
 
   }
 
-  var subtitle = getSubtitle(USER_NETWORK.network.code);
+  var subtitle = getSubtitle(CONFIG.NETWORK.network.code);
 
   Highcharts.chart("statistics-chart-bar", {
     "chart": {
@@ -997,7 +942,7 @@ App.prototype.statistics = function() {
       "enabled": false
     },
     "series": [{
-      "name": "Brands",
+      "name": "Waveform Types",
       "colorByPoint": true,
       "data": [{
         "name": "Accelerometric",
@@ -1031,11 +976,11 @@ App.prototype.launchHome = function() {
      * Returns formatted information string below map
      */
   
-    if(USER_NETWORK.network.code === "*") {
+    if(CONFIG.NETWORK.network.code === "*") {
       return "<small>Map showing <b>" + nStations + "</b> stations available from ORFEUS Data Center.<b>"; 
     }
 
-    return "<small>Map showing <b>" + nStations + "</b> stations available from network <b>" + USER_NETWORK.network.code + "</b> as available from FDSNWS.</small>";
+    return "<small>Map showing <b>" + nStations + "</b> stations available from network <b>" + CONFIG.NETWORK.network.code + "</b> as available from FDSNWS.</small>";
   
   }
 
@@ -1079,7 +1024,7 @@ App.prototype.launchHome = function() {
   this.setupStagedFilePolling();
 
   // Adds possibility to upload metadata
-  if(USER_NETWORK.network.code !== '*') {
+  if(CONFIG.NETWORK.network.code !== "*") {
     this.AddMetadataUpload();
   }
 
@@ -1148,7 +1093,9 @@ App.prototype.launchHome = function() {
     }.bind(this));
 
     // Fit map bounds around all markers
-    this.map.fitBounds(bounds);
+    if(json.length) {
+      this.map.fitBounds(bounds);
+    }
 
     // Update metadata
     Element("map-information").innerHTML = mapInformationString(json.length);
@@ -1252,7 +1199,13 @@ App.prototype.launchStation = function() {
 
       // Ignore success and error commands
       if(data.success || data.error) {
+
+        if(data.error) {
+          alert("The connection to this stream could not be established.");
+        }
+
         return console.debug(data);
+
       }
 
       // Update the realtime waveforms
@@ -1281,7 +1234,7 @@ App.prototype.getStationDetails = function() {
     Element("channel-information-header").innerHTML = getIcon("signal", "muted") + " " + this.queryString.network + "." + this.queryString.station;
 
     if(json === null) {
-      Element("channel-information").innerHTML = "<span class='text-muted'>Station information is unavailable from FDSNWS.</span>";
+      Element("channel-information").innerHTML = "<div class='alert alert-danger' style='text-align: center;'>" + getIcon("times", "danger") + " Station information is unavailable from FDSNWS.</span></div>";
       return this.map.setCenter({"lat": 52.10165, "lng": 5.1783});
     }
 
@@ -1331,7 +1284,8 @@ App.prototype.getStationDetails = function() {
 
 App.prototype.launchNewMessage = function() {
 
-  /* Function App.launchNewMessage
+  /*
+   * Function App.launchNewMessage
    * Launches the code to be executed when composing a new message
    */
 
@@ -1521,7 +1475,7 @@ App.prototype.addSeedlink = function() {
 
       // No stations were returned
       if(x.stations.length === 0) {
-        return [icon, host, port, identifier, version, "<small> No stations for network " + USER_NETWORK.code + "</small>"];
+        return [icon, host, port, identifier, version, "<small> No stations for network " + CONFIG.NETWORK.network.code + "</small>"];
       }
 
       var stations = x.stations.map(function(x) {
@@ -1781,7 +1735,8 @@ App.prototype.getNetworkDOI = function() {
 
     // When nothing returned just put the network
     if(json === null) {
-       return doiElement.innerHTML = "<span class='fas fa-globe-americas'></span> " + this.network.description + " <a href='https://www.fdsn.org/services/doi/'><small title='A digital object identifier allows users to acknowledge data from your network'>Request a DOI!</small></a>";
+      doiElement.innerHTML = "<span class='fas fa-globe-americas'></span> " + this.network.description + " <a href='https://www.fdsn.org/services/doi/'><small title='A digital object identifier allows users to cite and acknowledge data from your network. '><b>Request a DOI!</b></small></a>";
+      return Element("citation-information").innerHTML = "No citation information available.";
     }
 
     var element = json.pop();
@@ -1792,11 +1747,9 @@ App.prototype.getNetworkDOI = function() {
     doiElement.innerHTML = getFormattedDOILink(element, this.network);
 
     // Continue with the actual DOI lookup
-    if(false) {
-      doiLookup(element.doi, function(jsonld) {
-        // noop
-      });
-    }
+    doiLookup(element.doi, function(jsonld) {
+      Element("citation-information").innerHTML = jsonld;
+    });
 
   }.bind(this));
 
@@ -1804,21 +1757,19 @@ App.prototype.getNetworkDOI = function() {
 
 function doiLookup(doi, callback) {
 
-  /* Function doiLookup
+  /*
+   * Function doiLookup
    * Looks up DOI from a registration and returns json+ld
    * of metadata in callback
    */
 
-  const DOI_REGISTRATION_URL = "https://doi.org/";
+  const DOI_REGISTRATION_URL = "https://crosscite.org/format?" + [
+    "doi=" + doi,
+    "style=apa",
+    "lang=en-US"
+  ].join("&");
 
-  $.ajax({
-    "url": DOI_REGISTRATION_URL + doi,
-    "method": "GET",
-    "headers": {
-      "Accept": "application/vnd.schemaorg.ld+json"
-    },
-    "success": callback
-  });
+  HTTPRequest(DOI_REGISTRATION_URL, callback);
   
 }
 
@@ -2171,10 +2122,10 @@ App.prototype.generateStationTable = function() {
         "body": _stationJson.map(createTableBody)
       });
 
-      if(USER_NETWORK.network.code === "*") {
+      if(CONFIG.NETWORK.network.code === "*") {
         Element("table-information").innerHTML = "<small>Table showing <b>" + _stationJson.length + "</b> available from FDSNWS.</small>";
       } else {
-        Element("table-information").innerHTML = "<small>Table showing <b>" + _stationJson.length + "</b> stations from network <b>" + USER_NETWORK.network.code + "</b> as available from FDSNWS.</small>";
+        Element("table-information").innerHTML = "<small>Table showing <b>" + _stationJson.length + "</b> stations from network <b>" + CONFIG.NETWORK.network.code + "</b> as available from FDSNWS.</small>";
       }
     
     }
