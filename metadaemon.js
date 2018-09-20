@@ -17,7 +17,6 @@ require("./require");
 // Native libs
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
 
 // Self
 const XSDSchema = require("./lib/orfeus-xml");
