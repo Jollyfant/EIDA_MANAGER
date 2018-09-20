@@ -410,7 +410,7 @@ WebRequest.prototype.writePrototype = function(parsedPrototype, buffer, callback
     var input = parsedPrototype.filepath + ".stationXML";
     var output = parsedPrototype.filepath + ".sc3ml";
 
-    seisComP3.convertSC3ML(input, output, function(code) {
+    seisComP3.convertSC3ML(input, output, function(stderr, code) {
 
       if(code !== 0) {
         return callback(new Error("Could not create SC3ML from station prototype"));
@@ -533,7 +533,7 @@ WebRequest.prototype.RPCFDSNWS = function() {
    * Restarts the FDSNWS Webservice
    */
 
-  seisComP3.restartFDSNWS(function(code) {
+  seisComP3.restartFDSNWS(function(stderr, code) {
 
     if(code === 1) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
@@ -616,7 +616,7 @@ WebRequest.prototype.RPCDatabase = function() {
 
       var files = documents.map(x => x.filepath + ".sc3ml");
 
-      seisComP3.mergeSC3ML(files, inventoryFile, function(code) {
+      seisComP3.mergeSC3ML(files, inventoryFile, function(stderr, code) {
 
         if(code !== 0) {
           return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
@@ -642,7 +642,7 @@ WebRequest.prototype.RPCUpdateInventory = function(documents) {
    */
 
   // Child process has closed
-  seisComP3.updateInventory(function(code) {
+  seisComP3.updateInventory(function(stderr, code) {
 
     logger.info("SeisComP3 database has been updated. Exited with status code " + code + ".");
 
@@ -658,7 +658,7 @@ WebRequest.prototype.RPCUpdateInventory = function(documents) {
         return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       }
 
-      seisComP3.restartFDSNWS(function(code) {
+      seisComP3.restartFDSNWS(function(stderr, code) {
 
         if(code !== 0) {
           return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
@@ -703,7 +703,7 @@ WebRequest.prototype.RPCInventory = function() {
     var outstream = this.response;
 
     // Pass writeable as output file
-    seisComP3.mergeSC3ML(files, outstream, function(code) { 
+    seisComP3.mergeSC3ML(files, outstream, function(stderr, code) { 
       logger.info("RPC merged full inventory of " + documents.length + " files. Exited with status code " + code + ".");
     });
 

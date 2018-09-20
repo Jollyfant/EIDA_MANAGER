@@ -27,10 +27,9 @@ const XSDSchema = require("./lib/orfeus-xml");
 const database = require("./lib/orfeus-database");
 const logger = require("./lib/orfeus-logging");
 const { parsePrototype, validateMetadata } = require("./lib/orfeus-metadata");
+const seisComP3 = require("./lib/orfeus-seiscomp");
 
 const CONFIG = require("./config");
-
-const E_CHILD_PROCESS = 1;
 
 var GLOBAL_CALLBACK;
 
@@ -350,41 +349,19 @@ function metadMerge(document) {
     }
 
     var prototype = prototypes.pop();
+    var files = new Array(document.filepath + ".sc3ml", prototype.filepath + ".sc3ml");
 
-    // Attempt to merge the station SC3ML with the converted prototype
-    var SEISCOMP_COMMAND = [
-      "exec",
-      "scinv",
-      "merge",
-      document.filepath + ".sc3ml",
-      prototype.filepath + ".sc3ml"
-    ];
-
-    // Spawn subprocess
-    const convertor = spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
-
-    var chunks = new Array();
-
-    // Child process has closed
-    convertor.on("close", function(code) {
-
-      var stderr = Buffer.concat(chunks).toString();
+    // Attempt to merge without output
+    seisComP3.mergeSC3ML(files, null, function(stderr, code) {
 
       // Set status to rejected when failed
-      if(code === E_CHILD_PROCESS) {
+      if(code !== 0) {
         metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, E_PROTOTYPE_CONFLICT + stderr);
       } else {
         metaDaemonCallback(document, database.METADATA_STATUS_ACCEPTED);
       }
 
     });
-
-    // Save stderr
-    convertor.stderr.on("data", function(data) {
-      chunks.push(data);
-    });
-
-    ;
 
   });
 
@@ -399,40 +376,18 @@ function metadConvert(document) {
 
   logger.info("metadConvert is requested for " + document.network.code + "." + document.station);
 
-  const SEISCOMP_COMMAND = [
-    "exec",
-    "fdsnxml2inv",
-    document.filepath + ".stationXML",
-    "-f",
-    document.filepath + ".sc3ml"
-  ];
+  var input = document.filepath + ".stationXML";
+  var output = document.filepath + ".sc3ml";
 
-  // Spawn subproceed
-  const convertor = spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
-
-  var chunks = new Array();
-
-  // Child process has closed
-  convertor.on("close", function(code) {
-
-    var stderr = Buffer.concat(chunks).toString();
-
-    if(stderr.includes("Conflicting definitions")) {
-      //stderr = E_PROTOTYPE_CONFLICT;
-    }
+  seisComP3.convertSC3ML(input, output, function(stderr, code) {
 
     // Set to rejected if the conversion fails
-    if(code === E_CHILD_PROCESS) {
+    if(code !== 0) {
       metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, stderr);
     } else {
       metaDaemonCallback(document, database.METADATA_STATUS_CONVERTED);
     }
 
-  });
-
-  // Save stderr
-  convertor.stderr.on("data", function(data) {
-    chunks.push(data);
   });
 
 }
