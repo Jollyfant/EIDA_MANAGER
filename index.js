@@ -541,7 +541,7 @@ WebRequest.prototype.RPCFDSNWS = function() {
 
     return this.redirect("/home/admin?S_RESTART_FDSNWS");
 
-  });
+  }.bind(this));
 
 }
 
