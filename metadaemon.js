@@ -19,9 +19,6 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 
-// Third party
-const libxmljs = require("libxmljs");
-
 // Self
 const XSDSchema = require("./lib/orfeus-xml");
 const database = require("./lib/orfeus-database");
@@ -29,6 +26,7 @@ const logger = require("./lib/orfeus-logging");
 const { parsePrototype, validateMetadata } = require("./lib/orfeus-metadata");
 const seisComP3 = require("./lib/orfeus-seiscomp");
 
+// Configuration
 const CONFIG = require("./config");
 
 var GLOBAL_CALLBACK;
@@ -171,8 +169,6 @@ function metadValidate(document) {
 
   logger.info("metadValidate is requested for " + document.network.code + "." + document.station);
 
-  const E_SCHEMA_VALIDATION = "The StationXML could not be validated against the XSD schema. Please check the syntax of the submitted file.";
-
   // Read the file from disk
   fs.readFile(document.filepath + ".stationXML", function(error, XMLString) {
  
@@ -181,16 +177,9 @@ function metadValidate(document) {
       return metaDaemonCallback(document, database.METADATA_STATUS_UNCHANGED);
     }
 
-    var XMLDocument = libxmljs.parseXml(XMLString);
-
-    // Check against the schema
-    if(!XMLDocument.validate(XSDSchema)) {
-      return metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, E_SCHEMA_VALIDATION);
-    } 
-
     // Validate sanity of the document (e.g. sampling rate, FIR filters)
     try {
-      validateMetadata(XMLDocument);
+      validateMetadata(XMLString);
     } catch(exception) {
       return metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, exception.message);
     }
@@ -414,5 +403,9 @@ function __init__() {
 
 }
 
-// Initialize the metadaemon
-__init__();
+if(require.main === module) {
+  
+  // Init the Metadaemon
+  __init__();
+
+}

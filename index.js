@@ -2078,5 +2078,9 @@ WebRequest.prototype.getFDSNWSStations = function() {
 
 }
 
-// Init the server
-__init__();
+if(require.main === module) {
+
+  // Init the server
+  __init__();
+
+}
