@@ -1,4 +1,5 @@
-/* App.js
+/*
+ * App.js
  *
  * Client-side JavaScript code for EIDA Manager
  * 
@@ -8,16 +9,12 @@
  *
  */
 
-const __DEBUG__ = true;
-
 const STATION_MARKER_GREEN = "/images/station-green.png";
 const STATION_MARKER_ORANGE = "/images/station-orange.png";
 const STATION_MARKER_GREY = "/images/station-grey.png";
 const STATION_MARKER_RED = "/images/station-red.png";
 
-const SOCKET_URL = "ws://0.0.0.0:8089"
-const DOI_URL = "http://0.0.0.0:8090";
-
+// Some globals for caching
 var chartPointers;
 var _stationJson = new Array();
 var _latencyHashMap = new Object();
@@ -39,15 +36,21 @@ var App = function() {
 
 }
 
-function hideResponse() {
+function toggleElement(id, show) {
 
-  Element("response-charts").style.display = "none";
+  /*
+   * Function hideElement
+   * Hides the passed element
+   */
+
+  Element(id).style.display = (show ? "block" : "none");
 
 }
 
 function getCountryFlag(archive) {
 
-  /* function getCountryFlag
+  /*
+   * Function getCountryFlag
    * Returns the country flag for an EIDA node
    */
 
@@ -62,44 +65,77 @@ function getCountryFlag(archive) {
   const FLAG_TURKEY = "&#x1F1F9;&#x1F1F7;";
   const FLAG_NORWAY = "&#x1F1F3;&#x1F1F4;";
 
-  if(archive === "ODC") {
-    return FLAG_NETHERLANDS;
-  } else if(archive === "GFZ" || archive === "LMU" || archive === "BGR") {
-    return FLAG_GERMANY;
-  } else if(archive === "SED") {
-    return FLAG_SWITZERLAND;
-  } else if(archive === "INGV") {
-    return FLAG_ITALY;
-  } else if(archive === "NIEP") {
-    return FLAG_ROMANIA;
-  } else if(archive === "RESIF" || archive === "IPGP") {
-    return FLAG_FRANCE;
-  } else if(archive === "NOA") {
-    return FLAG_GREECE;
-  } else if(archive === "KOERI") {
-    return FLAG_TURKEY;
-  } else if(archive === "BER") {
-    return FLAG_NORWAY;
-  } else {
-    return "";
+  switch(archive) {
+    case "ODC":
+      return FLAG_NETHERLANDS;
+    case "GFZ":
+    case "LMU":
+    case "BGR":
+      return FLAG_GERMANY;
+    case "SED":
+      return FLAG_SWITZERLAND;
+    case "INGV":
+      return FLAG_ITALY;
+    case "RESIF":
+    case "IPGP":
+      return FLAG_FRANCE;
+    case "NIEP":
+      return FLAG_ROMANIA;
+    case "NOA":
+      return FLAG_GREECE;
+    case "KOERI":
+      return FLAG_TURKEY;
+    case "BER":
+      return FLAG_NORWAY;
+    default:
+      return "";
   }
 
 }
 
-function HTTPRequest(url, callback) {
 
-  /* Function HTTPRequest
+function HTTPRequestGET(url, callback) {
+
+  /*
+   * Function HTTPRequestGET
+   * Makes a GET request to the resource
+   */
+
+  HTTPRequest(url, "GET", callback);
+
+}
+
+function HTTPRequestDELETE(url, callback) {
+
+  /*
+   * Function HTTPRequestDELETE
+   * Makes a DELETE request to the resource
+   */
+
+  HTTPRequest(url, "DELETE", callback);
+
+}
+
+
+function HTTPRequest(url, type, callback) {
+
+  /*
+   * Function HTTPRequest
    * Makes an async call to a remote resource
    * jQuery $.ajax is really annoying
    */
+
+  const HTTP_OK = 200;
 
   var xhr = new XMLHttpRequest();
 
   // When the resource is ready
   xhr.onload = function() {
 
+    console.debug(type + " HTTP Request to " + url + " returned with status code " + this.status);
+
     // Ignore HTTP errors
-    if(this.status !== 200) {
+    if(this.status !== HTTP_OK) {
       return callback(null);
     }
 
@@ -119,33 +155,36 @@ function HTTPRequest(url, callback) {
   }
 
   // Open and finish the request
-  xhr.open("GET", url);
+  xhr.open(type, url);
   xhr.send();
 
 }
 
-App.prototype.AddMap = function() {
+App.prototype.addMap = function() {
 
-  /* function AddMap
-   * Initializes code for Google Maps application
+  /*
+   * Function addMap
+   * Initializes the code for Google Maps 
    */
+
+  const MAP_CENTER = new google.maps.LatLng(50.0, 10.0);
 
   var start = Date.now();
 
   this.map = new google.maps.Map(Element("map"), {
     "minZoom": 2,
     "zoom": 3,
-    "center": new google.maps.LatLng(50.0, 10.0),
+    "center": MAP_CENTER,
     "disableDefaultUI": true
   });
 
-  // Create a new infowindow for tooltips
+  // Create a new infowindow for map tooltips
   this.infowindow = new google.maps.InfoWindow();
 
-  // Listener on map to close the info window
+  // Listener on map to close said info window
   this.map.addListener("click", this.infowindow.close.bind(this));
 
-  // Add the EIDA nodes
+  // Asynchrnous call to add the EIDA nodes
   this.addNodes();
 
   console.debug("Map has been initialized in " + (Date.now() - start) + " ms.");
@@ -159,7 +198,7 @@ App.prototype.addNodes = function() {
    * Adds EIDA nodes to the file from static resource
    */
 
-  HTTPRequest("/json/nodes.json", function(json) {
+  HTTPRequestGET("/json/nodes.json", function(json) {
     json.forEach(this.addNode.bind(this));
   }.bind(this));
 
@@ -167,9 +206,24 @@ App.prototype.addNodes = function() {
 
 App.prototype.addNode = function(node) {
 
+  function getNodeIconColor(id) {
+
+    /*
+     * Function App.addNode::getNodeIconColor
+     * Returns icon color based on the node id
+     */
+
+     const NODE_ICON_GREEN = "/images/node-green.png";
+     const NODE_ICON_BLUE = "/images/node.png";
+
+     return (id === CONFIG.NODE.ID) ? NODE_ICON_GREEN : NODE_ICON_BLUE;
+
+  }
+
   function generateNodeInfoWindow(node) {
 
-    /* AddMap::generateNodeInfoWindow
+    /*
+     * Function addMap::generateNodeInfoWindow
      * Generates HTML for the EIDA node info window
      */
 
@@ -183,11 +237,11 @@ App.prototype.addNode = function(node) {
 
   }
 
-  /* function App.addNode
+  /*
+   * Function App.addNode
    * Adds a single EIDA node to the map
    */
 
-  const NODE_MARKER = (node.id === CONFIG.NODE.ID) ? "/images/node-green.png" : "/images/node.png";
   const NODE_ZINDEX = 100;
 
   var marker = new google.maps.Marker({
@@ -197,30 +251,30 @@ App.prototype.addNode = function(node) {
     "title": node.name, 
     "homepage": node.homepage,
     "region": node.region,
-    "icon": NODE_MARKER,
+    "icon": getNodeIconColor(node.id),
     "zIndex": NODE_ZINDEX
   });
 
   // Add listener to the EIDA nodes
   marker.addListener("click", function() {
-
     this.infowindow.close();
     this.infowindow.setContent(generateNodeInfoWindow(marker));
     this.infowindow.open(this.map, marker);
-
   }.bind(this));
 
 }
 
 App.prototype.setupNotificationPolling = function() {
 
-  /* Function App.setupNotificationPolling
+  /*
+   * Function App.setupNotificationPolling
    * Polls the api for new notifications
    */
 
   function generateNotificationMessage(count) {
 
-    /* Function App.setupNotificationPolling::generateNotificationMessage
+    /*
+     * Function App.setupNotificationPolling::generateNotificationMessage
      * Generates HTML string for new messages
      */
 
@@ -240,11 +294,11 @@ App.prototype.setupNotificationPolling = function() {
   var start = Date.now();
 
   // Make a request to get the number of new messages
-  HTTPRequest("/api/messages?new", function(json) {
+  HTTPRequestGET("/api/messages?new", function(json) {
 
     console.debug("Retrieved " + (json ? json.count : 0) + " new message(s) from server in " + (Date.now() - start) + " ms.");
 
-    // Show modal that user has new messages
+    // Show modal that user has new messages (only during login)
     if(json.count > 0 && this.uri.search === "?welcome") {
       Element("modal-content").innerHTML = generateMessageAlert("success", "You have <b>" + json.count + "</b> unread message(s).");
       $("#modal-alert").modal();
@@ -252,28 +306,31 @@ App.prototype.setupNotificationPolling = function() {
 
     Element("number-messages").innerHTML = generateNotificationMessage(json.count);
 
-  }.bind(this));
+    // Set the next refresh for notification polling
+    setTimeout(this.setupNotificationPolling, NOTIFICATION_POLL_MS);
 
-  // Set next refresh for notification poll
-  setTimeout(this.setupNotificationPolling, NOTIFICATION_POLL_MS);
+  }.bind(this));
 
 }
 
 App.prototype.getStationLatencies = function() {
 
-  /* Function App.getStationLatencies
+  /*
+   * Function App.getStationLatencies
    * Queries the API for realtime latency information
    */
 
    function generateLatencyBody(latencies) {
   
-    /* Fuction App.getStationLatencies::generateLatencyBody
+    /* 
+     * Fuction App.getStationLatencies::generateLatencyBody
      * Generates an array of formatted latency values
      */
   
     function generateLatencyText(x) {
   
-      /* Function App.getStationLatencies::generateLatencyBody::generateLatencyText
+      /*
+       * Function App.getStationLatencies::generateLatencyBody::generateLatencyText
        * Generates the span that holds the latency value
        */
   
@@ -289,9 +346,7 @@ App.prototype.getStationLatencies = function() {
     }
   
     // Get a list of channel codes
-    var availableChannels = _channelJson.map(function(x) {
-      return x.channel;
-    });
+    var availableChannels = _channelJson.map(x => x.channel);
   
     var prefix;
   
@@ -313,11 +368,11 @@ App.prototype.getStationLatencies = function() {
 
   // Configuration for polling interval
   const LATENCY_POLL_MS = 60000;
-  const LATENCY_TABLE_HEADER = ["Channel", "Last Record", "Latency (s)"];
+  const LATENCY_TABLE_HEADER = new Array("Channel", "Last Record", "Latency (s)");
 
   var start = Date.now();
 
-  HTTPRequest("/api/latency" + window.location.search, function(json) {
+  HTTPRequestGET("/api/latency" + window.location.search, function(json) {
 
     if(json === null) {
       return;
@@ -333,27 +388,29 @@ App.prototype.getStationLatencies = function() {
       "body": generateLatencyBody(json)
     });
 
-  });
+    // Queue for next poll
+    setTimeout(this.getStationLatencies, LATENCY_POLL_MS);
 
-  // Queue for next poll
-  setTimeout(this.getStationLatencies, LATENCY_POLL_MS);
+  }.bind(this));
 
 }
 
 App.prototype.launchMessageDetails = function() {
 
-  /* Function App.launchMessageDetails
+  /*
+   * Function App.launchMessageDetails
    * Collects specific message from the API
    */
 
   function generateMessageDetails(message) {
   
-    /* Function App.launchMessageDetails::generateMessageDetails
+    /*
+     * Function App.launchMessageDetails::generateMessageDetails
      * Collects specific message from the API
      */
 
     // No message was returned
-    if(message === undefined) {
+    if(message === null) {
       return generateMessageAlert("danger", "Message not found.");
     }
   
@@ -386,7 +443,7 @@ App.prototype.launchMessageDetails = function() {
   }
 
   // Get details from the API
-  HTTPRequest("/api/messages/details" + window.location.search, function(json) {
+  HTTPRequestGET("/api/messages/details" + window.location.search, function(json) {
     Element("message-detail").innerHTML = generateMessageDetails(json);
   });
 
@@ -394,13 +451,15 @@ App.prototype.launchMessageDetails = function() {
 
 function generateMessageAlert(type, message) {
 
-  /* function generateMessageAlert
+  /*
+   * Function generateMessageAlert
    * Generates HTML for an alert message with icon
    */
 
   function getAlertIcon(type) { 
   
-    /* function generateMessageAlert::getAlertIcon
+    /*
+     * Function generateMessageAlert::getAlertIcon
      * Returns an icon related to the alert type
      */
 
@@ -426,23 +485,41 @@ function generateMessageAlert(type, message) {
 
 App.prototype.launchMessages = function() {
 
-  /* Function App.launchMessages
+  /*
+   * Function App.launchMessages
    * Launches part of the application dealing with messages
    */
 
   function messageSubjectText(x) {
  
-    /* Function App.launchMessages::messageSubjectText
+    /*
+     * Function App.launchMessages::messageSubjectText
      * Launches part of the application dealing with messages
      */
 
-    return (x.read ? "&nbsp; <span class='fa fa-envelope-open text-danger'></span> " : "&nbsp; <span class='fa fa-envelope text-success'></span><b> ") + "&nbsp; <a href='/home/messages/details?id=" + x._id + "'>" + x.subject + "</b></a>";
+    function getEnvelopeIcon(read) {
+
+      /*
+       * Function App.launchMessages::messageSubjectText::getEnvelopeIcon
+       * Returns appropriate icon for read and unread messages
+       */
+
+      if(read) {
+        return "<span class='fa fa-envelope-open text-danger'></span>";
+      } else {
+        return "<span class='fa fa-envelope text-success'></span>";
+      }
+
+    }
+
+    return "&nbsp; " + getEnvelopeIcon(x.read) + " &nbsp; <a href='/home/messages/details?id=" + x._id + "'>" + x.subject + "</b></a>";
 
   }
 
   function generateMessageTableContent(json) {
   
-    /* Function App.launchMessages::generateMessageTableContent
+    /*
+     * Function App.launchMessages::generateMessageTableContent
      * Generates the table content of received messages
      */
   
@@ -458,7 +535,8 @@ App.prototype.launchMessages = function() {
 
   function generateMessageTableContentSent(json) {
   
-    /* Function App.launchMessages::generateMessageTableContentSent
+    /*
+     * Function App.launchMessages::generateMessageTableContentSent
      * Generates the table content of sent messages
      */
   
@@ -486,7 +564,7 @@ App.prototype.launchMessages = function() {
     "Message Received"
   ];
 
-  HTTPRequest(API_URL, function(json) {
+  HTTPRequestGET(API_URL, function(json) {
 
     console.debug("Retrieved " + json.length +  " message(s) from server.");
 
@@ -494,18 +572,14 @@ App.prototype.launchMessages = function() {
       "id": "message-content-sent",
       "search": true,
       "header": MESSAGE_TABLE_HEADER_SENT,
-      "body": generateMessageTableContentSent(json.filter(function(x) {
-        return x.author;
-      }))
+      "body": generateMessageTableContentSent(json.filter(x => x.author))
     });
 
     new Table({
       "id": "message-content",
       "search": true,
       "header": MESSAGE_TABLE_HEADER,
-      "body": generateMessageTableContent(json.filter(function(x) {
-        return !x.author;
-      }))
+      "body": generateMessageTableContent(json.filter(x => !x.author))
     });
 
   });
@@ -514,14 +588,15 @@ App.prototype.launchMessages = function() {
 
 App.prototype.extractURI = function(href) {
 
-  /* Function App.extractURI
+  /*
+   * Function App.extractURI
    * Extracts the URI from the location
    */
 
   // Extract the resource URI
   this.uri = new URL(href);
 
-  console.debug("Initializing application at " + this.uri.pathname + ".");
+  console.debug("Initializing application at " + this.uri.pathname);
 
   // Generate the breadcrumbs from the URI
   Element("breadcrumb-container").innerHTML = generateBreadcrumb(this.uri.pathname);
@@ -530,7 +605,8 @@ App.prototype.extractURI = function(href) {
 
 App.prototype.init = function() {
 
-  /* function init
+  /*
+   * Function init
    * Initializes the application
    */
 
@@ -547,7 +623,7 @@ App.prototype.init = function() {
   // Get new notifications
   this.setupNotificationPolling();
 
-  // Launch the required part of the application
+  // Launch the required code part of the application
   switch(this.uri.pathname) {
     case "/home/messages/details":
       return this.launchMessageDetails();
@@ -610,7 +686,7 @@ App.prototype.launchAdmin = function() {
     // Time the request
     var start = Date.now();
 
-    HTTPRequest(service.url, function(json) {
+    HTTPRequestGET(service.url, function(json) {
 
       if(json === null) {
         Element("card-" + service.name).className = "card text-white bg-danger";
@@ -638,12 +714,23 @@ function createPrototypeTable() {
   function formatPrototypeTable(x) {
 
     /*
-     * Function formatPrototypeTable
+     * Function createPrototypeTable::formatPrototypeTable
      * Sorts documents by the created property
      */
 
+    function createPIDLink(sha256) {
+
+      /*
+       * Function createPrototypeTable::formatPrototypeTable::createPIDLink
+       * Creates a link for the SHA256 PID
+       */
+
+      return "<a target='_blank' href='/api/prototype?id=" + sha256 + "'><code data-toggle='tooltip' data-placement='right' data-html='true' title='<span class=\"fas fa-fingerprint\"></span> " + sha256 +"'>" + sha256.slice(0, 8) + "…</code></a>"
+
+    }
+
     return [
-      "<a target='_blank' href='/api/prototype?id=" + x.sha256 + "'><code data-toggle='tooltip' data-placement='right' data-html='true' title='<span class=\"fas fa-fingerprint\"></span> " + x.sha256 +"'>" + x.sha256.slice(0, 8) + "…</code></a>",
+      createPIDLink(x.sha256),
       x.network.code,
       x.network.start ? new Date(x.network.start).getFullYear() : "",
       x.end ? new Date(x.end).getFullYear() : "",
@@ -655,7 +742,7 @@ function createPrototypeTable() {
   }
 
   // Collect all network prototypes from the API
-  HTTPRequest("/api/prototypes", function(json) {
+  HTTPRequestGET("/api/prototypes", function(json) {
 
     if(json === null) {
       return Element("prototype-table").innerHTML = "<span class='text-muted'>No prototypes available.</span>";
@@ -703,7 +790,8 @@ function addPrototypeSelection(x) {
 
 function sortCreated(x, y) {
 
-  /* function sortCreated
+  /*
+   * Function sortCreated
    * Sorts documents by the created property
    */
 
@@ -735,7 +823,7 @@ function createUserTable() {
   }
 
   // Asynchronous request to get the users API
-  HTTPRequest("/api/users", function(json) {
+  HTTPRequestGET("/api/users", function(json) {
 
     if(json === null) {
       return Element("user-table").innerHTML = "<span class='text-muted'>No users available.</span>";
@@ -793,13 +881,15 @@ function getStatus(status) {
 
 App.prototype.setupStagedFilePolling = function() {
 
-  /* Function App.setupStagedFilePolling
+  /*
+   * Function App.setupStagedFilePolling
    * Sets up long polling for submitted metadata files
    */
 
   function createStagedMetadataTable(json) {
   
-    /* Function App.setupStagedFilePolling::createStagedMetadataTable
+    /*
+     * Function App.setupStagedFilePolling::createStagedMetadataTable
      * Create the staged metadata table
      */
 
@@ -851,7 +941,7 @@ App.prototype.setupStagedFilePolling = function() {
   // Polling interval
   const STAGED_POLL_MS = 60000;
 
-  HTTPRequest("/api/staged", createStagedMetadataTable);
+  HTTPRequestGET("/api/staged", createStagedMetadataTable);
 
   setTimeout(this.queryStaged, STAGED_POLL_MS);
 
@@ -861,7 +951,7 @@ App.prototype.statistics = function() {
 
   /*
    * Function App.statistics
-   * Creates the statistics chart
+   * Creates the statistics chart (TODO: real data)
    */
 
   // Fake data for display
@@ -897,7 +987,7 @@ App.prototype.launchHome = function() {
      * Returns formatted information string below map
      */
   
-    if(CONFIG.NETWORK.network.code === "*") {
+    if(CONFIG.ADMINISTRATOR) {
       return "<small>Map showing <b>" + nStations + "</b> stations available from ORFEUS Data Center.<b>"; 
     }
 
@@ -939,13 +1029,13 @@ App.prototype.launchHome = function() {
   }
 
   // Add map
-  this.AddMap();
+  this.addMap();
 
   // Polling for metadata files that are staged
   this.setupStagedFilePolling();
 
   // Adds possibility to upload metadata
-  if(CONFIG.NETWORK.network.code !== "*") {
+  if(!CONFIG.ADMINISTRATOR) {
     this.AddMetadataUpload();
   }
 
@@ -954,7 +1044,7 @@ App.prototype.launchHome = function() {
   this.statistics();
 
   // Add the stations to the map
-  HTTPRequest("/api/stations", function(json) {
+  HTTPRequestGET("/api/stations", function(json) {
 
     if(json === null) {
       json = new Array();
@@ -1034,14 +1124,15 @@ App.prototype.launchHome = function() {
 
 App.prototype.launchStation = function() {
 
-  /* Function App.launchStation
-   * Launches code for station details
+  /*
+   * Function App.launchStation
+   * Launches code for station details page
    */
 
   const MAP_STATION_ZOOM_LEVEL = 12;
 
   // Add the map
-  this.AddMap();
+  this.addMap();
 
   // Set the zoom level for the individual station
   this.map.setZoom(MAP_STATION_ZOOM_LEVEL);
@@ -1063,7 +1154,7 @@ App.prototype.launchStation = function() {
 
   }
 
-  HTTPRequest("/api/history?network=" + this.queryString.network + "&station=" + this.queryString.station, function(json) {
+  HTTPRequestGET("/api/history?network=" + this.queryString.network + "&station=" + this.queryString.station, function(json) {
   
     if(json === null) {
       return Element("metadata-history").innerHTML = "<span class='text-muted'>No metadata history is available.</span>";
@@ -1097,6 +1188,22 @@ App.prototype.launchStation = function() {
   var exampleSocket;
   var queryStringPointer = this.queryString;
 
+  // Enable the websocket
+  if(CONFIG.MODULES.WEBSOCKET.ENABLED) {
+    this.enableWebsocket();
+  }
+
+  this.getStationDetails();
+
+}
+
+App.prototype.enableWebsocket = function() {
+
+  /*
+   * Function App.enableWebsocket
+   * Enables the Seedlink websocket
+   */
+
   // Change event to toggle WS connection
   Element("connect-seedlink").addEventListener("change", function() {
 
@@ -1106,7 +1213,7 @@ App.prototype.launchStation = function() {
     }
 
     // Open a new socket
-    exampleSocket = new WebSocket(SOCKET_URL);
+    exampleSocket = new WebSocket(CONFIG.MODULES.WEBSOCKET.HOST);
 
     // Even when connection is made
     exampleSocket.onopen = function(event) {
@@ -1129,6 +1236,8 @@ App.prototype.launchStation = function() {
 
       }
 
+      console.debug("Received a new mSEED record for " + data.id);
+
       // Update the realtime waveforms
       if(!chartPointers.hasOwnProperty(data.id)) {
         chartPointers[data.id] = new SeedlinkChannel(data);
@@ -1140,17 +1249,16 @@ App.prototype.launchStation = function() {
 
   });
 
-  this.getStationDetails();
-
 }
 
 App.prototype.getStationDetails = function() {
 
-  /* App.getStationDetails
+  /*
+   * App.getStationDetails
    * Updates content with detailed station information
    */
 
-  HTTPRequest("/api/channels" + window.location.search, function(json) {
+  HTTPRequestGET("/api/channels" + window.location.search, function(json) {
 
     Element("channel-information-header").innerHTML = getIcon("signal", "muted") + " " + this.queryString.network + "." + this.queryString.station;
 
@@ -1242,7 +1350,8 @@ App.prototype.launchNewMessage = function() {
 
 function getOperationalStationMarker(marker) {
 
-  /* function getOperationalStationMarker
+  /*
+   * Function getOperationalStationMarker
    * Returns marker for open (GREEN) & closed (RED) station
    */
 
@@ -1252,19 +1361,22 @@ function getOperationalStationMarker(marker) {
 
 function changeMapLegend(markers) {
 
-  /* function changeMapLegend
+  /*
+   * Function changeMapLegend
    * Changes the HTML of the map legend
    */
 
   function getDeploymentStationMarker(marker) {
   
-    /* function getDeploymentStationMarker
+    /*
+     * Function getDeploymentStationMarker
      * Returns marker for permanent (GREEN) & temporary (RED) station
      */
   
     function isStationPermanent(station) {
     
-      /* Function isStationPermanent
+      /*
+       * Function isStationPermanent
        * Returns true if a station is permanently deployed
        */
     
@@ -1354,7 +1466,8 @@ function changeMapLegend(markers) {
 
 App.prototype.addSeedlink = function() {
 
-  /* Function App.addSeedlink
+  /*
+   * Function App.addSeedlink
    * Queries for registered Seedlink servers
    */
 
@@ -1368,7 +1481,7 @@ App.prototype.addSeedlink = function() {
   ];
 
   // Query the seedlink server API
-  HTTPRequest("/api/seedlink", function(json) {
+  HTTPRequestGET("/api/seedlink", function(json) {
 
     if(json === null) {
       return;
@@ -1425,7 +1538,8 @@ App.prototype.addSeedlink = function() {
 
 function Element(id) {
 
-  /* function Element
+  /*
+   * Function Element
    * Returns the DOM element with particular ID
    */
 
@@ -1435,7 +1549,8 @@ function Element(id) {
 
 function updateCrumbTitle(subject) {
 
-  /* function updateCrumbTitle
+  /*
+   * Function updateCrumbTitle
    * Updates the final breadcumb with a new subject
    */
 
@@ -1445,6 +1560,11 @@ function updateCrumbTitle(subject) {
 
 function deleteMetadata(hash) {
 
+  /*
+   * Function deleteMetadata
+   * Sends a DELETE request to the API to supersede metadata
+   */
+
   // Make sure this is not a mistake
   if(!confirm("Are you sure you want to supersede the metadata?")) {
     return;
@@ -1453,20 +1573,14 @@ function deleteMetadata(hash) {
   console.debug("Superseding document with identifier " + hash);
 
   // Instead of "GET" we pass "DELETE" to the HTTP API with the same message identifier
-  $.ajax({
-    "url": "/api/history?id=" + hash,
-    "type": "DELETE",
-    "dataType": "JSON",
-    "success": function() {
-      window.location.reload();
-    }
-  });
+  HTTPRequestDELETE("/api/history?id=" + hash, window.location.reload);
 
 }
 
 function deleteAllMessages(type) {
 
-  /* Function deleteAllMessages
+  /*
+   * Function deleteAllMessages
    * Deletes all the users' messages
    */
 
@@ -1485,21 +1599,14 @@ function deleteAllMessages(type) {
     throw("Could not delete all messages.");
   }
 
-  // Instead of "read" we pass "delete" to the API with the same message identifier
-  $.ajax({
-    "url": "/api/messages?" + search,
-    "type": "DELETE",
-    "dataType": "JSON",
-    "success": function() {
-      window.location.reload();
-    }
-  });
+  HTTPRequestDELETE("/api/messages?" + search, window.location.reload);
 
 }
 
 function deleteMessage() {
 
-  /* function deleteMessage
+  /*
+   * Function deleteMessage
    * Deletes message with a given identifier
    */
 
@@ -1511,19 +1618,12 @@ function deleteMessage() {
     return;
   }
 
-  // Instead of "read" we pass "delete" to the API with the same message identifier
-  $.ajax({
-    "url": "/api/messages/details" + window.location.search,
-    "type": "DELETE",
-    "dataType": "JSON",
-    "success": function(json) {
+  HTTPRequestDELETE("/api/messages/details" + window.location.search, function(json) {
 
-      if(json === null) {
-        Element("message-detail").innerHTML = generateMessageAlert("danger", E_SERVER_ERROR_MESSAGE_DELETED);
-      } else {
-        Element("message-detail").innerHTML = generateMessageAlert("success", S_MESSAGE_DELETED);
-      }
-
+    if(json === null) {
+      Element("message-detail").innerHTML = generateMessageAlert("danger", E_SERVER_ERROR_MESSAGE_DELETED);
+    } else {
+      Element("message-detail").innerHTML = generateMessageAlert("success", S_MESSAGE_DELETED);
     }
 
   });
@@ -1532,10 +1632,9 @@ function deleteMessage() {
 
 function formatMessageSender(sender) {
 
-  /* function formatMessageSender
-   *
+  /*
+   * Function formatMessageSender
    * Returns specific formatting for particular senders (e.g. administrator)
-   *
    */
 
   // Indicate user is an administrator
@@ -1549,7 +1648,8 @@ function formatMessageSender(sender) {
 
 function getIcon(icon, color) {
 
-  /* Function getIcon
+  /*
+   * Function getIcon
    * Returns font-awesome icon with a particular color
    */
 
@@ -1558,6 +1658,11 @@ function getIcon(icon, color) {
 }
 
 function GoogleMapsInfoWindowContentBorehole(markers) {
+
+  /*
+   * Function GoogleMapsInfoWindowContentBorehole
+   * Creates HTML content for borehole infowindow
+   */
 
   var arrowIcon = getIcon("arrow-down", "muted");
 
@@ -1618,18 +1723,19 @@ function GoogleMapsInfoWindowContent(marker) {
 
 App.prototype.getNetworkDOI = function() {
 
-  /* Function getNetworkDOI
-   * Queries the ORFEUS DOI API for information
-   * on the network digital identifier
+  /*
+   * Function getNetworkDOI
+   * Queries the ORFEUS DOI API for information on the network digital identifier
    */
 
   function getDOI(network, callback) {
   
-    /* Function getDOI
+    /*
+     * Function getDOI
      * Queries ORFEUS API for DOI information beloning to network
      */
   
-    HTTPRequest(DOI_URL + "?network=" + network, callback);
+    HTTPRequestGET(CONFIG.MODULES.DOI.HOST + "?network=" + network, callback);
 
   }
 
@@ -1647,7 +1753,7 @@ App.prototype.getNetworkDOI = function() {
   var doiElement = Element("doi-link");
 
   // Do not show all DOIs for an administrator
-  if(this.network.network.code === "*") {
+  if(CONFIG.ADMINISTRATOR) {
     return doiElement.innerHTML = "<small><a href='/home/admin'><i class='fas fa-unlock-alt'></i> Administrator Panel</a></small>";
   }
 
@@ -1668,8 +1774,8 @@ App.prototype.getNetworkDOI = function() {
     doiElement.innerHTML = getFormattedDOILink(element, this.network);
 
     // Continue with the actual DOI lookup
-    doiLookup(element.doi, function(jsonld) {
-      Element("citation-information").innerHTML = jsonld;
+    doiLookup(element.doi, function(citation) {
+      Element("citation-information").innerHTML = citation;
     });
 
   }.bind(this));
@@ -1680,8 +1786,7 @@ function doiLookup(doi, callback) {
 
   /*
    * Function doiLookup
-   * Looks up DOI from a registration and returns json+ld
-   * of metadata in callback
+   * Looks up DOI from a registration and returns the citation
    */
 
   const DOI_REGISTRATION_URL = "https://crosscite.org/format?" + [
@@ -1690,13 +1795,14 @@ function doiLookup(doi, callback) {
     "lang=en-US"
   ].join("&");
 
-  HTTPRequest(DOI_REGISTRATION_URL, callback);
+  HTTPRequestGET(DOI_REGISTRATION_URL, callback);
   
 }
 
 function getLatencyColorClass(channel, latency) {
 
-  /* getLatencyColorClass
+  /*
+   * Function getLatencyColorClass
    * Returns the color that belongs to the particular latency value
    */
 
@@ -1714,6 +1820,11 @@ function getLatencyColorClass(channel, latency) {
 }
 
 function getLatencyStatusMarker(marker) {
+
+  /*
+   * Function getLatencyStatusMarker
+   * Returns Google Maps marker depending on latency class
+   */
 
   // Markers
   const STATION_MARKERS = [
@@ -1748,23 +1859,20 @@ function getLatencyStatusMarker(marker) {
 
 function getLatencyStatus(channel, latency) {
 
-  /* Function getLatencyStatus
-   *
-   * returns the grade of latency status
-   * dependent on channel type:
-   *
+  /*
+   * Function getLatencyStatus
+   * returns the grade of latency status dependening on channel type:
    *   0 UNKNOWN
    *   1 GREEN
    *   2 ORANGE
    *   3 RED
    */
 
-  function _compare(latency, rate) {
+  function compare(latency, rate) {
 
-    /* Private Function _compare
-     *
-     * Compares the latency in miliseconds
-     * to the expected rate
+    /*
+     * Function getLatencyStatus::compare
+     * Compares the latency in miliseconds to the expected rate
      */
 
     const GREEN = 1;
@@ -1775,33 +1883,32 @@ function getLatencyStatus(channel, latency) {
 
   }
 
-  const UNKNOWN = 0;
-
-  // Limits
+  // Limits in seconds
   const VLOW_RATE = 1E7;
   const LOW_RATE = 1E6;
   const BROAD_RATE = 2.5E4;
-  const HIGH_RATE = 1E4;
+  const HIGH_RATE = 1E2;
 
   // Map first channel code to a particular rate and color
   switch(channel.charAt(0)) {
     case "V":
-      return _compare(latency, VLOW_RATE);
+      return compare(latency, VLOW_RATE);
     case "L":
-      return _compare(latency, LOW_RATE);
+      return compare(latency, LOW_RATE);
     case "B":
-      return _compare(latency, BROAD_RATE);
+      return compare(latency, BROAD_RATE);
     case "H":
-      return _compare(latency, HIGH_RATE);
+      return compare(latency, HIGH_RATE);
     default:
-      return UNKNOWN;
+      return 0;
   }
 
 }
 
 String.prototype.capitalize = function() {
 
-  /* Function String.capitalize
+  /*
+   * Function String.capitalize
    * Capitalizes the first letter of a string
    */
 
@@ -1811,8 +1918,9 @@ String.prototype.capitalize = function() {
 
 function generateBreadcrumb(pathname) {
 
-  /* Function generateBreadcrumb
-   * Renders the HTML for a single breadcrumb element
+  /*
+   * Function generateBreadcrumb
+   * Creates the HTML for a single breadcrumb element
    */
 
   var crumbs = pathname.split("/").slice(1);
@@ -1832,7 +1940,8 @@ function generateBreadcrumb(pathname) {
 
 function generateBreadcrumbs(crumbs) {
 
-  /* function generateBreadcrumbs
+  /*
+   * Function generateBreadcrumbs
    * Generates a HTML string for all breadcrumbs
    */
 
@@ -1866,13 +1975,13 @@ function generateBreadcrumbs(crumbs) {
 
 console.debug = (function(fnClosure) {
 
-  /* Function console.debug
-   * Monkey patch the debug function to
-   * only log when a variable is set
+  /*
+   * Function console.debug
+   * Monkey patch the debug function to only log when __DEBUG__ is set
    */
 
   return function(msg) {
-    if(__DEBUG__) {
+    if(CONFIG.__DEBUG__) {
       fnClosure(msg);
     }
   }
@@ -1918,7 +2027,7 @@ function createLatencyTrafficLight(hashMap, x) {
     }
 
     // Get the average latency for this particular channel
-    var average = getAverage(x.map(y => y.msLatency));
+    var average = getAverage(x.map(x => x.msLatency));
 
     // Generate HTML
     return [
@@ -1945,21 +2054,23 @@ function createLatencyTrafficLight(hashMap, x) {
 
 App.prototype.generateStationTable = function() {
 
-  /* function GenerateTable
+  /*
+   * Function GenerateTable
    * Generates the station latency table to be shown
    */
 
   function generateStationLatencyTable(latencies) {
   
-    /* Function generateStationLatencyTable
+    /*
+     * Function generateStationLatencyTable
      * Combines latency and station information to single rows
      */
   
     function createLatencyHashmap(latencies) {
     
-      /* Function createLatencyHashmap
-       * Creates a hashmap of all station latencies
-       * ordered by station code
+      /*
+       * Function createLatencyHashmap
+       * Creates a hashmap of all station latencies ordered by station code
        */
     
       var channelIdentifier;
@@ -2043,7 +2154,7 @@ App.prototype.generateStationTable = function() {
         "body": _stationJson.map(createTableBody)
       });
 
-      if(CONFIG.NETWORK.network.code === "*") {
+      if(CONFIG.ADMINISTRATOR) {
         Element("table-information").innerHTML = "<small>Table showing <b>" + _stationJson.length + "</b> available from FDSNWS.</small>";
       } else {
         Element("table-information").innerHTML = "<small>Table showing <b>" + _stationJson.length + "</b> stations from network <b>" + CONFIG.NETWORK.network.code + "</b> as available from FDSNWS.</small>";
@@ -2069,13 +2180,14 @@ App.prototype.generateStationTable = function() {
   var start = Date.now();
 
   // Asynchronous request to get the latency information
-  HTTPRequest("/api/latency?network=" + this.network.network.code, generateStationLatencyTable.bind(this)); 
+  HTTPRequestGET("/api/latency?network=" + this.network.network.code, generateStationLatencyTable.bind(this)); 
 
 }
 
-function Sum(array) {
+function sumArray(array) {
 
-  /* Function Sum
+  /*
+   * Function sumArray
    * returns the average of an array
    */
 
@@ -2088,17 +2200,19 @@ function Sum(array) {
 
 function getAverage(array) {
 
-  /* function getAverage
+  /*
+   * Function getAverage
    * returns the average of an array
    */
 
-  return Sum(array) / array.length;
+  return sumArray(array) / array.length;
 
 }
 
 function isStationActive(station) {
 
-  /* function isStationActive
+  /*
+   * Function isStationActive
    * Returns true if a station is operational
    */
 
@@ -2110,29 +2224,31 @@ function isStationActive(station) {
 
 function isActive(station) {
 
-  /* Function isActive
+  /*
+   * Function isActive
    * Returns icon for closed or open station
    */
 
   // Station is open
   if(isStationActive(station)) {
     return getIcon("check", "success"); 
+  } else {
+    return getIcon("times", "danger");
   }
-
-  // Station is closed
-  return getIcon("times", "danger");
 
 }
 
 function getInstrumentResponse(query) {
 
-  /* Function getInstrumentResponse
+  /*
+   * Function getInstrumentResponse
    * Queries the ORFEUS API for the instrument response of a particular channel
    */
 
   function mapUnit(unit) {
   
-    /* function mapUnit
+    /*
+     * Function mapUnit
      * Maps unit shorthand to long description for API call
      */
 
@@ -2143,6 +2259,8 @@ function getInstrumentResponse(query) {
         return "velocity";
       case "M/S**2":
         return "acceleration";
+      case "PA":
+        return "pressure";
       default:
         return "velocity";
     }
@@ -2163,19 +2281,18 @@ function getInstrumentResponse(query) {
     "channel=" + channel
   ].join("&");
 
-  var API = "http://0.0.0.0:7000?" + queryString
+  // Show the loading bar
+  toggleElement("response-loading-bar", true);
 
-  Element("response-loading-bar").style.display = "block";
-
-  HTTPRequest(API, function(json) {
+  HTTPRequestGET(CONFIG.MODULES.RESPONSE.HOST + "?" + queryString, function(json) {
 
     // Create the charts
     responseAmplitudeChart(json);
     responsePhaseChart(json);
 
-    // Hide the loading bar
-    Element("response-loading-bar").style.display = "none";
-    Element("response-charts").style.display = "block";
+    // Hide the loading bar and show the charts
+    toggleElement("response-loading-bar", false);
+    toggleElement("response-charts", true);
 
   });
 
@@ -2183,19 +2300,22 @@ function getInstrumentResponse(query) {
 
 function generateAccordion(list) {
 
-  /* Function generateAccordion
+  /*
+   * Function generateAccordion
    * Generates a bootstrap accordion
    */
 
   function generateAccordionContent(list) {
   
-    /* Function generateAccordionContent
+    /*
+     * Function generateAccordionContent
      * Generates the accordion for a channel component
      */
   
     function generateAccordionContentChannel(channel) {
   
-      /* Function generateAccordionContentChannel
+      /*
+       * Function generateAccordionContentChannel
        * Generates the content for the channel accordion element
        */
   
@@ -2244,9 +2364,9 @@ function generateAccordion(list) {
   
     function visibleChannels(channel) {
   
-      /* Function visibleChannels
-       * Returns whether a station is active and should be visible
-       * or show hidden channels is checked
+      /*
+       * Function visibleChannels
+       * Returns whether a station is active and should be visible or show hidden channels is checked
        */
   
       return isStationActive(channel) || Element("hide-channels").checked;
@@ -2286,17 +2406,26 @@ function generateAccordion(list) {
 }
 
 function unique(v, i, a) {
+
+  /*
+   * Function unique
+   * Returns an array of unique values from an array
+   */
+
   return a.indexOf(v) === i;
+
 }
 
 App.prototype.AddMetadataUpload = function() {
 
-  /* function AddMetadataUpload
+  /*
+   * Function AddMetadataUpload
    * Adds event to metadata uploading
    */
 
-  Element("metadata-submission").style.display = "block";
-  Element("seedlink-submission").style.display = "block";
+  // Show the elements
+  toggleElement("metadata-submission", true);
+  toggleElement("seedlink-submission", true);
 
   // Add event handler when files are selected 
   Element("file-stage").addEventListener("change", function(event) {
@@ -2333,9 +2462,9 @@ App.prototype.AddMetadataUpload = function() {
 
 function readMultipleFiles(files, callback) {
 
-  /* function readMultipleFiles
-   * Uses the HTML5 FileReader API to read mutliple fires and fire
-   * a callback with its contents
+  /*
+   * Function readMultipleFiles
+   * Uses the HTML5 FileReader API to read mutliple fires and fire a callback with its contents
    */
 
   var readFile
@@ -2349,13 +2478,14 @@ function readMultipleFiles(files, callback) {
       return callback(fileContents);
     }
 
+    // Next queued file: create a new filereader instance
     var file = files.pop();
     var reader = new FileReader();
 
     // XML should be readable as text
     reader.readAsText(file);
 
-    // Callback when one file is read
+    // Callback when one file is read (this is async)
     reader.onload = function() {
 
       console.debug("FileReader read file " + file.name + " (" + file.size + " bytes)");
@@ -2378,13 +2508,15 @@ function readMultipleFiles(files, callback) {
 
 function parseQuery(queryString) {
 
-  /* Function parseQuery
+  /*
+   * Function parseQuery
    * Parses query string to query object
    */
 
   function trimQueryString(queryString) {
 
-    /* Function trimQueryString
+    /*
+     * Function trimQueryString
      * Removes leading ? token from query string
      */
 
@@ -2398,9 +2530,9 @@ function parseQuery(queryString) {
 
   var queryObject = new Object;
 
-  trimQueryString(queryString).split("&").forEach(function(key) {
-    var pair = key.split('=').map(decodeURIComponent);
-    queryObject[pair[0]] = pair[1] || '';
+  trimQueryString(queryString).split("&").forEach(function(item) {
+    var [key, value] = item.split("=").map(decodeURIComponent);
+    queryObject[key] = value || "";
   });
 
   return queryObject;

@@ -271,7 +271,7 @@ function validateFIRStage(FIRStage) {
   }
 
   // Calculate the sum of the FIR coefficients
-  var FIRSum = Sum(Array.from(FIRStage.getElementsByTagName("NumeratorCoefficient")).map(x => x.innerHTML).map(Number))
+  var FIRSum = sumArray(Array.from(FIRStage.getElementsByTagName("NumeratorCoefficient")).map(x => x.innerHTML).map(Number))
 
   // Symmetry specified: FIR coefficients are symmetrical (double the sum)
   if(FIRStage.getElementsByTagName("Symmetry").item(0).innerHTML !== "NONE") {

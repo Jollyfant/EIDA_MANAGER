@@ -28,6 +28,20 @@
       "SLEEP_INTERVAL_SECONDS": 60
     }
   },
+  "MODULES": {
+    "WEBSOCKET": {
+      "ENABLED": true,
+      "HOST": "ws://0.0.0.0:8089"
+    },
+    "DOI": {
+      "ENABLED": true,
+      "HOST": "http://0.0.0.0:8090"
+    },
+    "RESPONSE": {
+      "ENABLED": true,
+      "HOST": "http://0.0.0.0:7000"
+    }
+  },
   "FDSNWS": {
     "STATION": {
       "HOST": "http://0.0.0.0:8080/fdsnws/station/1/query"

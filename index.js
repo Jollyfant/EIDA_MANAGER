@@ -32,6 +32,7 @@ const database = require("./lib/orfeus-database");
 const logger = require("./lib/orfeus-logging");
 const ohttp = require("./lib/orfeus-http");
 const template = require("./lib/orfeus-template");
+const seisComP3 = require("./lib/orfeus-seiscomp");
 
 // Static information
 const CONFIG = require("./config");
@@ -73,8 +74,6 @@ var WebRequest = function(request, response) {
   // Save the parsed url
   this.url = url.parse(request.url);
   this.query = querystring.parse(this.url.query);
-
-  this.init();
 
 }
 
@@ -208,6 +207,7 @@ WebRequest.prototype.serveStaticFile = function(resource) {
       case ".js":
         return ohttp.MIME.JS;
       case ".sc3ml":
+      case ".xml":
         return ohttp.MIME.XML;
       default:
         return ohttp.MIME.TEXT;
@@ -300,6 +300,8 @@ WebRequest.prototype.handleSession = function(error, session) {
       return this.redirect("/login");
     case "/login":
       return this.launchLogin(session);
+    case "/logout":
+      return this.removeSession(session);
     case "/authenticate":
       return this.launchAuthentication();
   }
@@ -345,8 +347,6 @@ WebRequest.prototype.handleRouting = function() {
 
   // Serve the different pages
   switch(this.url.pathname) {
-    case "/logout":
-      return this.removeSession();
     case "/home":
       return this.launchHome();
     case "/send":
@@ -407,19 +407,12 @@ WebRequest.prototype.writePrototype = function(parsedPrototype, buffer, callback
       return callback(error);
     }
 
-    const SEISCOMP_COMMAND = [
-      "exec",
-      "fdsnxml2inv",
-       parsedPrototype.filepath + ".stationXML",
-      "-f",
-      parsedPrototype.filepath + ".sc3ml"
-    ];
+    var input = parsedPrototype.filepath + ".stationXML";
+    var output = parsedPrototype.filepath + ".sc3ml";
 
-    const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
+    seisComP3.convertSC3ML(input, output, function(code) {
 
-    convertor.on("close", function(code) {
-
-      if(code === 1) {
+      if(code !== 0) {
         return callback(new Error("Could not create SC3ML from station prototype"));
       }
 
@@ -540,7 +533,7 @@ WebRequest.prototype.RPCFDSNWS = function() {
    * Restarts the FDSNWS Webservice
    */
 
-  this.RPCRestartFDSNWS(function(code) {
+  seisComP3.restartFDSNWS(function(code) {
 
     if(code === 1) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
@@ -621,33 +614,11 @@ WebRequest.prototype.RPCDatabase = function() {
         return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
       }
 
-      // Get the SC3ML filenames and add them to the CMDline
-      var SEISCOMP_COMMAND = [
-        "exec",
-        "scinv",
-        "merge"
-      ].concat(documents.map(x => x.filepath + ".sc3ml"));
+      var files = documents.map(x => x.filepath + ".sc3ml");
 
-      SEISCOMP_COMMAND = SEISCOMP_COMMAND.concat([
-        "-o",
-        inventoryFile
-      ]);
+      seisComP3.mergeSC3ML(files, inventoryFile, function(code) {
 
-      // Spawn the SeisComP3 subprocess
-      const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
-
-      // ENOENT SeisComP3
-      convertor.on("error", function(error) {
-        this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-      }.bind(this));
-
-      // NOOP but required..
-      convertor.stderr.on("data", Function.prototype);
-
-      // Child process has closed
-      convertor.on("close", function(code) {
-
-        if(code === 1) {
+        if(code !== 0) {
           return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
         }
 
@@ -663,36 +634,6 @@ WebRequest.prototype.RPCDatabase = function() {
 
 }
 
-WebRequest.prototype.RPCRestartFDSNWS = function(callback) {
-
-  /*
-   * Function RPCRestartFDSNWS
-   * Restarts the SeisComP3 FDSNWS webservice running inside
-   * In production, FDSNWS services should be run in a dedicated container
-   */
-
-  logger.info("RPC restart of FDSNWS requested.");
-
-  var SEISCOMP_COMMAND = [
-    "restart",
-    "fdsnws"
-  ];
-
-  // Spawn the SeisComP3 subprocess
-  const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
-
-  // ENOENT SeisComP3
-  convertor.on("error", function(error) {
-    this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-  }.bind(this));
-
-  // NOOP but required..
-  convertor.stderr.on("data", Function.prototype);
-
-  convertor.on("close", callback.bind(this));
-
-}
-
 WebRequest.prototype.RPCUpdateInventory = function(documents) {
 
   /*
@@ -700,30 +641,13 @@ WebRequest.prototype.RPCUpdateInventory = function(documents) {
    * Updates the database with the accepted inventory
    */
 
-  // SeisComP3 command to update the MySQL database
-  var SEISCOMP_COMMAND = [
-    "update-config",
-    "inventory"
-  ];
-
-  // Spawn the SeisComP3 subprocess
-  const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
-
-  // ENOENT SeisComP3
-  convertor.on("error", function(error) {
-    this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-  }.bind(this));
-
-  // NOOP but required..
-  convertor.stderr.on("data", Function.prototype);
-
   // Child process has closed
-  convertor.on("close", function(code) {
+  seisComP3.updateInventory(function(code) {
 
     logger.info("SeisComP3 database has been updated. Exited with status code " + code + ".");
 
     // Error updating the database
-    if(code === 1) {
+    if(code !== 0) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
     }
 
@@ -734,15 +658,15 @@ WebRequest.prototype.RPCUpdateInventory = function(documents) {
         return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
       }
 
-      this.RPCRestartFDSNWS(function(code) {
+      seisComP3.restartFDSNWS(function(code) {
 
-        if(code === 1) {
+        if(code !== 0) {
           return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        this.redirect("/home/admin?S_UPDATE_SEISCOMP"); 
+        this.redirect("/home/admin?S_RESTART_FDSNWS"); 
 
-      });
+      }.bind(this));
 
     }.bind(this));
 
@@ -775,34 +699,11 @@ WebRequest.prototype.RPCInventory = function() {
 
     logger.info("RPC is merging " + documents.length + " inventory files.");
 
-    // Get the SC3ML filenames and add them to the CMDline
-    var SEISCOMP_COMMAND = [
-      "exec",
-      "scinv",
-      "merge"
-    ].concat(documents.map(x => x.filepath + ".sc3ml"));
+    var files = documents.map(x => x.filepath + ".sc3ml");
+    var outstream = this.response;
 
-    // Spawn the SeisComP3 subprocess
-    const convertor = childProcess.spawn(CONFIG.SEISCOMP.PROCESS, SEISCOMP_COMMAND);
-
-    // ENOENT SeisComP3
-    convertor.on("error", function(error) {
-      this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-    }.bind(this));
-
-    // Set the HTTP header for the request
-    convertor.stdout.once("data", function() {
-      this.response.writeHead(ohttp.S_HTTP_OK, {"Content-Disposition": "attachment;filename=" + FILENAME});
-    }.bind(this));
-
-    // Pipe stdout of SeisComP3 to the response
-    convertor.stdout.pipe(this.response);
-
-    // NOOP but required..
-    convertor.stderr.on("data", Function.prototype);
-
-    // Child process has closed
-    convertor.on("close", function(code) {
+    // Pass writeable as output file
+    seisComP3.mergeSC3ML(files, outstream, function(code) { 
       logger.info("RPC merged full inventory of " + documents.length + " files. Exited with status code " + code + ".");
     });
 
@@ -875,6 +776,10 @@ WebRequest.prototype.launchUpload = function() {
 
   // Parse the request multiform
   ohttp.handlePOSTForm(this.request, function(error, files) {
+
+    if(error) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
+    }
 
     if(files.length === 0) {
       return this.HTTPResponse(ohttp.E_HTTP_BAD_REQUEST);
@@ -1077,16 +982,20 @@ WebRequest.prototype.launchSend = function() {
 
 }
 
-WebRequest.prototype.removeSession = function() {
+WebRequest.prototype.removeSession = function(session) {
 
   /*
    * Function WebRequest.removeSession
    * Removes a session from the database collection
    */
 
-  logger.debug("Removing session for user " + this.session.username + " with session identifier " + this.session.sessionId);
+  if(session === null) {
+    this.redirect("/login?S_LOGGED_OUT");
+  }
 
-  database.sessions().deleteOne({"sessionId": this.session.sessionId}, function(error, result) {
+  logger.debug("Removing session for user " + session.username + " with session identifier " + session.sessionId);
+
+  database.sessions().deleteOne({"sessionId": session.sessionId}, function(error, result) {
   
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -1335,6 +1244,15 @@ WebRequest.prototype.HTTPError = function(statusCode, error) {
 
 }
 
+function getHost() {
+
+  return {
+   "host": process.env.SERVICE_HOST || CONFIG.HOST,
+   "port": process.env.SERVICE_PORT || CONFIG.PORT
+  }
+
+}
+
 var Webserver = function() {
 
   /*
@@ -1343,13 +1261,9 @@ var Webserver = function() {
    */
 
   // Create the HTTP server and listen to incoming requests
-  this.webserver = createServer(function(request, response) {
-    new WebRequest(request, response);
-  });
+  this.webserver = createServer(this.handleRequest);
 
-  // Read from env variables or configuration
-  var host = process.env.SERVICE_HOST || CONFIG.HOST;
-  var port = process.env.SERVICE_PORT || CONFIG.PORT;
+  const { host, port } = this.getHost();
 
   // Listen to incoming connections
   this.webserver.listen(port, host, function() {
@@ -1363,20 +1277,47 @@ var Webserver = function() {
     });
   });
 
-  // Graceful shutdown of server
-  process.on("SIGINT", this.SIGINT.bind(this));
+  // Graceful shutdown of server on interrupt
+  process.once("SIGINT", this.interrupt.bind(this));
+  process.once("SIGTERM", this.interrupt.bind(this));
 
 }
 
-Webserver.prototype.SIGINT = function() {
+Webserver.prototype.handleRequest = function(request, response) {
 
   /*
-   * Function Webserver.SIGINT
-   * Signal handler for SIGINT
+   * Function Webserver.handleRequest
+   * Handles any incoming HTTP requests to the webserver
    */
 
-  logger.info("SIGINT received - initializing graceful shutdown of webserver and database connection.");
+  new WebRequest(request, response).init();
 
+}
+
+Webserver.prototype.getHost = function() {
+
+  /*
+   * Function Webserver.getHost
+   * Returns host from environment variables (docker) or configuration
+   */
+
+  return {
+   "host": process.env.SERVICE_HOST || CONFIG.HOST || "127.0.0.1",
+   "port": process.env.SERVICE_PORT || CONFIG.PORT || 3000
+  }
+
+}
+
+Webserver.prototype.interrupt = function() {
+
+  /*
+   * Function Webserver.interrupt
+   * Signal handler for SIGINT and SIGTERM signals
+   */
+
+  logger.info("Interrupt signal received - initializing graceful shutdown of webserver and database connection.");
+
+  // Close the webserver
   this.webserver.close()
 
 }
