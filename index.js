@@ -31,7 +31,6 @@ const database = require("./lib/orfeus-database");
 const logger = require("./lib/orfeus-logging");
 const ohttp = require("./lib/orfeus-http");
 const template = require("./lib/orfeus-template");
-const seisComP3 = require("./lib/orfeus-seiscomp");
 
 // Static information
 const CONFIG = require("./config");
@@ -148,6 +147,7 @@ WebRequest.prototype.patchResponse = function() {
 
 }
 
+WebRequest.prototype.staticFiles = require("./lib/orfeus-static");
 
 WebRequest.prototype.init = function() {
 
@@ -155,9 +155,6 @@ WebRequest.prototype.init = function() {
    * Function WebRequest.init
    * Initializes an instance of the WebRequest class
    */
-
-  // Lazy load static files
-  const STATIC_FILES = require("./lib/orfeus-static");
 
   this._initialized = Date.now();
 
@@ -170,7 +167,7 @@ WebRequest.prototype.init = function() {
   }
 
   // Static files are always served by the webserver
-  if(STATIC_FILES.includes(this.url.pathname)) {
+  if(this.staticFiles.includes(this.url.pathname)) {
     return this.serveStaticFile(this.url.pathname);
   }
 
@@ -208,6 +205,7 @@ WebRequest.prototype.serveStaticFile = function(resource) {
       case ".sc3ml":
       case ".xml":
         return ohttp.MIME.XML;
+      case ".txt":
       default:
         return ohttp.MIME.TEXT;
     }
@@ -391,135 +389,20 @@ WebRequest.prototype.RPC = function() {
 
 }
 
-WebRequest.prototype.writePrototype = function(parsedPrototype, buffer, callback) {
+WebRequest.prototype.RPCDatabase = function() {
 
   /*
-   * Function WebRequest.writePrototype
-   * Writes the newly submitted network prototype to disk
+   * Function WebRequest.RPCDatabase
+   * Sends out an RPC to update the SeisComP3 database
    */
 
-  // Otherwise proceed to write the prototype to disk
-  fs.writeFile(parsedPrototype.filepath + ".stationXML", buffer, function(error) {
-
-    // Propogate error
-    if(error) {
-      return callback(error);
-    }
-
-    var input = parsedPrototype.filepath + ".stationXML";
-    var output = parsedPrototype.filepath + ".sc3ml";
-
-    seisComP3.convertSC3ML(input, output, function(stderr, code) {
-
-      if(code !== 0) {
-        return callback(new Error("Could not create SC3ML from station prototype"));
-      }
-
-      database.addPrototype(parsedPrototype, function(error, result) {
-
-        // Propogate error
-        if(error) {
-          return callback(error);
-        }
-
-        logger.info("Inserted new network prototype for " + JSON.stringify(parsedPrototype.network));
-
-        // A new network prototype was submitted (or changed) and we are required to supersede all metadata from this network
-        // In this case, all stations from the network will be updated to match the new prototype
-        // have their descriptions, restrictedStatus changed
-        database.updateNetwork(parsedPrototype.network, function(error, files) {
-
-          // Propogate error
-          if(error) {
-            return callback(error);
-          }
-
-          // Nothing to do
-          if(files.length === 0) {
-            return callback(null);
-          }
-
-          // Update all submitted StationXML to match the prototype definition
-          var XMLDocuments = updateStationXML(parsedPrototype, files);
-
-          // Call routine to write all updated files
-          database.writeSubmittedFiles(this.session._id, XMLDocuments, callback);
-
-        }.bind(this));
-
-      }.bind(this));
-
-    }.bind(this));
-
-  }.bind(this));
-
-}
-
-WebRequest.prototype.handlePrototypeUpdate = function(file, callback) {
-
-  /*
-   * Function WebRequest.handlePrototypeUpdates
-   * Updates the network prototype definitions to the database
-   */
-
-  fs.readFile(file, function(error, buffer) {
-
-    // Propogate error
-    if(error) {
-      return callback(error);
-    }
-
-    // Try parsing the prototype files and extracting attributes
-    // (e.g. restrictedStatus, start, end, description)
-    try {
-      var parsedPrototype = parsePrototype(buffer);
-    } catch(exception) {
-      return callback(exception)
-    }
-
-    // Get the currently active prototype
-    database.getActivePrototype(parsedPrototype.network, function(error, documents) {
-
-      // Propogate error
-      if(error) { 
-        return callback(error);
-      } 
-
-      // Do nothing if the active prototype was resubmitted 
-      if(documents.length !== 0 && parsedPrototype.sha256 === documents.pop().sha256) {
-        return callback(null);
-      }
-
-      // Synchronously make sure the directory exists (blocks thread)
-      createDirectory("./metadata/prototypes");
-
-      // Write the prototype to disk
-      this.writePrototype(parsedPrototype, buffer, callback);
-
-    }.bind(this));
-
-  }.bind(this));
-
-}
-
-WebRequest.prototype.readPrototypeDirectory = function(callback) {
-
-  /*
-   * Function WebRequest.readPrototypeDirectory
-   * Reads the contents of the prototype directory
-   */
-
-  const PROTOTYPE_DIR = "./prototypes";
-
-  // Read all prototypes from the directory
-  fs.readdir(PROTOTYPE_DIR, function(error, files) {
+  database.RPCDatabase(function(error) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
-    // Collect .xml files and add filepath to filenames
-    callback(files.filter(x => x.endsWith(".xml")).map(x => path.join(PROTOTYPE_DIR, x)));
+    this.redirect("/home/admin?S_RESTART_FDSNWS");
 
   }.bind(this));
 
@@ -532,13 +415,13 @@ WebRequest.prototype.RPCFDSNWS = function() {
    * Restarts the FDSNWS Webservice
    */
 
-  seisComP3.restartFDSNWS(function(stderr, code) {
+  database.restartFDSNWS(function(error) {
 
-    if(code === 1) {
-      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
+    if(error) {
+      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
-    return this.redirect("/home/admin?S_RESTART_FDSNWS");
+    this.redirect("/home/admin?S_RESTART_FDSNWS");
 
   }.bind(this));
 
@@ -551,123 +434,13 @@ WebRequest.prototype.RPCPrototypes = function() {
    * Updates the network prototype definitions to the database
    */
 
-  var next;
+  database.updateAllPrototypes(this.session._id, function(error) {
 
-  // Collect all files from the prototype directory
-  this.readPrototypeDirectory(function(files) {
-
-    // Async but concurrently read all files
-    (next = function() {
-
-      // All buffers were read and available
-      if(!files.length) {
-        return this.redirect("/home/admin?S_UPDATE_PROTOTYPES");
-      }
-
-      // Delegate handling of prototype update
-      this.handlePrototypeUpdate(files.pop(), function(error) {
-     
-        if(error) { 
-          return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-        }
-
-        next();
-
-      }.bind(this));
-
-    }.bind(this))();
-
-  }.bind(this));
-
-}
-
-WebRequest.prototype.RPCDatabase = function() {
-
-  /*
-   * Function RPCInventory
-   * Call to merge the entire inventory based on the most recent
-   * ACCEPTED or COMPLETED metadata from the database
-   */
-
-  logger.info("RPC for database update received.");
-
-  const inventoryFile = path.join("seiscomp3", "etc", "inventory", "inventory.xml");
-
-  // Attempt to remove the previous merged XML
-  fs.unlink(inventoryFile, function(error) {
-
-    // ENOENT means file does not exist
-    if(error && error.code !== "ENOENT") {
+    if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-    }
+    } 
 
-    // Get the accepted inventory from the database
-    database.getAcceptedInventory(function(error, documents) {
-
-      if(error) {
-        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-      }
-
-      // No metadata in the database
-      if(documents.length === 0) {
-        return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
-      }
-
-      var files = documents.map(x => x.filepath + ".sc3ml");
-
-      seisComP3.mergeSC3ML(files, inventoryFile, function(stderr, code) {
-
-        if(code !== 0) {
-          return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
-        }
-
-        logger.info("RPC merged full inventory of " + documents.length + " files. Exited with status code " + code + ".");
-
-        this.RPCUpdateInventory(documents);
-
-      }.bind(this));
-
-    }.bind(this));
-
-  }.bind(this));
-
-}
-
-WebRequest.prototype.RPCUpdateInventory = function(documents) {
-
-  /*
-   * Function RPCUpdateInventory
-   * Updates the database with the accepted inventory
-   */
-
-  // Child process has closed
-  seisComP3.updateInventory(function(stderr, code) {
-
-    logger.info("SeisComP3 database has been updated. Exited with status code " + code + ".");
-
-    // Error updating the database
-    if(code !== 0) {
-      return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
-    }
-
-    // Set all submitted files to being available/completed
-    database.setAvailable(documents.map(x => x.id), function(error) {
-
-      if(error) {
-        return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
-      }
-
-      seisComP3.restartFDSNWS(function(stderr, code) {
-
-        if(code !== 0) {
-          return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR);
-        }
-
-        this.redirect("/home/admin?S_RESTART_FDSNWS"); 
-
-      }.bind(this));
-
-    }.bind(this));
+    this.redirect("/home/admin?S_UPDATE_PROTOTYPES");
 
   }.bind(this));
 
@@ -681,30 +454,14 @@ WebRequest.prototype.RPCInventory = function() {
    * ACCEPTED or COMPLETED metadata from the database
    */
 
-  const FILENAME = CONFIG.NODE.ID + "-sc3ml-full-inventory";
-
-  logger.info("RPC for full inventory received.");
-
-  // Query the database for all accepted files
-  database.getAcceptedInventory(function(error, documents) {
+  database.streamAcceptedInventory(this.response, function(error) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
     }
 
-    if(documents.length === 0) {
-      return this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
-    }
-
-    logger.info("RPC is merging " + documents.length + " inventory files.");
-
-    var files = documents.map(x => x.filepath + ".sc3ml");
-    var outstream = this.response;
-
-    // Pass writeable as output file
-    seisComP3.mergeSC3ML(files, outstream, function(stderr, code) { 
-      logger.info("RPC merged full inventory of " + documents.length + " files. Exited with status code " + code + ".");
-    });
+    // Write a no-content
+    this.HTTPResponse(ohttp.S_HTTP_NO_CONTENT);
 
   }.bind(this));
 
@@ -804,6 +561,7 @@ WebRequest.prototype.launchSeedlink = function() {
   /*
    * Function WebRequest.launchSeedlink
    * Launches Seedlink server submission code
+   * TODO
    */
 
   const IPV4_ADDRESS_REGEX  = new RegExp("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$");
@@ -1326,6 +1084,7 @@ WebRequest.prototype.handleFileUpload = function(objects, callback) {
   /*
    * Function WebRequest.handleFileUpload
    * Writes multiple (split) StationXML files to disk
+   * TODO
    */
 
   function getNetworkProperties(properties, prototype) {
@@ -1490,6 +1249,7 @@ WebRequest.prototype.getNetworkPrototype = function() {
   /*
    * Function WebRequest.getNetworkPrototype
    * Returns the active network prototype for this session
+   * TODO
    */
 
   function getPrototypeFile(document) {
@@ -1654,6 +1414,7 @@ WebRequest.prototype.removeAllMessagesSent = function() {
   /*
    * Function WebRequest.removeAllMessagesSent
    * Sets all messages for user to deleted
+   * TODO
    */
 
   var query = {
@@ -1679,6 +1440,7 @@ WebRequest.prototype.removeAllMessages = function() {
   /*
    * Function WebRequest.removeAllMessages
    * Sets all messages for user to deleted
+   * TODO
    */
 
   var query = {
@@ -1705,6 +1467,7 @@ WebRequest.prototype.removeSpecificMessage = function() {
    * Function WebRequest.RemoveSpecificMessage
    * Sets message with particular id to deleted
    * We have no way of knowing whether the sender of recipient is deleting (FIXME)
+   * TODO
    */
 
   // Get the message identifier from the query string
@@ -1756,6 +1519,7 @@ WebRequest.prototype.getSpecificMessage = function() {
   /*
    * Function GetSpecificMessage
    * Returns a specific private message
+   * TODO
    */
 
   // Get specific message from the database
@@ -1829,6 +1593,7 @@ WebRequest.prototype.getMessages = function() {
   /*
    * Function WebRequest.getMessages
    * Returns all messages that belong to a user in a session
+   * TODO
    */
 
   database.getMessages(this.session._id, function(error, documents) {
@@ -1932,88 +1697,8 @@ WebRequest.prototype.getFDSNWSChannels = function() {
   queryString += "&" + this.url.query;
 
   ohttp.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
-    this.writeJSON(this.parseFDSNWSResponse(json));
+    this.writeJSON(ohttp.parseFDSNWSResponse(json));
   }.bind(this));
-
-}
-
-WebRequest.prototype.parseFDSNWSResponse = function(data) {
-
-  /* function WebRequest.ParseFDSNWSResponse
-   * Returns parsed JSON response from FDSNWS Station Webservice
-   * for varying levels of information
-   */
-
-  function stationObject(codes) {
-
-    /* function WebRequest.ParseFDSNWSResponse::stationObject
-     * Returns a station object from | delimited parameters
-     */
-
-    return {
-      "network": codes[0],
-      "station": codes[1],
-      "position": {
-        "lat": Number(codes[2]),
-        "lng": Number(codes[3])
-      },
-      "elevation": Number(codes[4]),
-      "description": codes[5],
-      "start": codes[6],
-      "end": codes[7]
-    }
-
-  }
-
-  function channelObject(codes) {
-
-    /* function WebRequest.ParseFDSNWSResponse::channelObject
-     * Returns a channel object from | delimited parameters
-     */
-
-    return {
-      "network": codes[0],
-      "station": codes[1],
-      "location": codes[2],
-      "channel": codes[3],
-      "position": {
-        "lat": Number(codes[4]),
-        "lng": Number(codes[5])
-      },
-      "azimuth": Number(codes[8]),
-      "dip": Number(codes[9]),
-      "description": codes[10],
-      "gain": Number(codes[11]),
-      "gainFrequency": Number(codes[12]),
-      "sensorUnits": codes[13],
-      "sampleRate": Number(codes[14]),
-      "start": codes[15],
-      "end": codes[16]
-    }
-
-  }
-
-  // Return an empty array
-  if(data === null) {
-    return null;
-  }
-
-  var codes;
-
-  // Run through the response and convert to JSON
-  return data.split("\n").slice(1, -1).map(function(line) {
-
-    codes = line.split("|");
-
-    // Mapping of service to object
-    switch(codes.length) {
-      case 8:
-        return stationObject(codes);
-      case 17:
-        return channelObject(codes);
-    }
-
-  });
 
 }
 
@@ -2024,27 +1709,7 @@ WebRequest.prototype.getStagedFiles = function() {
    * Returns the files that are staged
    */
 
-  // Find all metadata in these processing pipeline
-  var findQuery = {
-    "status": {
-      "$in": [
-        database.METADATA_STATUS_REJECTED,
-        database.METADATA_STATUS_PENDING,
-        database.METADATA_STATUS_CONVERTED,
-        database.METADATA_STATUS_VALIDATED,
-        database.METADATA_STATUS_ACCEPTED
-      ]
-    }
-  }
-
-  // Filter anything that does not belong to the user
-  if(!this.session.isAdministrator()) {
-    findQuery["network.code"] = this.session.prototype.network.code;
-    findQuery["network.start"] = this.session.prototype.network.start;
-  }
-
-  // Get the staged files from the database
-  database.getStagedFiles(findQuery, function(error, files) {
+  database.getStagedFiles(this.session, function(error, files) {
 
     if(error) {
       return this.HTTPError(ohttp.E_HTTP_INTERNAL_SERVER_ERROR, error);
@@ -2072,7 +1737,7 @@ WebRequest.prototype.getFDSNWSStations = function() {
 
   // If the network end is specified only show stations from before the network end
   ohttp.request(CONFIG.FDSNWS.STATION.HOST + "?" + queryString, function(json) {
-    this.writeJSON(this.parseFDSNWSResponse(json));
+    this.writeJSON(ohttp.parseFDSNWSResponse(json));
   }.bind(this));
 
 }
