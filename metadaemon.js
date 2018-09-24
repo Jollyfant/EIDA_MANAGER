@@ -319,7 +319,6 @@ function metadMerge(document) {
 
   }
 
-  const TEMPORARY_PROTOTYPE = getPrototypeFilename("temporary");
   const E_PROTOTYPE_CONFLICT = "Could not merge metadata attribute against network prototype definition. Please contact an administrator: ";
   const E_PROTOTYPE_MISSING = "The network prototype definition is missing";
 
@@ -340,14 +339,14 @@ function metadMerge(document) {
     var files = new Array(document.filepath + ".sc3ml", prototype.filepath + ".sc3ml");
 
     // Attempt to merge without output
-    seisComP3.mergeSC3ML(files, null, function(stderr, code) {
+    seisComP3.mergeSC3ML(files, null, function(error) {
 
       // Set status to rejected when failed
-      if(code !== 0) {
-        metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, E_PROTOTYPE_CONFLICT + stderr);
-      } else {
-        metaDaemonCallback(document, database.METADATA_STATUS_ACCEPTED);
+      if(error) {
+        return metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, E_PROTOTYPE_CONFLICT + error);
       }
+
+      metaDaemonCallback(document, database.METADATA_STATUS_ACCEPTED);
 
     });
 
@@ -367,14 +366,14 @@ function metadConvert(document) {
   var input = document.filepath + ".stationXML";
   var output = document.filepath + ".sc3ml";
 
-  seisComP3.convertSC3ML(input, output, function(stderr, code) {
+  seisComP3.convertSC3ML(input, output, function(error) {
 
     // Set to rejected if the conversion fails
-    if(code !== 0) {
-      metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, stderr);
-    } else {
-      metaDaemonCallback(document, database.METADATA_STATUS_CONVERTED);
+    if(error) {
+      return metaDaemonCallback(document, database.METADATA_STATUS_REJECTED, stderr);
     }
+
+    metaDaemonCallback(document, database.METADATA_STATUS_CONVERTED);
 
   });
 

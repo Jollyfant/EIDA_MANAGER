@@ -1185,9 +1185,6 @@ App.prototype.launchStation = function() {
 
   });
 
-  var exampleSocket;
-  var queryStringPointer = this.queryString;
-
   // Enable the websocket
   if(CONFIG.MODULES.WEBSOCKET.ENABLED) {
     this.enableWebsocket();
@@ -1203,6 +1200,9 @@ App.prototype.enableWebsocket = function() {
    * Function App.enableWebsocket
    * Enables the Seedlink websocket
    */
+
+  var exampleSocket;
+  var queryStringPointer = this.queryString;
 
   // Change event to toggle WS connection
   Element("connect-seedlink").addEventListener("change", function() {
@@ -1573,7 +1573,7 @@ function deleteMetadata(hash) {
   console.debug("Superseding document with identifier " + hash);
 
   // Instead of "GET" we pass "DELETE" to the HTTP API with the same message identifier
-  HTTPRequestDELETE("/api/history?id=" + hash, window.location.reload);
+  HTTPRequestDELETE("/api/history?id=" + hash, function() { window.location.reload() });
 
 }
 
@@ -1599,7 +1599,7 @@ function deleteAllMessages(type) {
     throw("Could not delete all messages.");
   }
 
-  HTTPRequestDELETE("/api/messages?" + search, window.location.reload);
+  HTTPRequestDELETE("/api/messages?" + search, function() { window.location.reload() });
 
 }
 

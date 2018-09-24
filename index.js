@@ -25,7 +25,7 @@ const url = require("url");
 // ORFEUS libs
 const { SHA256 } = require("./lib/orfeus-crypto");
 const { sum, createDirectory } = require("./lib/orfeus-util");
-const { updateStationXML, parsePrototype, splitStationXML } = require("./lib/orfeus-metadata.js");
+const { splitStationXML } = require("./lib/orfeus-metadata.js");
 const { Message } = require("./lib/orfeus-message");
 const database = require("./lib/orfeus-database");
 const logger = require("./lib/orfeus-logging");
