@@ -33,6 +33,9 @@ services:
       - ./logs:/home/sysop/logs
       - ./data/metadata:/home/sysop/metadata
       - ./prototypes:/home/sysop/prototypes
+    environment:
+      SERVICE_PORT: 8088
+      SERVICE_HOST: "0.0.0.0"
     ports:
       - 8088:8088
       - 8080:8080
@@ -53,7 +56,8 @@ services:
     ports:
       - 8087:8087
     environment:
-      - "SERVICE_PORT=8087"
+      SERVICE_PORT: 8087
+      SERVICE_HOST: "0.0.0.0"
 
   # NodeJS Seedlink station connector
   # Can be pulled from https://github.com/Jollyfant/NodeJS-Seedlink-Stations
@@ -63,7 +67,8 @@ services:
     ports:
       - 8086:8086
     environment:
-      - "SERVICE_PORT=8086"
+      SERVICE_PORT: 8086
+      SERVICE_HOST: "0.0.0.0"
 
   # Expose the data proxy
   seedlink-proxy:
@@ -72,7 +77,8 @@ services:
     ports:
       - 8089:8089
     environment:
-      - "SERVICE_PORT=8089"
+      SERVICE_PORT: 8089
+      SERVICE_HOST: "0.0.0.0"
 
   # Webservice for network DOIs
   doi-webservice:
@@ -81,7 +87,8 @@ services:
     ports:
       - 8090:8090
     environment:
-      - "SERVICE_PORT=8090"
+      SERVICE_PORT: 8090
+      SERVICE_HOST: "0.0.0.0"
 
   # Webservice for getting the instrument frequency response 
   response-api:
@@ -89,3 +96,6 @@ services:
     restart: always
     ports:
       - 7000:8080
+    environment:
+      SERVICE_PORT: 8080
+      SERVICE_HOST: "0.0.0.0"

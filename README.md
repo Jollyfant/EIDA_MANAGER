@@ -83,6 +83,29 @@ Configuration parameters are:
   - `MONGO.HOST` Host that the MongoDB is runnign on.
   - `MONGO.PORT` Port that the MongoDB is running on.
 
+## Setting up the EIDA Manager
+
+    # Call the MongoDB, MySQL Docker installation script
+    # sh setup.sh
+
+    # Download your nodes network prototypes (these may be modified)
+    $ sh prototypes.sh {NODE}
+
+    # Start the deployment
+    $ docker-compose up
+
+    # Get the container identifier to be used in {container}
+    # Add the default user (Administrator/password)
+    $ docker ps | grep eida-manager
+    $ docker exec -it {container} node defaultUser.js
+
+    # Log in to the EIDA Manager using the default password
+    # Go to the RPC tab and click "Update Network Prototypes"
+    # And go to the administrator panel and create a new administrator user. The default one will be deleted and you will need to re-login.
+    # You can now add multiple users
+
+# Manual Installation
+
 ## Setting up the SeisComP3 MySQL Database
 
 Start and connect to a MariaDB image that will create the SeisComP3 database. Mount the volume (-v) that will retain the container data on the host and match it to the configuration of docker-compose. You need to add the database schema manually:
@@ -94,17 +117,11 @@ Start and connect to a MariaDB image that will create the SeisComP3 database. Mo
     $ cat schema/seiscomp3.sql | docker exec -i {container} mysql -uroot -ppassword seiscomp3
     $ docker stop {container}
 
-The chosen root password needs to be configured in the `scconfig` directory before building the EIDA Manager image.
+**Important:** the selected root password needs to be configured in the `scconfig` directory before building the EIDA Manager image.
 
 ## Setting up the MongoDB Database
 
-Start up and connect to a MongoDB image. Users need to be inserted manually (with a SHA256 password hash/salt) for now.
+Start up and connect to a MongoDB image. All we need to make sure that data saved by MongoDB is persistent on the host by mounting a volume (-v).
 
     $ docker run -d --rm -e "MONGO_INITDB_ROOT_USERNAME=root" -e "MONGO_INITDB_ROOT_PASSWORD=password" -v {$pwd/data/mongo}:/data/db mongo:latest
     b6375277f9733fa1a0de1d048c0fe6bb04c49e997971c8c22f0dd999dc84ae3c
-    $ docker exec -it {container} mongo
-    > use admin
-    > db.auth("root", "password")
-    > use orfeus-manager
-    > db.users.insert({object})
-    $ docker stop {container}
